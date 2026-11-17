@@ -39,7 +39,7 @@ impl Workspace {
                 .map(|s| (s.session.id, self.session_name(s)))
                 .collect(),
         );
-        let expanded = self.expanded_tools.clone();
+        let expanded = self.expanded.clone();
         list(state, move |ix, _window, _cx| {
             let item = match transcript.entries.get(ix) {
                 Some(entry) => entry_view(
@@ -94,16 +94,38 @@ fn entry_view(
 ) -> AnyElement {
     let id = |kind: &str| ElementId::Name(format!("{kind}-{}-{ix}", session.0).into());
     match &timed.entry {
-        Entry::User { text } => div()
-            .my_1()
-            .px_3()
-            .py_2()
-            .rounded_lg()
-            .border_1()
-            .border_color(theme::border())
-            .bg(theme::surface())
-            .child(markdown(id("user"), text))
-            .into_any_element(),
+        Entry::User { text } => {
+            let (view_edit, text_edit) = (view.clone(), text.clone());
+            let group: SharedString = format!("user-{ix}").into();
+            div()
+                .my_1()
+                .px_3()
+                .py_2()
+                .rounded_lg()
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::surface())
+                .group(group.clone())
+                .child(long_text(session, ix, id("user"), text, expanded, view))
+                .child(
+                    div()
+                        .id(id("edit"))
+                        .mt_1()
+                        .text_size(px(11.5))
+                        .text_color(theme::fg_faint())
+                        .opacity(0.)
+                        .group_hover(group, |s| s.opacity(1.))
+                        .cursor_pointer()
+                        .child("Edit from here")
+                        .on_click(move |_, window, cx| {
+                            let text = text_edit.clone();
+                            let _ = view_edit.update(cx, |this, cx| {
+                                this.start_edit(session, ix, &text, window, cx);
+                            });
+                        }),
+                )
+                .into_any_element()
+        }
         Entry::FromAgent { from, text, answer } => {
             let name = names
                 .get(from)
@@ -129,7 +151,14 @@ fn entry_view(
                         .text_color(theme::accent())
                         .child(format!("{what} {name}")),
                 )
-                .child(markdown(id("from-agent"), text))
+                .child(long_text(
+                    session,
+                    ix,
+                    id("from-agent"),
+                    text,
+                    expanded,
+                    view,
+                ))
                 .into_any_element()
         }
         Entry::Agent { text } => div()
@@ -175,8 +204,8 @@ fn entry_view(
                 )
                 .on_click(move |_, _, cx| {
                     let _ = view.update(cx, |this, cx| {
-                        if !this.expanded_tools.remove(&(session, ix)) {
-                            this.expanded_tools.insert((session, ix));
+                        if !this.expanded.remove(&(session, ix)) {
+                            this.expanded.insert((session, ix));
                         }
                         cx.notify();
                     });
@@ -239,6 +268,54 @@ fn entry_view(
                 .into_any_element()
         }
     }
+}
+
+/// A message longer than [`FOLD_LINES`] shows its first lines and a toggle
+/// (CONV-12).
+const FOLD_LINES: usize = 12;
+
+fn long_text(
+    session: AgentSessionId,
+    ix: usize,
+    id: ElementId,
+    text: &str,
+    expanded: bool,
+    view: &gpui::WeakEntity<Workspace>,
+) -> AnyElement {
+    let lines = text.lines().count();
+    if lines <= FOLD_LINES {
+        return markdown(id, text);
+    }
+    let shown = if expanded {
+        text.to_owned()
+    } else {
+        text.lines().take(6).collect::<Vec<_>>().join("\n")
+    };
+    let view = view.clone();
+    div()
+        .child(markdown(id, &shown))
+        .child(
+            div()
+                .id(("fold", ix))
+                .mt_1()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .cursor_pointer()
+                .child(if expanded {
+                    "Show less".to_owned()
+                } else {
+                    format!("Show all · {lines} lines")
+                })
+                .on_click(move |_, _, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        if !this.expanded.remove(&(session, ix)) {
+                            this.expanded.insert((session, ix));
+                        }
+                        cx.notify();
+                    });
+                }),
+        )
+        .into_any_element()
 }
 
 /// 15968 → "15.9k".

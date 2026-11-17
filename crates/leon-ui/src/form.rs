@@ -41,6 +41,9 @@ impl Workspace {
         let Some(project) = project else {
             return empty("No project.");
         };
+        let slash = self.slash_list(&self.form_text.clone(), Some(project.id), cx);
+        let chips = self.pasted_chips(cx);
+        let input_box = Self::paste_aware(div(), cx);
         let projects: Vec<Choice> = self
             .snapshot
             .projects
@@ -131,13 +134,18 @@ impl Workspace {
                     .child(label("CLI and settings").px_0())
                     .child(pickers)
                     .child(label("First message").px_0())
+                    .children(slash)
                     .child(
-                        div()
+                        input_box
                             .p_2()
                             .rounded_lg()
                             .border_1()
                             .border_color(theme::border_strong())
                             .bg(theme::surface())
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .children(chips)
                             .child(Textarea::new(&self.form_text)),
                     )
                     .child(
@@ -165,15 +173,16 @@ impl Workspace {
     }
 
     pub(crate) fn start_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = text_of(&self.form_text, cx);
+        let text = crate::message_input::message(&text_of(&self.form_text, cx), &self.pasted);
         let project = self
             .form
             .project
             .or_else(|| self.snapshot.projects.first().map(|p| p.id));
         let Some(project) = project else { return };
-        if text.trim().is_empty() {
+        if text.is_empty() {
             return;
         }
+        self.pasted.clear();
         self.core.send(Intent::NewConversation {
             project,
             settings: self.form.settings.clone(),

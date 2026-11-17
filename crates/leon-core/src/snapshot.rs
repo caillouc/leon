@@ -28,6 +28,8 @@ pub struct Snapshot {
     pub transcripts: HashMap<AgentSessionId, Arc<TranscriptView>>,
     /// Agents available per project (CONV-2).
     pub agents: Arc<HashMap<ProjectId, Vec<AgentDefinition>>>,
+    /// Skills and commands per project, for the `/` list (CONV-11).
+    pub commands: Arc<HashMap<ProjectId, Vec<crate::ports::SlashCommand>>>,
     /// What each backend's pickers offer (CONV-4).
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     /// Git state of each conversation's working directory (GIT-*, CONV-14).
@@ -79,6 +81,8 @@ pub struct SessionView {
     pub subagents: (u32, u32),
     /// A question or permission request waiting for the user (CONV-9).
     pub question: Option<Question>,
+    /// Replies the CLI suggests after its answer (CONV-10).
+    pub suggestions: Vec<String>,
 }
 
 /// A question from the CLI, shown as a card (CONV-9).

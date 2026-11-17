@@ -28,6 +28,17 @@ pub enum Intent {
         /// Message text.
         text: String,
     },
+    /// Go back to before a message of the user and send `text` instead
+    /// (CONV-7, CONV-8): later entries are dropped, the CLI starts a new
+    /// session carrying the conversation up to that point.
+    Rewind {
+        /// The session.
+        session: AgentSessionId,
+        /// Index of the user's message in the transcript.
+        entry: usize,
+        /// What to send instead.
+        text: String,
+    },
     /// Stop the running answer (CONV-6).
     Stop(AgentSessionId),
     /// Answer a question card (CONV-9).

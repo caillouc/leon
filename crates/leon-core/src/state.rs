@@ -20,6 +20,8 @@ pub(crate) struct SessionState {
     pub status: Status,
     pub subagents: (u32, u32),
     pub question: Option<Question>,
+    /// Replies the CLI suggests after its answer (CONV-10).
+    pub suggestions: Vec<String>,
     /// `None` until the transcript is loaded from the store.
     pub transcript: Option<TranscriptView>,
     /// Tool calls without a result yet: id → index in the transcript.
@@ -50,6 +52,7 @@ impl SessionState {
             status: Status::Idle,
             subagents: (0, 0),
             question: None,
+            suggestions: Vec::new(),
             transcript: None,
             pending_tools: HashMap::new(),
             carry_context: false,
@@ -75,6 +78,7 @@ pub(crate) struct State {
     pub conversations: Vec<Conversation>,
     pub sessions: BTreeMap<AgentSessionId, SessionState>,
     pub agents: Arc<HashMap<ProjectId, Vec<AgentDefinition>>>,
+    pub commands: Arc<HashMap<ProjectId, Vec<crate::ports::SlashCommand>>>,
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     pub notifications: Arc<Vec<Notification>>,
     pub next_notification: u64,
@@ -147,6 +151,7 @@ impl State {
                     status: s.status,
                     subagents: s.subagents,
                     question: s.question.clone(),
+                    suggestions: s.suggestions.clone(),
                 };
                 (s.session.id, view)
             })
@@ -168,6 +173,7 @@ impl State {
             sessions: Arc::new(sessions),
             transcripts,
             agents: Arc::clone(&self.agents),
+            commands: Arc::clone(&self.commands),
             options: Arc::clone(&self.options),
             notifications: Arc::clone(&self.notifications),
             git: Arc::clone(&self.git),

@@ -42,6 +42,19 @@ fn ci() -> bool {
             "-D",
             "warnings",
         ])
+        // The offscreen screenshot tool sits behind a feature.
+        && cargo(&[
+            "clippy",
+            "-p",
+            "leon-ui",
+            "--all-targets",
+            "--features",
+            "preview",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ])
         && cargo(&["test", "--workspace", "--locked"])
         && layers::check()
         && deny();

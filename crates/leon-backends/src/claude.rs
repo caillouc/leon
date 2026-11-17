@@ -28,6 +28,8 @@ pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
         "stream-json",
         "--verbose",
         "--include-partial-messages",
+        "--prompt-suggestions",
+        "true",
         "--permission-mode",
     ]
     .iter()
@@ -183,6 +185,13 @@ impl Parser {
                     Vec::new()
                 }
             }
+            // Shape read in Claude Code 2.1.288's own code, 2026-11-17.
+            Some("prompt_suggestion") => v["suggestion"]
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| BackendEvent::Suggestion(s.trim().to_owned()))
+                .into_iter()
+                .collect(),
             Some("assistant") if top_level => self.assistant(&v),
             Some("user") if top_level => self.tool_results(&v),
             Some("result") => {
@@ -419,5 +428,17 @@ mod tests {
         assert!(a.contains("--agent planner"));
         assert!(a.contains(r#"--agents {"planner":{"description":"Plans","prompt":"Plan."}}"#));
         assert!(a.ends_with("--resume s1"));
+    }
+
+    #[test]
+    fn prompt_suggestions_become_suggestions() {
+        let events = parse_all(
+            r#"{"type":"prompt_suggestion","suggestion":"Run the tests","uuid":"u","session_id":"s"}
+{"type":"prompt_suggestion","suggestion":"  "}"#,
+        );
+        assert_eq!(
+            events,
+            vec![BackendEvent::Suggestion("Run the tests".into())]
+        );
     }
 }

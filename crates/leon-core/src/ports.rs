@@ -61,6 +61,12 @@ pub trait Storage: Send + Sync + 'static {
     fn append_entry(&self, session: AgentSessionId, entry: &TimedEntry) -> Result<(), PortError>;
     /// The whole transcript of a session, oldest first.
     fn entries(&self, session: AgentSessionId) -> Result<Vec<TimedEntry>, PortError>;
+    /// Replaces a session's whole transcript (CONV-7: going back).
+    fn replace_entries(
+        &self,
+        session: AgentSessionId,
+        entries: &[TimedEntry],
+    ) -> Result<(), PortError>;
 }
 
 /// What is needed to create an agent session.
@@ -87,11 +93,22 @@ pub struct AgentDefinition {
     pub instructions: String,
 }
 
+/// A skill or a command the user can type after `/` (CONV-11).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlashCommand {
+    /// Name, typed as `/name`.
+    pub name: String,
+    /// One-line description.
+    pub description: String,
+}
+
 /// Where agent definitions come from (EXT-1, P3).
 pub trait Catalog: Send + Sync + 'static {
     /// Agents available in `project`, user-level and project-level, sorted by
     /// name.
     fn agents(&self, project: &Path) -> Vec<AgentDefinition>;
+    /// Skills and commands for the `/` list of a project (CONV-11).
+    fn commands(&self, project: &Path) -> Vec<SlashCommand>;
 }
 
 /// What a backend needs to start a CLI session.
@@ -139,6 +156,8 @@ pub enum BackendEvent {
         /// The tool failed.
         failed: bool,
     },
+    /// A reply the user may want to send next (CONV-10).
+    Suggestion(String),
     /// Subagents run by the CLI inside this session (CONV-13).
     Subagents {
         /// Started so far in this session.

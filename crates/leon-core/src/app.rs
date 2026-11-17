@@ -244,13 +244,19 @@ impl Core {
     fn refresh_agents(&mut self) {
         let catalog = Arc::clone(&self.ports.catalog);
         let projects = Arc::clone(&self.state.projects);
-        let agents = blocking(|| {
+        let (agents, commands) = blocking(|| {
             projects
                 .iter()
-                .map(|p| (p.id, catalog.agents(&p.path)))
-                .collect()
+                .map(|p| {
+                    (
+                        (p.id, catalog.agents(&p.path)),
+                        (p.id, catalog.commands(&p.path)),
+                    )
+                })
+                .unzip()
         });
         self.state.agents = Arc::new(agents);
+        self.state.commands = Arc::new(commands);
     }
 
     fn apply(&mut self, intent: Intent) {
@@ -263,6 +269,11 @@ impl Core {
                 text,
             } => self.new_conversation(project, settings, &text),
             Intent::Send { session, text } => self.send(session, &text),
+            Intent::Rewind {
+                session,
+                entry,
+                text,
+            } => self.rewind(session, entry, &text),
             Intent::Stop(session) => {
                 if let Some(commands) = self.live.get(&session) {
                     let _ = commands.send(BackendCommand::Interrupt);
@@ -443,6 +454,7 @@ impl Core {
             s.carry_context = false;
             s.status = Status::Running;
             s.question = None;
+            s.suggestions.clear();
         }
         if let Some(commands) = self.live.get(&id) {
             let _ = commands.send(BackendCommand::Send(message));
@@ -514,6 +526,46 @@ impl Core {
                 false
             }
         }
+    }
+
+    /// Goes back to before entry `entry`, a message of the user, and sends
+    /// `text` (CONV-7, CONV-8). Works the same on every CLI: the next message
+    /// starts a new CLI session that carries the conversation so far.
+    fn rewind(&mut self, id: AgentSessionId, entry: usize, text: &str) {
+        self.load_transcript(id);
+        let Some(s) = self.state.sessions.get_mut(&id) else {
+            return;
+        };
+        let Some(transcript) = s.transcript.as_mut() else {
+            return;
+        };
+        let is_user = matches!(
+            transcript.entries.get(entry).map(|e| &e.entry),
+            Some(Entry::User { .. })
+        );
+        if s.status == Status::Running || !is_user || text.trim().is_empty() {
+            return;
+        }
+        let entries = Arc::make_mut(&mut transcript.entries);
+        let dropped = entries.len() - entry;
+        entries.truncate(entry);
+        let kept = entries.clone();
+        s.session.cli_session = None;
+        s.carry_context = true;
+        s.suggestions.clear();
+        self.live.remove(&id);
+        let storage = Arc::clone(&self.ports.storage);
+        Self::report(blocking(|| storage.replace_entries(id, &kept)));
+        self.save_session(id);
+        self.record(
+            id,
+            Entry::Notice {
+                text: format!(
+                    "Went back: {dropped} later entries removed. Files the agent changed stay as they are."
+                ),
+            },
+        );
+        self.send(id, text);
     }
 
     fn answer(&mut self, id: AgentSessionId, question: String, answer: &str) {

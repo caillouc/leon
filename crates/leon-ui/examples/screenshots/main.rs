@@ -50,6 +50,11 @@ fn session(
             detail: "cargo test --workspace".into(),
             options: strings(&["Allow once", "Deny"]),
         }),
+        suggestions: if id == 3 {
+            strings(&["Run the tests", "Open a draft PR"])
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -70,7 +75,8 @@ fn timed(entry: Entry) -> TimedEntry {
     TimedEntry { at: 0, entry }
 }
 
-fn sample() -> Snapshot {
+/// Transcripts of the sample sessions.
+fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
     let transcript = vec![
         timed(Entry::User { text: "/ticket 398 webhook retries give up after 30 seconds".into() }),
         timed(Entry::Tool { id: "1".into(), name: "Read".into(), detail: "src/webhooks/retry.rs".into(), output: Some("…".into()), failed: false }),
@@ -87,33 +93,6 @@ fn sample() -> Snapshot {
         }),
         timed(Entry::Notice { text: "Changed model sonnet from your next message.".into() }),
         timed(Entry::Tool { id: "3".into(), name: "Edited".into(), detail: "src/webhooks/retry.rs".into(), output: None, failed: false }),
-    ];
-    let conversations = vec![
-        ConversationView {
-            conversation: conversation(1, 1, "Fix webhook retry timeout", false, false),
-            status: Status::Running,
-            sessions: vec![AgentSessionId(1), AgentSessionId(2)],
-        },
-        ConversationView {
-            conversation: conversation(2, 2, "Migrate config to TOML", true, false),
-            status: Status::NeedsInput,
-            sessions: vec![AgentSessionId(3)],
-        },
-        ConversationView {
-            conversation: conversation(3, 1, "Draft release notes v2.3", false, true),
-            status: Status::Idle,
-            sessions: vec![],
-        },
-        ConversationView {
-            conversation: conversation(4, 2, "Investigate flaky login e2e test", true, false),
-            status: Status::Error,
-            sessions: vec![],
-        },
-    ];
-    let sessions = [
-        session(1, 1, "planner", BackendKind::ClaudeCode, Status::Running),
-        session(2, 1, "coder", BackendKind::Codex, Status::Idle),
-        session(3, 2, "coder", BackendKind::Codex, Status::NeedsInput),
     ];
     let mut transcripts = HashMap::new();
     transcripts.insert(
@@ -155,6 +134,38 @@ fn sample() -> Snapshot {
             partial: None,
         }),
     );
+    transcripts
+}
+
+fn sample() -> Snapshot {
+    let conversations = vec![
+        ConversationView {
+            conversation: conversation(1, 1, "Fix webhook retry timeout", false, false),
+            status: Status::Running,
+            sessions: vec![AgentSessionId(1), AgentSessionId(2)],
+        },
+        ConversationView {
+            conversation: conversation(2, 2, "Migrate config to TOML", true, false),
+            status: Status::NeedsInput,
+            sessions: vec![AgentSessionId(3)],
+        },
+        ConversationView {
+            conversation: conversation(3, 1, "Draft release notes v2.3", false, true),
+            status: Status::Idle,
+            sessions: vec![],
+        },
+        ConversationView {
+            conversation: conversation(4, 2, "Investigate flaky login e2e test", true, false),
+            status: Status::Error,
+            sessions: vec![],
+        },
+    ];
+    let sessions = [
+        session(1, 1, "planner", BackendKind::ClaudeCode, Status::Running),
+        session(2, 1, "coder", BackendKind::Codex, Status::Idle),
+        session(3, 2, "coder", BackendKind::Codex, Status::NeedsInput),
+    ];
+    let transcripts = transcripts();
     let options = HashMap::from([
         (
             BackendKind::ClaudeCode,
@@ -260,5 +271,5 @@ fn main() {
         ("review".to_owned(), Shot::Review(ConversationId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),
     ];
-    gpui_platform::application().run(move |cx| capture(core, shots, out, cx));
+    gpui_platform::application().run(move |cx| capture(&core, shots, out, cx));
 }

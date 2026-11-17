@@ -56,7 +56,13 @@ pub struct Workspace {
     pub(crate) open_picker: Option<SharedString>,
     pub(crate) show_archived: bool,
     pub(crate) confirm_delete: Option<ConversationId>,
-    pub(crate) expanded_tools: HashSet<(AgentSessionId, usize)>,
+    /// Tool calls and long messages the user unfolded.
+    pub(crate) expanded: HashSet<(AgentSessionId, usize)>,
+    /// Long pastes waiting in the message box (CONV-12).
+    pub(crate) pasted: Vec<String>,
+    /// The user's message being edited: sending goes back to before it
+    /// (CONV-7, CONV-8).
+    pub(crate) rewind: Option<(AgentSessionId, usize)>,
     pub(crate) lists: HashMap<AgentSessionId, (ListState, usize)>,
     pub(crate) right: RightState,
     pub(crate) flow: FlowState,
@@ -154,7 +160,9 @@ impl Workspace {
             open_picker: None,
             show_archived: false,
             confirm_delete: None,
-            expanded_tools: HashSet::new(),
+            expanded: HashSet::new(),
+            pasted: Vec::new(),
+            rewind: None,
             lists: HashMap::new(),
             right,
             flow: FlowState::default(),

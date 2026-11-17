@@ -105,7 +105,7 @@ impl Workspace {
 
 /// Opens an offscreen window, saves each shot as `<out>/<name>.png`, then
 /// quits the app.
-pub fn capture(core: CoreHandle, shots: Vec<(String, Shot)>, out: PathBuf, cx: &mut App) {
+pub fn capture(core: &CoreHandle, shots: Vec<(String, Shot)>, out: PathBuf, cx: &mut App) {
     gpui_component::init(cx);
     Theme::change(ThemeMode::Dark, None, cx);
     let bounds = Bounds {
@@ -120,7 +120,7 @@ pub fn capture(core: CoreHandle, shots: Vec<(String, Shot)>, out: PathBuf, cx: &
     };
     let mut workspace = None;
     let opened = cx.open_window(options, |window, cx| {
-        let view = cx.new(|cx| Workspace::new(&core, Instant::now(), window, cx));
+        let view = cx.new(|cx| Workspace::new(core, Instant::now(), window, cx));
         workspace = Some(view.clone());
         cx.new(|cx| Root::new(view, window, cx))
     });

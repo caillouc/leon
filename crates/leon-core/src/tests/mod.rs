@@ -2,6 +2,7 @@
 
 mod agents;
 mod repo;
+mod rewind;
 mod turns;
 
 use std::collections::HashMap;
@@ -110,6 +111,17 @@ impl Storage for FakeStorage {
             .push(entry.clone());
         Ok(())
     }
+    fn replace_entries(
+        &self,
+        session: AgentSessionId,
+        entries: &[TimedEntry],
+    ) -> Result<(), PortError> {
+        self.entries
+            .lock()
+            .unwrap()
+            .insert(session, entries.to_vec());
+        Ok(())
+    }
     fn entries(&self, session: AgentSessionId) -> Result<Vec<TimedEntry>, PortError> {
         Ok(self
             .entries
@@ -153,6 +165,9 @@ impl Backends for FakeBackends {
 struct FakeCatalog;
 
 impl Catalog for FakeCatalog {
+    fn commands(&self, _project: &Path) -> Vec<crate::ports::SlashCommand> {
+        Vec::new()
+    }
     fn agents(&self, _project: &Path) -> Vec<AgentDefinition> {
         vec![
             AgentDefinition {

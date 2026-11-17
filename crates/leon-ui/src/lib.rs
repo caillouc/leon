@@ -18,6 +18,7 @@ mod flow_model;
 mod form;
 mod github;
 mod left;
+mod message_input;
 mod picker;
 mod pr_view;
 #[cfg(feature = "preview")]

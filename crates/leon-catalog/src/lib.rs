@@ -1,4 +1,5 @@
-//! Finds agent definitions in the user's standard folders (P3, EXT-1).
+//! Finds agent definitions, skills and commands in the user's standard
+//! folders (P3, EXT-1, CONV-11).
 //!
 //! Agents are markdown files with a YAML frontmatter (`name`, `description`)
 //! and the instructions as body. Folders, in priority order (a project agent
@@ -9,12 +10,13 @@
 //!
 //! Must not: write anything, or depend on another adapter.
 
+mod commands;
 mod frontmatter;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use leon_core::ports::{AgentDefinition, Catalog};
+use leon_core::ports::{AgentDefinition, Catalog, SlashCommand};
 
 use crate::frontmatter::split;
 
@@ -45,6 +47,10 @@ impl Catalog for AgentFiles {
             }
         }
         by_name.into_values().collect()
+    }
+
+    fn commands(&self, project: &Path) -> Vec<SlashCommand> {
+        commands::commands(&self.home, project)
     }
 }
 

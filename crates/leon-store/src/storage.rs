@@ -223,6 +223,27 @@ impl Storage for Store {
         .map_err(err(C))
     }
 
+    fn replace_entries(
+        &self,
+        session: AgentSessionId,
+        entries: &[TimedEntry],
+    ) -> Result<(), PortError> {
+        const C: &str = "rewriting a transcript";
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(err(C))?;
+        tx.execute("DELETE FROM entries WHERE session_id = ?1", [session.0])
+            .map_err(err(C))?;
+        for (seq, entry) in (1i64..).zip(entries) {
+            let json = serde_json::to_string(&entry.entry).map_err(|e| PortError::new(C, e))?;
+            tx.execute(
+                "INSERT INTO entries (session_id, seq, at, entry) VALUES (?1, ?2, ?3, ?4)",
+                params![session.0, seq, entry.at, json],
+            )
+            .map_err(err(C))?;
+        }
+        tx.commit().map_err(err(C))
+    }
+
     fn entries(&self, session: AgentSessionId) -> Result<Vec<TimedEntry>, PortError> {
         const C: &str = "reading a transcript";
         let conn = self.lock();
@@ -372,6 +393,11 @@ mod tests {
                 answer: true,
             }
         );
+
+        store.replace_entries(session.id, &entries[..1]).unwrap();
+        assert_eq!(store.entries(session.id).unwrap(), entries[..1].to_vec());
+        store.append_entry(session.id, &entries[2]).unwrap();
+        assert_eq!(store.entries(session.id).unwrap().len(), 2);
 
         store.delete_conversation(conv.id).unwrap();
         assert!(!store.has_conversation(conv.id));

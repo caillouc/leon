@@ -58,6 +58,13 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
             output,
             failed,
         } => tool_done(core, id, &tool, output, failed),
+        BackendEvent::Suggestion(text) => {
+            if let Some(s) = core.state_mut().sessions.get_mut(&id)
+                && !s.suggestions.contains(&text)
+            {
+                s.suggestions.push(text);
+            }
+        }
         BackendEvent::Subagents { started, running } => {
             if let Some(s) = core.state_mut().sessions.get_mut(&id) {
                 s.subagents = (started, running);
