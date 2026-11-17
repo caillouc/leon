@@ -253,6 +253,13 @@ impl Workspace {
                         .clone()
                         .unwrap_or_else(|| "not started".into()),
                 ),
+                (
+                    "Usage",
+                    self.snapshot.transcripts.get(&s.session.id).map_or_else(
+                        || "not loaded".to_owned(),
+                        |t| crate::transcript::usage_text(leon_domain::Usage::total(&t.entries)),
+                    ),
+                ),
             ])
             .pb_3()
         });

@@ -69,6 +69,30 @@ pub struct Usage {
     pub cost_usd: Option<f64>,
 }
 
+impl Usage {
+    /// The usage of every turn of a transcript, added up (USE-1). The cost
+    /// is known only when every turn reported one.
+    pub fn total(entries: &[TimedEntry]) -> Self {
+        entries
+            .iter()
+            .filter_map(|e| match &e.entry {
+                Entry::TurnEnd { usage } => *usage,
+                _ => None,
+            })
+            .fold(
+                Self {
+                    cost_usd: Some(0.),
+                    ..Self::default()
+                },
+                |a, b| Self {
+                    input_tokens: a.input_tokens + b.input_tokens,
+                    output_tokens: a.output_tokens + b.output_tokens,
+                    cost_usd: a.cost_usd.zip(b.cost_usd).map(|(x, y)| x + y),
+                },
+            )
+    }
+}
+
 /// A transcript entry with its time (Unix milliseconds).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TimedEntry {
@@ -80,7 +104,38 @@ pub struct TimedEntry {
 
 #[cfg(test)]
 mod tests {
-    use super::{Entry, Usage};
+    use super::{Entry, TimedEntry, Usage};
+
+    fn end(input: u64, cost: Option<f64>) -> TimedEntry {
+        TimedEntry {
+            at: 0,
+            entry: Entry::TurnEnd {
+                usage: Some(Usage {
+                    input_tokens: input,
+                    output_tokens: 1,
+                    cost_usd: cost,
+                }),
+            },
+        }
+    }
+
+    #[test]
+    fn usage_adds_up_turns() {
+        let text = TimedEntry {
+            at: 0,
+            entry: Entry::Agent { text: "hi".into() },
+        };
+        let total = Usage::total(&[end(10, Some(0.5)), text, end(5, Some(0.25))]);
+        assert_eq!(
+            (total.input_tokens, total.output_tokens, total.cost_usd),
+            (15, 2, Some(0.75))
+        );
+        assert_eq!(
+            Usage::total(&[end(10, Some(0.5)), end(5, None)]).cost_usd,
+            None
+        );
+        assert_eq!(Usage::total(&[]).input_tokens, 0);
+    }
 
     #[test]
     fn entries_have_a_stable_json_form() {

@@ -154,6 +154,7 @@ impl Core {
                 self.refresh_pr(id);
             }
             Internal::Tick => {
+                self.stop_idle_clis();
                 let ids: Vec<ConversationId> = self
                     .state
                     .conversations

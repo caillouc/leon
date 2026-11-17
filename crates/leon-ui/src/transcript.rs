@@ -250,14 +250,7 @@ fn entry_view(
             .child(text.clone())
             .into_any_element(),
         Entry::TurnEnd { usage } => {
-            let text = usage.map_or_default(|u| {
-                let cost = u.cost_usd.map_or_default(|c| format!(" · ${c:.2}"));
-                format!(
-                    "{} in · {} out{cost}",
-                    thousands(u.input_tokens),
-                    thousands(u.output_tokens)
-                )
-            });
+            let text = usage.map_or_default(usage_text);
             div()
                 .h(px(14.))
                 .flex()
@@ -316,6 +309,16 @@ fn long_text(
                 }),
         )
         .into_any_element()
+}
+
+/// "41.2k in · 1.8k out · $0.42" (USE-1).
+pub(crate) fn usage_text(u: leon_domain::Usage) -> String {
+    let cost = u.cost_usd.map_or_default(|c| format!(" · ${c:.2}"));
+    format!(
+        "{} in · {} out{cost}",
+        thousands(u.input_tokens),
+        thousands(u.output_tokens)
+    )
 }
 
 /// 15968 → "15.9k".

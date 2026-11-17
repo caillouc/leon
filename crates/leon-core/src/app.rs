@@ -99,6 +99,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         state,
         publish,
         live: HashMap::new(),
+        idle_since: HashMap::new(),
         viewing: None,
         event_tx,
         internal_tx,
@@ -148,7 +149,9 @@ pub(crate) struct Core {
     pub(crate) ports: Ports,
     pub(crate) state: State,
     publish: watch::Sender<Arc<Snapshot>>,
-    live: HashMap<AgentSessionId, UnboundedSender<BackendCommand>>,
+    pub(crate) live: HashMap<AgentSessionId, UnboundedSender<BackendCommand>>,
+    /// When each live CLI finished its last turn.
+    pub(crate) idle_since: HashMap<AgentSessionId, i64>,
     viewing: Option<ConversationId>,
     event_tx: UnboundedSender<SessionEvent>,
     pub(crate) internal_tx: UnboundedSender<Internal>,
@@ -461,6 +464,7 @@ impl Core {
         if let Some(commands) = self.live.get(&id) {
             let _ = commands.send(BackendCommand::Send(message));
         }
+        self.idle_since.remove(&id);
         self.touch(conversation, false);
         true
     }
@@ -676,6 +680,8 @@ impl Core {
             self.record(id, Entry::Error { text });
         }
         self.record(id, Entry::TurnEnd { usage });
+        let now = self.now();
+        self.idle_since.insert(id, now);
         self.refresh_git(conversation);
         if self.after_turn(id, failed) {
             self.touch(conversation, false);

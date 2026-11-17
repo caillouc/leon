@@ -10,6 +10,7 @@
 mod agents;
 mod app;
 mod events;
+mod idle;
 mod intent;
 pub mod ports;
 mod repo;
