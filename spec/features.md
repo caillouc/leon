@@ -34,7 +34,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 
 - **NAV-1** Several projects and conversations at once; conversations run
   concurrently.
-- **NAV-2** Conversations grouped by project/folder.
+- **NAV-2** Conversations grouped by project/folder. Click a project to fold
+  or unfold its conversations; the choice is kept.
 - **NAV-3** Pinned conversations sit at the top of the left pane, above the
   projects.
 - **NAV-4** Unread indicator per conversation; the user can also mark one as
@@ -52,7 +53,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **CONV-1** Send messages; see the agent's answer stream live.
 - **CONV-2** Start a conversation directly with a chosen agent. The
   new-conversation form is a card like the mock's (labelled fields in two
-  columns). A conversation opens on its Flow tab (FLOW-4).
+  columns). A conversation always opens on its Flow tab (FLOW-4), also when
+  clicked again in the left pane.
 - **CONV-3** Choose the CLI per conversation: Claude Code, Codex, Copilot CLI.
 - **CONV-4** Choose the model, the effort and the permission mode (default:
   auto). Models show their version (e.g. "Opus 5.5"); a picker never shows

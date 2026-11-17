@@ -24,6 +24,7 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
         id: ProjectId(row.get(0)?),
         name: row.get(1)?,
         path: PathBuf::from(row.get::<_, String>(2)?),
+        collapsed: row.get(3)?,
     })
 }
 
@@ -65,7 +66,9 @@ impl Storage for Store {
         const C: &str = "listing projects";
         let conn = self.lock();
         let mut stmt = conn
-            .prepare_cached("SELECT id, name, path FROM projects ORDER BY name COLLATE NOCASE, id")
+            .prepare_cached(
+                "SELECT id, name, path, collapsed FROM projects ORDER BY name COLLATE NOCASE, id",
+            )
             .map_err(err(C))?;
         let rows = stmt.query_map([], project_row).map_err(err(C))?;
         rows.collect::<Result<_, _>>().map_err(err(C))
@@ -80,11 +83,21 @@ impl Storage for Store {
         )
         .map_err(err(C))?;
         conn.query_row(
-            "SELECT id, name, path FROM projects WHERE path = ?1",
+            "SELECT id, name, path, collapsed FROM projects WHERE path = ?1",
             [path_text(path)],
             project_row,
         )
         .map_err(err(C))
+    }
+
+    fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError> {
+        self.lock()
+            .execute(
+                "UPDATE projects SET collapsed = ?2 WHERE id = ?1",
+                params![id.0, collapsed],
+            )
+            .map(drop)
+            .map_err(err("folding a project"))
     }
 
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError> {
@@ -319,6 +332,14 @@ mod tests {
             .map(|p| p.name)
             .collect();
         assert_eq!(names, ["Api", "web"]);
+        store.set_project_collapsed(again.id, true).unwrap();
+        let folded: Vec<_> = store
+            .list_projects()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.collapsed)
+            .collect();
+        assert_eq!(folded, [false, true]);
     }
 
     #[test]

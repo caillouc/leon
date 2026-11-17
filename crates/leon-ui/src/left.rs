@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, Context, Focusable, IntoElement, SharedString, Window, div, prelude::*, px,
 };
 use gpui_component::input::Input;
-use leon_core::ConversationView;
+use leon_core::{ConversationView, Intent};
 use leon_domain::Status;
 
 use crate::pr_view::pr_badge;
@@ -59,7 +59,12 @@ impl Workspace {
                 })
                 .filter(matches)
                 .collect();
-            body = body.child(Self::project_header(project.id, &project.name, cx));
+            // A search shows matches even in a folded project.
+            let folded = project.collapsed && query.is_empty();
+            body = body.child(Self::project_header(project, rows.len(), cx));
+            if folded {
+                continue;
+            }
             if rows.is_empty() {
                 body = body.child(empty(if query.is_empty() {
                     "No conversations"
@@ -214,21 +219,44 @@ impl Workspace {
     }
 
     /// A project's group label, with a + that starts a conversation in it.
+    /// A project's group label: click to fold or unfold its conversations
+    /// (NAV-2); the + starts a conversation in it (NAV-10).
     fn project_header(
-        project: leon_domain::ProjectId,
-        name: &str,
+        project: &leon_domain::Project,
+        count: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let group: SharedString = format!("project-{}", project.0).into();
+        let (id, collapsed) = (project.id, project.collapsed);
         div()
-            .group(group.clone())
+            .id(SharedString::from(format!("project-{}", id.0)))
             .flex()
             .items_center()
             .pr_2()
-            .child(div().flex_1().child(label(name.to_owned())))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, _| {
+                this.core.send(Intent::CollapseProject(id, !collapsed));
+            }))
             .child(
                 div()
-                    .id(SharedString::from(format!("new-in-{}", project.0)))
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .child(label(format!(
+                        "{} {}",
+                        if collapsed { "▸" } else { "▾" },
+                        project.name
+                    )))
+                    .child(
+                        div()
+                            .pt_2()
+                            .text_size(px(10.5))
+                            .text_color(theme::fg_faint())
+                            .child(count.to_string()),
+                    ),
+            )
+            .child(
+                div()
+                    .id(SharedString::from(format!("new-in-{}", id.0)))
                     .mt_2()
                     .px(px(6.))
                     .rounded_md()
@@ -237,7 +265,8 @@ impl Workspace {
                     .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
                     .child("+")
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.form.project = Some(project);
+                        cx.stop_propagation();
+                        this.form.project = Some(id);
                         this.form.settings.agent = None;
                         this.show_new_conversation(cx);
                         this.form_text.focus_handle(cx).focus(window, cx);

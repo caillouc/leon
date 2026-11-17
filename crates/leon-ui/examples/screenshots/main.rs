@@ -237,11 +237,13 @@ fn sample() -> Snapshot {
                 id: ProjectId(1),
                 name: "payments-api".into(),
                 path: "/code/payments-api".into(),
+                collapsed: false,
             },
             Project {
                 id: ProjectId(2),
                 name: "infra-tools".into(),
                 path: "/code/infra-tools".into(),
+                collapsed: true,
             },
         ]),
         conversations: Arc::new(conversations),

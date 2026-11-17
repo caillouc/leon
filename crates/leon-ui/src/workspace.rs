@@ -245,9 +245,10 @@ impl Workspace {
         .detach();
     }
 
-    /// Shows a conversation (NAV-7).
+    /// Shows a conversation on its Flow tab (NAV-7, FLOW-4).
     pub(crate) fn select(&mut self, id: ConversationId, cx: &mut Context<Self>) {
         self.screen = Screen::Conversation(id);
+        self.tabs.remove(&id);
         self.open_picker = None;
         self.rename = None;
         self.row_menu = None;

@@ -39,6 +39,8 @@ pub trait Storage: Send + Sync + 'static {
     /// Registers a folder as a project; returns the existing one if the path
     /// is already registered.
     fn add_project(&self, name: &str, path: &Path, now: i64) -> Result<Project, PortError>;
+    /// Folds or unfolds a project's conversations in the left pane.
+    fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError>;
     /// Every conversation, most recent first.
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError>;
     /// Every agent session, oldest first.

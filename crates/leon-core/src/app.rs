@@ -299,6 +299,7 @@ impl Core {
             Intent::ChangeSettings { session, settings } => {
                 self.change_settings(session, &settings);
             }
+            Intent::CollapseProject(id, collapsed) => self.collapse_project(id, collapsed),
             Intent::Rename(id, title) => self.edit(id, |c| title.trim().clone_into(&mut c.title)),
             Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
@@ -323,6 +324,18 @@ impl Core {
             self.state.projects =
                 Arc::new(Self::report(blocking(|| storage.list_projects())).unwrap_or_default());
             self.refresh_agents();
+        }
+    }
+
+    fn collapse_project(&mut self, id: leon_domain::ProjectId, collapsed: bool) {
+        let storage = Arc::clone(&self.ports.storage);
+        if Self::report(blocking(|| storage.set_project_collapsed(id, collapsed))).is_some() {
+            for p in Arc::make_mut(&mut self.state.projects)
+                .iter_mut()
+                .filter(|p| p.id == id)
+            {
+                p.collapsed = collapsed;
+            }
         }
     }
 

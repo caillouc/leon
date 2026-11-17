@@ -57,6 +57,8 @@ pub enum Intent {
         /// New settings.
         settings: SessionSettings,
     },
+    /// Fold or unfold a project's conversations in the left pane (NAV-2).
+    CollapseProject(ProjectId, bool),
     /// Rename a conversation (NAV-8).
     Rename(ConversationId, String),
     /// Pin or unpin (NAV-3).

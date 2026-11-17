@@ -41,9 +41,22 @@ impl Storage for FakeStorage {
             id,
             name: name.into(),
             path: path.into(),
+            collapsed: false,
         };
         projects.push(project.clone());
         Ok(project)
+    }
+    fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError> {
+        for p in self
+            .projects
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|p| p.id == id)
+        {
+            p.collapsed = collapsed;
+        }
+        Ok(())
     }
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError> {
         Ok(self.conversations.lock().unwrap().clone())

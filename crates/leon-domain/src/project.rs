@@ -14,4 +14,6 @@ pub struct Project {
     pub name: String,
     /// Absolute path of the folder.
     pub path: PathBuf,
+    /// Its conversations are folded away in the left pane (NAV-2).
+    pub collapsed: bool,
 }

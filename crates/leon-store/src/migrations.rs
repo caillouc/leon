@@ -46,6 +46,8 @@ const MIGRATIONS: &[&str] = &[
     ) STRICT;",
     // 3: the folder a conversation moved to (D3, P10).
     "ALTER TABLE conversations ADD COLUMN working_dir TEXT;",
+    // 4: projects folded in the left pane (NAV-2).
+    "ALTER TABLE projects ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Latest schema version this build knows.
