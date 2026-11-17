@@ -1,0 +1,12 @@
+[
+  {
+    "id": "team-kit@team-marketplace",
+    "version": "547818e96a04",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/team-marketplace/team-kit/547818e96a04",
+    "installedAt": "2026-10-02T12:58:59.766Z",
+    "lastUpdated": "2026-11-10T13:44:59.483Z",
+    "projectEnabled": false
+  }
+]

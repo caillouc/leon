@@ -2,14 +2,16 @@
 //! reviewers, comments; request a Copilot review, post a comment.
 
 use gpui::{
-    AnyElement, Context, Div, FontWeight, IntoElement, Rgba, SharedString, div, prelude::*, px,
+    AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, SharedString, div, prelude::*,
+    px,
 };
-use gpui_component::input::Textarea;
+use gpui_component::input::{Textarea, TextareaState};
 use gpui_component::text::TextView;
 use leon_core::Intent;
-use leon_domain::{CheckState, ConversationId, Label, PrState, PullRequest};
+use leon_domain::{CheckState, Comment, ConversationId, GhRef, Label, PrState, PullRequest};
 
-use crate::left::ago;
+use crate::icons::{Icon, icon};
+use crate::left::since;
 use crate::theme;
 use crate::widgets::{button, empty, label, primary};
 use crate::workspace::{Workspace, text_of};
@@ -63,6 +65,7 @@ fn copilot_asked(pr: &PullRequest) -> bool {
 }
 
 impl Workspace {
+    /// The PR tab of the right pane: the conversation's pull request.
     pub(crate) fn render_pr(&mut self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
         let Some(pr) = self.snapshot.prs.get(&id).cloned() else {
             let branch = self
@@ -75,6 +78,25 @@ impl Workspace {
                 "No pull request for {branch} yet. Ask the agent to open one."
             ));
         };
+        let input = self.right.pr_comment.clone();
+        div()
+            .id("right-pr")
+            .flex_1()
+            .overflow_y_scroll()
+            .pb_4()
+            .child(Self::pr_body(&pr, &input, cx))
+            .into_any_element()
+    }
+
+    /// A pull request: state, title, branch, labels, checks, reviewers,
+    /// comments, and the actions on it (GH-1, GH-4..6). `input` is the
+    /// comment box to use.
+    pub(crate) fn pr_body(
+        pr: &PullRequest,
+        input: &Entity<TextareaState>,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let item = GhRef::pull_request(&pr.repo, pr.number);
         let (color, word) = pr_state(pr.state);
         let live = matches!(pr.state, PrState::Open | PrState::Draft);
         let passing = pr
@@ -82,7 +104,7 @@ impl Workspace {
             .iter()
             .filter(|c| c.state == CheckState::Pass)
             .count();
-        let asked = copilot_asked(&pr);
+        let asked = copilot_asked(pr);
         let checks = div()
             .mx_3()
             .flex()
@@ -91,50 +113,34 @@ impl Workspace {
             .border_1()
             .border_color(theme::border())
             .bg(theme::window())
-            .children(pr.checks.iter().map(|check| {
+            .children(pr.checks.iter().enumerate().map(|(ix, check)| {
                 let glyph = match check.state {
-                    CheckState::Pass => "✓",
-                    CheckState::Fail => "✕",
-                    CheckState::Pending => "•",
+                    CheckState::Pass => Icon::Passed,
+                    CheckState::Fail => Icon::Failed,
+                    CheckState::Pending => Icon::Pending,
                 };
                 div()
                     .flex()
+                    .items_center()
                     .gap_2()
-                    .px_2()
-                    .py(px(5.))
-                    .border_t_1()
-                    .border_color(theme::border())
-                    .text_size(px(12.))
-                    .child(div().text_color(check_color(check.state)).child(glyph))
+                    .px_3()
+                    .py(px(7.))
+                    .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
+                    .text_size(px(12.5))
+                    .child(icon(glyph, check_color(check.state), 14.))
                     .child(check.name.clone())
             }));
-        let comments = pr.comments.iter().enumerate().map(|(ix, c)| {
-            div()
-                .mx_3()
-                .mb_2()
-                .px_3()
-                .py_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::window())
-                .text_size(px(12.5))
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(theme::fg_faint())
-                        .child(format!("{} · {} ago", c.author, ago(c.at))),
-                )
-                .child(TextView::markdown(
-                    SharedString::from(format!("pr-comment-{ix}")),
-                    SharedString::from(c.body.clone()),
-                ))
-        });
+        let request = {
+            let item = item.clone();
+            cx.listener(move |this, _, _, _| {
+                if !asked {
+                    this.core.send(Intent::RequestCopilotReview(item.clone()));
+                }
+            })
+        };
         div()
-            .id("right-pr")
-            .flex_1()
-            .overflow_y_scroll()
-            .pb_4()
+            .flex()
+            .flex_col()
             .child(
                 div()
                     .px_3()
@@ -197,43 +203,72 @@ impl Workspace {
                             } else {
                                 "Request Copilot review"
                             },
-                            cx.listener(move |this, _, _, _| {
-                                if !asked {
-                                    this.core.send(Intent::RequestCopilotReview(id));
-                                }
-                            }),
+                            request,
                         )
                         .when(asked, |b| b.opacity(0.6)),
                     ),
                 )
             })
+            .child(Self::comments(&pr.comments, item, input, cx))
+    }
+
+    /// Comments, oldest first, then a box to post one on `item` (GH-6).
+    pub(crate) fn comments(
+        comments: &[Comment],
+        item: GhRef,
+        input: &Entity<TextareaState>,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let list = comments.iter().enumerate().map(|(ix, c)| {
+            div()
+                .mx_3()
+                .mb_2()
+                .px_3()
+                .py_2()
+                .rounded_lg()
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::window())
+                .text_size(px(12.5))
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(theme::fg_faint())
+                        .child(format!("{} · {}", c.author, since(c.at))),
+                )
+                .child(TextView::markdown(
+                    SharedString::from(format!("comment-{ix}")),
+                    SharedString::from(c.body.clone()),
+                ))
+        });
+        let input = input.clone();
+        div()
+            .flex()
+            .flex_col()
             .child(label("Comments"))
-            .when(pr.comments.is_empty(), |d| d.child(empty("No comments")))
-            .children(comments)
+            .when(comments.is_empty(), |d| d.child(empty("No comments")))
+            .children(list)
             .child(
                 div()
                     .px_3()
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(Textarea::new(&self.right.pr_comment))
+                    .child(Textarea::new(&input))
                     .child(div().flex().child(primary(
                         "post-comment",
                         "Post comment",
                         cx.listener(move |this, _, window, cx| {
-                            let text = text_of(&this.right.pr_comment, cx);
+                            let text = text_of(&input, cx);
                             if text.trim().is_empty() {
                                 return;
                             }
                             this.core
-                                .send(Intent::CommentOnPr(id, text.trim().to_owned()));
-                            this.right
-                                .pr_comment
-                                .update(cx, |state, cx| state.set_value("", window, cx));
+                                .send(Intent::Comment(item.clone(), text.trim().to_owned()));
+                            input.update(cx, |state, cx| state.set_value("", window, cx));
                         }),
                     ))),
             )
-            .into_any_element()
     }
 }
 

@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use leon_core::GitView;
 use leon_domain::{
-    Check, CheckState, Comment, ConversationId, DiffLine, FileDiff, FileStatus, FoldPattern, Hunk,
-    Issue, IssueStatus, Label, LineKind, PrState, PullRequest,
+    BoardOption, Check, CheckState, Comment, ConversationId, DiffLine, FileDiff, FileStatus,
+    FoldPattern, Hunk, Issue, Iteration, Label, LineKind, PrState, PullRequest,
 };
 
 fn line(kind: LineKind, old: Option<u32>, new: Option<u32>, text: &str) -> DiffLine {
@@ -138,7 +138,7 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
         comments: vec![Comment {
             author: "copilot-pull-request-reviewer".into(),
             body: "The new `MAX_DELAY` cap looks right. Consider a test for attempt 0.".into(),
-            at: 0,
+            at: crate::hours_ago(1),
         }],
     }
 }
@@ -195,52 +195,100 @@ pub fn my_prs() -> Arc<Vec<PullRequest>> {
 }
 
 pub fn my_issues() -> Arc<Vec<Issue>> {
-    let status = |name: &str, order, color: &str| {
-        Some(IssueStatus {
+    let status = |name: &str, order| {
+        Some(BoardOption {
             name: name.into(),
             order,
-            color: Some(color.into()),
+            color: None,
         })
     };
-    let issue = |number, title: &str, labels, status| Issue {
+    let priority = |name: &str, order| {
+        Some(BoardOption {
+            name: name.into(),
+            order,
+            color: None,
+        })
+    };
+    let sprint = |title: &str, start: &str| {
+        vec![Iteration {
+            field: "Sprint".into(),
+            title: title.into(),
+            start: start.into(),
+        }]
+    };
+    let issue = |number, title: &str, labels, status, hours| Issue {
         repo: "acme/payments-api".into(),
         number,
         title: String::from(title),
         url: String::new(),
         labels,
-        updated_at: 0,
+        updated_at: crate::hours_ago(hours),
         status,
+        priority: None,
+        iterations: Vec::new(),
+        assignees: vec!["octocat".into()],
+        body: "Deliveries stop retrying after 30 s, so a slow endpoint loses events.\n\n\
+               **Expected:** retries for 15 minutes, each delay capped at 2 minutes."
+            .into(),
+        comments: Vec::new(),
     };
     Arc::new(vec![
-        issue(
-            401,
-            "Webhook retries give up after 30 seconds",
-            vec![label("bug", "d73a4a")],
-            status("In progress", 2, "YELLOW"),
-        ),
-        issue(
-            405,
-            "Refunds over 10k need a second approval",
-            vec![label("feature", "a2eeef"), label("payments", "0e8a16")],
-            status("Todo", 1, "BLUE"),
-        ),
-        issue(
-            388,
-            "Invoice PDF misses the VAT number",
-            vec![label("bug", "d73a4a")],
-            status("Todo", 1, "BLUE"),
-        ),
+        Issue {
+            priority: priority("P1", 1),
+            iterations: sprint("Sprint 12", "2026-11-16"),
+            ..issue(
+                401,
+                "Webhook retries give up after 30 seconds",
+                vec![label("bug", "d73a4a")],
+                status("In progress", 2),
+                3,
+            )
+        },
+        Issue {
+            priority: priority("P2", 2),
+            iterations: sprint("Sprint 12", "2026-11-16"),
+            ..issue(
+                405,
+                "Refunds over 10k need a second approval",
+                vec![label("feature", "a2eeef"), label("payments", "0e8a16")],
+                status("Todo", 1),
+                20,
+            )
+        },
+        Issue {
+            priority: priority("P0", 0),
+            iterations: sprint("Sprint 12", "2026-11-16"),
+            ..issue(
+                388,
+                "Invoice PDF misses the VAT number",
+                vec![label("bug", "d73a4a")],
+                status("Todo", 1),
+                50,
+            )
+        },
+        Issue {
+            iterations: sprint("Sprint 11", "2026-11-02"),
+            ..issue(
+                392,
+                "Retry dashboard shows UTC times",
+                vec![],
+                status("In review", 3),
+                5,
+            )
+        },
         issue(
             379,
             "Move the cron jobs to the new scheduler",
             vec![],
-            status("Backlog", 0, "GRAY"),
+            status("Backlog", 0),
+            200,
         ),
         issue(
             366,
             "Document the webhook signature",
             vec![label("docs", "0075ca")],
             None,
+            400,
         ),
     ])
 }
@@ -321,7 +369,7 @@ pub fn doctor() -> (i64, Arc<Vec<leon_domain::DoctorSection>>) {
             ],
         },
     ];
-    (0, Arc::new(sections))
+    (crate::hours_ago(0), Arc::new(sections))
 }
 
 pub fn shared_tools() -> Arc<Vec<leon_domain::McpServer>> {
@@ -337,30 +385,65 @@ pub fn shared_tools() -> Arc<Vec<leon_domain::McpServer>> {
     }])
 }
 
-pub fn tools() -> (i64, Arc<Vec<leon_domain::DoctorSection>>) {
-    use leon_domain::{DoctorCheck as C, DoctorSection as S, Health as H};
-    let sections = vec![
-        S {
-            title: "Claude Code".into(),
-            checks: vec![
-                C::new(H::Ok, "claude.ai Slack", "Connected"),
-                C::new(H::Ok, "claude.ai Metabase", "Connected"),
-                C::new(H::Warning, "claude.ai Mixpanel", "Needs authentication")
-                    .fix("Log in once from Claude Code: run `claude`, then /mcp"),
-                C::new(H::Ok, "Plugin team-kit@team-marketplace", "enabled"),
+pub fn tools() -> (i64, Arc<Vec<leon_domain::CliConnectors>>) {
+    use leon_domain::{
+        BackendKind as B, CliConnectors as Cli, Connector as C, ConnectorKind as K,
+        ConnectorState as S,
+    };
+    let c = |name: &str, kind, state, detail: &str| C {
+        name: name.into(),
+        kind,
+        state,
+        detail: detail.into(),
+    };
+    let clis = vec![
+        Cli {
+            backend: B::ClaudeCode,
+            connectors: vec![
+                c("Slack", K::Account, S::On, "https://mcp.slack.com/mcp"),
+                c(
+                    "Gmail",
+                    K::Account,
+                    S::On,
+                    "https://gmail.mcp.claude.com/mcp",
+                ),
+                c(
+                    "Metabase",
+                    K::Account,
+                    S::On,
+                    "https://example.metabaseapp.com/api/mcp",
+                ),
+                c("Asana", K::Account, S::Failed, "HTTP 410"),
+                c(
+                    "Atlassian",
+                    K::Account,
+                    S::NeedsLogin,
+                    "https://mcp.atlassian.com/v1/mcp",
+                ),
+                c(
+                    "Figma",
+                    K::Account,
+                    S::NeedsLogin,
+                    "https://mcp.figma.com/mcp",
+                ),
+                c("team-kit@team-marketplace", K::Plugin, S::On, "1.4.0"),
             ],
+            problem: None,
         },
-        S {
-            title: "Codex".into(),
-            checks: vec![
-                C::new(H::Info, "codex_app", "disabled"),
-                C::new(H::Ok, "node_repl", "enabled"),
+        Cli {
+            backend: B::Codex,
+            connectors: vec![
+                c("github@openai-curated", K::Plugin, S::On, "0.3.1"),
+                c("node_repl", K::Server, S::On, "node"),
+                c("codex_app", K::Server, S::Off, "codex-app"),
             ],
+            problem: None,
         },
-        S {
-            title: "Copilot CLI".into(),
-            checks: vec![C::new(H::Info, "Installed", "`copilot` not found")],
+        Cli {
+            backend: B::CopilotCli,
+            connectors: vec![c("computer-use", K::Plugin, S::Off, "built-in")],
+            problem: None,
         },
     ];
-    (0, Arc::new(sections))
+    (crate::hours_ago(0), Arc::new(clis))
 }

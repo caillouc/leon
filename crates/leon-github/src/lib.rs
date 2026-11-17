@@ -1,22 +1,24 @@
 //! Talks to GitHub with the user's own `gh` login (P7): the pull request of
-//! a branch, the user's open issues and pull requests, a Copilot review
-//! request, a comment.
+//! a branch, the user's open issues and pull requests, one pull request or
+//! issue by number, a Copilot review request, a comment.
 //!
-//! Every call runs the GitHub CLI (`gh`, checked on 2.101.0, 2026-11-17)
-//! with an argument list, never through a shell; reads are one `gh api
-//! graphql` query each. Calls block: the core runs them off its async
-//! workers.
+//! Every call runs the GitHub CLI (`gh`, checked on 2.101.0, 2026-11-17;
+//! by-number reads and board fields on 2026-11-18) with an argument list,
+//! never through a shell; reads are one `gh api graphql` query each. Calls
+//! block: the core runs them off its async workers.
 //!
 //! Must not: read, store or log a token (authentication stays inside `gh`);
 //! change anything on GitHub beyond the port's review request and comment;
 //! depend on another adapter or on the UI.
 
+mod board;
 mod checks;
 mod parse;
 mod query;
 mod run;
 mod time;
 
+use std::fmt::Display;
 use std::path::Path;
 
 use leon_core::ports::{GitHub, PortError, SearchPath, inherited_path};
@@ -35,6 +37,29 @@ impl GhCli {
     pub fn new(path: SearchPath) -> Self {
         Self { path }
     }
+
+    /// Runs a query with the issues' board fields. Those need the token's
+    /// `read:project` scope; without it, runs it again without them.
+    fn with_board(&self, args: impl Fn(bool) -> Vec<String>) -> Result<String, GhError> {
+        match gh((self.path)(), &args(true), None) {
+            Err(GhError::Failed(message)) if message.contains("scope") => {
+                gh((self.path)(), &args(false), None)
+            }
+            other => other,
+        }
+    }
+}
+
+/// Why a repository given as text cannot be read.
+const NOT_OWNER_NAME: &str = "the repository is not written `owner/name`";
+
+/// An error about pull request or issue `number` of `repo`.
+fn numbered<'a>(
+    context: &'static str,
+    repo: &'a str,
+    number: u64,
+) -> impl Fn(&dyn Display) -> PortError + 'a {
+    move |cause| PortError::new(context, format!("{repo}#{number}: {cause}"))
 }
 
 impl Default for GhCli {
@@ -80,7 +105,7 @@ impl GitHub for GhCli {
     }
 
     fn pull_request(&self, dir: &Path, branch: &str) -> Result<Option<PullRequest>, PortError> {
-        let error = |cause: &dyn std::fmt::Display| {
+        let error = |cause: &dyn Display| {
             PortError::new(
                 "reading the pull request",
                 format!("branch {branch} in {}: {cause}", dir.display()),
@@ -94,22 +119,15 @@ impl GitHub for GhCli {
     }
 
     fn my_issues(&self) -> Result<Vec<Issue>, PortError> {
-        let error = |cause: &dyn std::fmt::Display| PortError::new("listing my issues", cause);
-        // Board columns need the `read:project` scope; without it, the
-        // issues come without their column.
-        let json = match gh((self.path)(), &query::search(query::MY_ISSUES, true), None) {
-            Err(GhError::Failed(message)) if message.contains("scope") => {
-                gh((self.path)(), &query::search(query::MY_ISSUES, false), None)
-            }
-            other => other,
-        }
-        .map_err(|e| error(&e))?;
+        let error = |cause: &dyn Display| PortError::new("listing my issues", cause);
+        let json = self
+            .with_board(|board| query::search(query::MY_ISSUES, board))
+            .map_err(|e| error(&e))?;
         parse::search_issues(&json).map_err(|e| error(&e))
     }
 
     fn my_pull_requests(&self) -> Result<Vec<PullRequest>, PortError> {
-        let error =
-            |cause: &dyn std::fmt::Display| PortError::new("listing my pull requests", cause);
+        let error = |cause: &dyn Display| PortError::new("listing my pull requests", cause);
         let json = gh(
             (self.path)(),
             &query::search(query::MY_PULL_REQUESTS, false),
@@ -119,20 +137,36 @@ impl GitHub for GhCli {
         parse::search_pull_requests(&json).map_err(|e| error(&e))
     }
 
+    fn pull_request_by_number(&self, repo: &str, number: u64) -> Result<PullRequest, PortError> {
+        let error = numbered("reading the pull request", repo, number);
+        let (owner, name) = query::owner_and_name(repo).ok_or_else(|| error(&NOT_OWNER_NAME))?;
+        let args = query::pull_request_by_number(owner, name, number);
+        let json = gh((self.path)(), &args, None).map_err(|e| error(&e))?;
+        parse::pull_request_by_number(&json)
+            .map_err(|e| error(&e))?
+            .ok_or_else(|| error(&"GitHub sent no pull request"))
+    }
+
+    fn issue(&self, repo: &str, number: u64) -> Result<Issue, PortError> {
+        let error = numbered("reading the issue", repo, number);
+        let (owner, name) = query::owner_and_name(repo).ok_or_else(|| error(&NOT_OWNER_NAME))?;
+        let json = self
+            .with_board(|board| query::issue(owner, name, number, board))
+            .map_err(|e| error(&e))?;
+        parse::issue(&json)
+            .map_err(|e| error(&e))?
+            .ok_or_else(|| error(&"GitHub sent no issue"))
+    }
+
     fn request_copilot_review(&self, repo: &str, number: u64) -> Result<(), PortError> {
         gh((self.path)(), &query::copilot_review(repo, number), None)
             .map(drop)
-            .map_err(|e| {
-                PortError::new(
-                    "requesting a Copilot review",
-                    format!("{repo}#{number}: {e}"),
-                )
-            })
+            .map_err(|e| numbered("requesting a Copilot review", repo, number)(&e))
     }
 
     fn comment(&self, repo: &str, number: u64, body: &str) -> Result<(), PortError> {
         gh((self.path)(), &query::comment(repo, number, body), None)
             .map(drop)
-            .map_err(|e| PortError::new("posting a comment", format!("{repo}#{number}: {e}")))
+            .map_err(|e| numbered("posting a comment", repo, number)(&e))
     }
 }

@@ -9,18 +9,19 @@ use std::rc::Rc;
 
 use gpui::{
     AnyElement, Bounds, Context, FontWeight, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, PathBuilder, PinchEvent, Pixels, Point, Rgba, ScrollEvent, SharedString,
-    Window, canvas, div, point, prelude::*, px,
+    MouseMoveEvent, PinchEvent, Pixels, Point, Rgba, ScrollEvent, SharedString, Window, canvas,
+    div, prelude::*, px,
 };
 use gpui_component::text::TextView;
 use leon_core::SessionView;
-use leon_domain::{AgentSessionId, ConversationId};
+use leon_domain::{AgentSessionId, ArrowStyle, ConversationId};
 
 use crate::flow_model::{
     self, Edge, EdgeKind, Node, Pt, Rect, View, label_at, layout, rect, route, status_text,
 };
+use crate::flow_paint::{Arrow, legend};
 use crate::theme;
-use crate::widgets::{button, status_dot};
+use crate::widgets::{OnClick, button, segmented, status_dot};
 use crate::workspace::{Tab, Workspace};
 
 /// What the flow tab remembers per conversation.
@@ -58,7 +59,7 @@ fn pt(p: Point<Pixels>) -> Pt {
     }
 }
 
-fn color(kind: EdgeKind) -> Rgba {
+pub(crate) fn color(kind: EdgeKind) -> Rgba {
     match kind {
         EdgeKind::Prompt => theme::accent(),
         EdgeKind::Report => theme::fg_muted(),
@@ -118,10 +119,12 @@ impl Workspace {
             .iter()
             .filter_map(|e| {
                 let (a, b) = (rects.get(&e.from)?, rects.get(&e.to)?);
-                let off = if e.kind == EdgeKind::Prompt {
-                    -14.
-                } else {
-                    14.
+                // Each kind on its own lane, so a question and an answer
+                // between the same boxes never overlap.
+                let off = match e.kind {
+                    EdgeKind::Prompt => -18.,
+                    EdgeKind::Report => 18.,
+                    EdgeKind::Question => 46.,
                 };
                 let points = route(*a, *b, off)
                     .into_iter()
@@ -131,6 +134,7 @@ impl Workspace {
             })
             .collect();
         let selected = self.flow.selected.filter(|s| s.0 == id);
+        let arrows = self.snapshot.settings.arrows;
         let edges_canvas = {
             let routes = routes.clone();
             let store = Rc::clone(&self.flow.area);
@@ -143,7 +147,13 @@ impl Workspace {
                     }
                     for (edge, points) in &routes {
                         let wide = selected == Some((id, edge.from, edge.to, edge.kind));
-                        paint_arrow(window, bounds.origin, points, edge.kind, wide, view.scale);
+                        let arrow = Arrow {
+                            kind: edge.kind,
+                            wide,
+                            scale: view.scale,
+                            style: arrows,
+                        };
+                        arrow.paint(window, bounds.origin, points);
                     }
                 },
             )
@@ -158,24 +168,26 @@ impl Workspace {
                 let key = (id, edge.from, edge.to, edge.kind);
                 let on = selected == Some(key);
                 let c = color(edge.kind);
+                // Labels scale with the boxes, so they never dwarf them.
+                let s = view.scale.max(0.7);
                 div()
                     .id(("flow-label", ix))
                     .absolute()
-                    .left(px(at.x - 40.))
-                    .top(px(at.y - 11.))
-                    .w(px(80.))
+                    .left(px(at.x - 50.))
+                    .top(px(at.y - 10. * s))
+                    .w(px(100.))
                     .flex()
                     .justify_center()
                     .child(
                         div()
-                            .px_2()
-                            .py(px(2.))
+                            .px(px(7. * s))
+                            .py(px(1.5 * s))
                             .rounded_full()
                             .border_1()
                             .border_color(c)
                             .bg(if on { c } else { theme::surface() })
                             .text_color(if on { theme::window() } else { c })
-                            .text_size(px(11.))
+                            .text_size(px(11. * s))
                             .whitespace_nowrap()
                             .child(edge.label()),
                     )
@@ -351,6 +363,7 @@ impl Workspace {
         });
         let (model, effort) = self.model_and_effort(settings);
         let model = format!("{model} · effort {effort}");
+        let agent = agent_color(sessions, session, |x| self.session_name(x));
         shell
             .rounded(px(10. * s))
             .line_height(gpui::relative(1.25))
@@ -362,6 +375,16 @@ impl Workspace {
             .flex_col()
             .gap(px(3. * s))
             .cursor_pointer()
+            // The agent's colour, as a band along the top.
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(px(4. * s))
+                    .bg(agent),
+            )
             .child(
                 div()
                     .flex()
@@ -375,6 +398,7 @@ impl Workspace {
                             .flex_1()
                             .overflow_hidden()
                             .whitespace_nowrap()
+                            .text_color(agent)
                             .child(self.session_name(session)),
                     )
                     .child(
@@ -495,6 +519,30 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Rounded or square arrows, saved in the settings; in the Flow view
+    /// and in Settings.
+    pub(crate) fn arrow_toggle(&self) -> AnyElement {
+        let current = self.snapshot.settings.arrows;
+        segmented(
+            "flow-arrows",
+            ArrowStyle::ALL
+                .into_iter()
+                .map(|style| {
+                    let core = self.core.clone();
+                    let settings = self.snapshot.settings.clone();
+                    let click: OnClick = Box::new(move |_, _, _| {
+                        core.send(leon_core::Intent::SaveSettings(leon_domain::Settings {
+                            arrows: style,
+                            ..settings.clone()
+                        }));
+                    });
+                    (style.label().into(), style == current, click)
+                })
+                .collect(),
+        )
+        .into_any_element()
+    }
+
     fn flow_controls(&self, id: ConversationId, view: View, cx: &mut Context<Self>) -> AnyElement {
         let center = self
             .flow
@@ -518,6 +566,7 @@ impl Workspace {
             .border_color(theme::border_strong())
             .bg(theme::surface())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(self.arrow_toggle())
             .child(button(
                 "flow-zoom-out",
                 "−",
@@ -658,97 +707,20 @@ impl Workspace {
     }
 }
 
-/// Legend and gestures, bottom left.
-fn legend() -> AnyElement {
-    let key = |text: &'static str, kind: EdgeKind| {
-        div()
-            .flex()
-            .items_center()
-            .gap(px(5.))
-            .child(div().w(px(18.)).h(px(2.)).bg(color(kind)))
-            .child(text)
-    };
-    div()
-        .absolute()
-        .left_3()
-        .bottom_3()
-        .flex()
-        .items_center()
-        .gap_3()
-        .px_2()
-        .py(px(5.))
-        .rounded_lg()
-        .border_1()
-        .border_color(theme::border())
-        .bg(theme::surface())
-        .text_size(px(11.5))
-        .text_color(theme::fg_muted())
-        .child(key("prompt", EdgeKind::Prompt))
-        .child(key("report", EdgeKind::Report))
-        .child(key("question", EdgeKind::Question))
-        .into_any_element()
-}
-
-/// One arrow: an orthogonal line, dashed for reports, with its head.
-fn paint_arrow(
-    window: &mut Window,
-    origin: Point<Pixels>,
-    points: &[Pt],
-    kind: EdgeKind,
-    wide: bool,
-    scale: f32,
-) {
-    let at = |p: Pt| point(origin.x + px(p.x), origin.y + px(p.y));
-    let (Some(last), Some(before)) = (
-        points.last(),
-        points.len().checked_sub(2).and_then(|i| points.get(i)),
-    ) else {
-        return;
-    };
-    let (dx, dy) = (last.x - before.x, last.y - before.y);
-    let len = (dx * dx + dy * dy).sqrt().max(1.);
-    let (ux, uy) = (dx / len, dy / len);
-    let head = 9. * scale.max(0.6);
-    let tip_base = Pt {
-        x: last.x - ux * head,
-        y: last.y - uy * head,
-    };
-    let width = if wide { 2.8 } else { 1.6 };
-    let mut line = PathBuilder::stroke(px(width));
-    if kind == EdgeKind::Report {
-        line = line.dash_array(&[px(5.), px(4.)]);
-    }
-    let mut first = true;
-    for p in points
-        .iter()
-        .take(points.len() - 1)
-        .copied()
-        .chain(std::iter::once(tip_base))
-    {
-        if first {
-            line.move_to(at(p));
-            first = false;
-        } else {
-            line.line_to(at(p));
+/// An agent's colour in the diagram: one per agent name, in the order the
+/// agents first appear in the conversation, so two agents never share one.
+fn agent_color(
+    sessions: &[&SessionView],
+    session: &SessionView,
+    name: impl Fn(&SessionView) -> String,
+) -> Rgba {
+    let mut names: Vec<String> = Vec::new();
+    for s in sessions {
+        let n = name(s);
+        if !names.contains(&n) {
+            names.push(n);
         }
     }
-    let c = color(kind);
-    if let Ok(path) = line.build() {
-        window.paint_path(path, c);
-    }
-    let (nx, ny) = (-uy * head / 2., ux * head / 2.);
-    let mut arrow = PathBuilder::fill();
-    arrow.move_to(at(*last));
-    arrow.line_to(at(Pt {
-        x: tip_base.x + nx,
-        y: tip_base.y + ny,
-    }));
-    arrow.line_to(at(Pt {
-        x: tip_base.x - nx,
-        y: tip_base.y - ny,
-    }));
-    arrow.close();
-    if let Ok(path) = arrow.build() {
-        window.paint_path(path, c);
-    }
+    let ix = names.iter().position(|n| *n == name(session)).unwrap_or(0);
+    theme::agent_color(ix)
 }

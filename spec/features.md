@@ -68,7 +68,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **CONV-8** Edit the last message (= go back to before it, send the new text).
 - **CONV-9** Agent questions and permission requests appear as cards to answer
   with a click, as in Copilot and Claude Code.
-- **CONV-10** Suggested replies after each answer, one click to use.
+- **CONV-10** The agent's suggested next message shows greyed in the empty
+  message box; Tab writes it in.
 - **CONV-11** Slash commands and skills from the message box. *(proposal: typing
   `/` opens a searchable list with each command's description)*
 - **CONV-12** Long pasted text is folded into a "Pasted text · N lines" block,
@@ -96,7 +97,10 @@ conversation**: one item in the left pane (D5).
   session (plus a "You" box), arrows for the prompts sent and the reports
   returned, a highlighted arrow for a question waiting for you, and live status
   on each box. Click a box to open its session; click an arrow to read its
-  prompts or reports.
+  prompts or reports. Each agent has its own colour. Agents that message each
+  other in a loop (planner → coder → reviewer → planner) are laid out as a
+  loop, not a long line. Arrows bend rounded or square (a toggle in the
+  diagram and in Settings).
 - **FLOW-5** Nothing hardcoded: the flow is built from what the agents actually
   do. A new agent that starts another agent shows up on its own.
 - **FLOW-6** The diagram is a canvas: drag to pan, scroll or pinch to zoom, drag
@@ -107,25 +111,31 @@ conversation**: one item in the left pane (D5).
 
 - **CTX-1** Information about the current conversation and its issue.
 - **GIT-1** Uncommitted files of the conversation's working directory.
-- **GIT-2** Diff of each uncommitted file. Clicking a file shows its diff
-  large, in a drawer over the middle of the window.
+- **GIT-2** Diff of each uncommitted file. Changes and Branch list the files
+  (with lines added and removed on the tab); clicking one opens a large drawer
+  over the middle of the window with every file's diff, at the one clicked.
 - **GIT-3** Whole diff of the worktree against its starting branch/commit, as a
   PR shows it.
 - **GIT-4** Auto-fold files whose path matches configured patterns (glob or
   regex).
-- **GIT-5** Comment on lines of a diff. Comments pile up as one pending review;
-  "Send" posts them all as a single message to the conversation (file, line,
-  quoted code, comment).
+- **GIT-5** Comment on lines of a diff: click a line's +, or drag it over
+  several lines. Comments pile up as one pending review; "Send" posts them all
+  as a single message to the conversation (file, lines, quoted code, comment).
 - **GH-1** Status of the conversation's PR.
 
 ### GitHub
 
 - **GH-2** My issues, at the top of the left pane (with GH-3), grouped by
-  their GitHub Project status in the board's order. Clicking one opens it on
-  GitHub; "Start conversation" opens the new-conversation form in the project
-  whose repository it belongs to, with the issue in the message.
-- **GH-3** My open PRs, with their state and checks. Clicking one opens it on
-  GitHub; one with a conversation has "Open conversation".
+  their GitHub Project status in the board's order (each status its own
+  colour, each group foldable), sorted by priority, filterable by sprint.
+  Clicking one opens its details in a drawer (fields, text, comments, link to
+  GitHub). "Start conversation" opens the new-conversation form in the project
+  whose repository it belongs to, with the issue in the message; the
+  conversation remembers the issue, and the issue then offers "Open
+  conversation".
+- **GH-3** My open PRs, with their state icon and checks. Clicking one opens
+  its details in a drawer (checks, reviewers, comments, Copilot review,
+  comment); one with a conversation has "Open conversation".
 - **GH-4** Labels of issues and PRs.
 - **GH-5** Request a Copilot review on a PR.
 - **GH-6** Post a comment.
@@ -134,18 +144,27 @@ conversation**: one item in the left pane (D5).
 
 - **NOTIF-1** Desktop notification when an agent's answer is ready.
 
-### Tools
+### Connectors
 
-- **TOOLS-1** A Tools view: Leon's shared MCP list, which every CLI's
-  sessions get (add and remove servers there, I14), and, read-only, each
-  CLI's own MCP servers with their state and its plugins.
+- **TOOLS-1** A Connectors view: for each CLI, read-only, what it can reach —
+  its plugins, its own MCP servers and its account's connectors (Slack,
+  Gmail…) — with their state; connectors offered by the account but not
+  connected stay folded behind a count. Then Leon's shared MCP list, which
+  every CLI's sessions get (add and remove servers there, I14).
+
+### Settings
+
+- **SETTINGS-1** A Settings view edits the config file: new-conversation
+  defaults, diff auto-fold patterns, source folders, flow arrows. Saved at
+  once into `config.toml`, keeping the rest of the file.
 
 ### Doctor
 
 - **DOCTOR-1** A doctor view, like `flutter doctor`: Leon's version and setup
   (config, data folder, notifications…), and for each CLI and tool it uses
   whether it is installed, which version, whether it is logged in, and what
-  to do when something is missing. Opened from the left pane.
+  to do when something is missing. Connectors, Settings and Doctor sit side by
+  side at the bottom of the left pane.
 
 ### Usage
 
@@ -171,6 +190,10 @@ conversation**: one item in the left pane (D5).
 - **QUAL-1** Fast and very responsive — Zed is the reference.
 - **QUAL-2** Small footprint.
 - **QUAL-3** Clean, modern UI: one coherent colour theme, no emoji in the UI.
+- **QUAL-4** The usual menus and shortcuts: Quit, Hide, Close, Minimize, an
+  Edit menu (macOS dictation and emoji), ⌘N new conversation, ⌘, Settings,
+  ⌘L message box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous conversation, Esc
+  closes what is open on top. The left and right panes resize by dragging.
 - **OSS-1** Open source.
 
 ## Layout *(proposal)*
@@ -239,8 +262,8 @@ conversation**: one item in the left pane (D5).
 - GitHub (GH-6): inline review comments and replies? Review state? Other actions?
 - Scheduled tasks: trigger, what runs, where results land, app open or not?
 - Light and dark theme, or one?
-- Shortcuts / command palette, several windows, settings screen or config file
-  only?
+- Command palette, several windows? (Settings screen and shortcuts: decided,
+  SETTINGS-1, QUAL-4.)
 - Resume sessions started in a terminal?
 - Windows, Linux arm64, remote/SSH projects?
 - GitHub Enterprise or several accounts?

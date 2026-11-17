@@ -3,8 +3,8 @@
 //! (CONV-11).
 
 use gpui::{
-    AnyElement, App, ClipboardItem, Context, Entity, Focusable, IntoElement, SharedString, div,
-    prelude::*, px,
+    AnyElement, App, ClipboardItem, Context, Entity, Focusable, IntoElement, SharedString, Window,
+    div, prelude::*, px,
 };
 use gpui_component::input::{Paste, TextareaState};
 use leon_domain::ProjectId;
@@ -170,6 +170,49 @@ impl Workspace {
         )
     }
 }
+
+impl Workspace {
+    /// The agent's suggested next message (CONV-10) shows as the message
+    /// box's placeholder while the box is empty; Tab writes it in.
+    pub(crate) fn show_suggestion(
+        &mut self,
+        suggestion: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let placeholder = suggestion.map_or_else(
+            || SharedString::from(PLACEHOLDER),
+            |text| SharedString::from(format!("{text}    ⇥ Tab")),
+        );
+        // Set only when it changes: setting it redraws the box.
+        if self.composer_placeholder != placeholder {
+            self.composer_placeholder = placeholder.clone();
+            self.composer.update(cx, |state, cx| {
+                state.set_placeholder(placeholder, window, cx);
+            });
+        }
+    }
+
+    /// Tab in an empty message box: writes the suggestion in; otherwise Tab
+    /// does what it does in a text box.
+    pub(crate) fn accept_suggestion(
+        &mut self,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !text_of(&self.composer, cx).is_empty() {
+            return;
+        }
+        cx.stop_propagation();
+        let text = text.to_owned();
+        self.composer
+            .update(cx, |state, cx| state.set_value(text, window, cx));
+    }
+}
+
+/// The message box's placeholder without a suggestion.
+pub(crate) const PLACEHOLDER: &str = "Message the agent";
 
 #[cfg(test)]
 mod tests {

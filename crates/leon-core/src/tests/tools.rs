@@ -31,6 +31,26 @@ impl SharedTools for FakeShared {
     }
 }
 
+/// A config file in memory; saving fails once `broken` is set.
+#[derive(Default)]
+pub(super) struct FakeConfig {
+    pub saved: Mutex<Option<leon_domain::Settings>>,
+    pub broken: std::sync::atomic::AtomicBool,
+}
+
+impl crate::ports::ConfigFile for FakeConfig {
+    fn path(&self) -> Option<&Path> {
+        Some(Path::new("/config/leon/config.toml"))
+    }
+    fn save(&self, settings: &leon_domain::Settings) -> Result<(), PortError> {
+        if self.broken.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(PortError::new("saving the config", "read-only file system"));
+        }
+        *self.saved.lock().unwrap() = Some(settings.clone());
+        Ok(())
+    }
+}
+
 fn server(name: &str) -> McpServer {
     McpServer {
         name: name.into(),
@@ -72,6 +92,40 @@ async fn the_cli_listing_arrives_in_the_background() {
     until(&h.core, "loaded", |s| s.loaded).await;
     h.core.send(Intent::RefreshTools);
     let s = until(&h.core, "tools", |s| s.tools.is_some()).await;
-    assert_eq!(s.tools.as_ref().unwrap().1[0].checks[0].name, "node_repl");
+    assert_eq!(
+        s.tools.as_ref().unwrap().1[0].connectors[0].name,
+        "node_repl"
+    );
     assert!(!s.tools_running);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn saved_settings_are_used_at_once_or_the_failure_is_said() {
+    let config = Arc::new(FakeConfig::default());
+    let h = harness_with_config(Arc::clone(&config) as Arc<dyn crate::ports::ConfigFile>);
+    let s = until(&h.core, "loaded", |s| s.loaded).await;
+    assert_eq!(
+        s.settings_path.as_deref(),
+        Some(Path::new("/config/leon/config.toml"))
+    );
+    let mut wanted = s.settings.clone();
+    wanted.diff_fold = vec!["glob:**/*.lock".into()];
+    wanted.arrows = leon_domain::ArrowStyle::Rounded;
+    h.core.send(Intent::SaveSettings(wanted.clone()));
+    let s = until(&h.core, "saved", |s| s.settings == wanted).await;
+    assert_eq!(s.fold.len(), 1);
+    assert_eq!(config.saved.lock().unwrap().as_ref(), Some(&wanted));
+
+    config
+        .broken
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let mut refused = wanted.clone();
+    refused.diff_fold.clear();
+    h.core.send(Intent::SaveSettings(refused));
+    let s = until(&h.core, "flash", |s| s.flash.is_some()).await;
+    assert_eq!(
+        s.flash.as_ref().map(|(_, text)| text.as_str()),
+        Some("Could not save the settings: saving the config: read-only file system")
+    );
+    assert_eq!(s.settings, wanted);
 }

@@ -1,0 +1,137 @@
+{
+  "data": {
+    "repository": {
+      "issue": {
+        "assignees": {
+          "nodes": [
+            {
+              "login": "octocat"
+            }
+          ]
+        },
+        "body": "",
+        "comments": {
+          "nodes": [
+            {
+              "author": {
+                "login": "hubot"
+              },
+              "body": "Reproduced on the latest build.\n",
+              "createdAt": "2026-11-09T15:37:49Z"
+            }
+          ]
+        },
+        "labels": {
+          "nodes": []
+        },
+        "number": 101,
+        "projectItems": {
+          "nodes": [
+            {
+              "fieldValues": {
+                "nodes": [
+                  {
+                    "__typename": "ProjectV2ItemFieldUserValue"
+                  },
+                  {
+                    "__typename": "ProjectV2ItemFieldRepositoryValue"
+                  },
+                  {
+                    "__typename": "ProjectV2ItemIssueFieldValue",
+                    "issueFieldValue": {
+                      "color": "RED",
+                      "field": {
+                        "name": "Priority",
+                        "options": [
+                          {
+                            "id": "0000000000000002"
+                          },
+                          {
+                            "id": "0000000000000001"
+                          },
+                          {
+                            "id": "0000000000000003"
+                          },
+                          {
+                            "id": "0000000000000004"
+                          }
+                        ]
+                      },
+                      "name": "P1",
+                      "optionId": "0000000000000001"
+                    }
+                  },
+                  {
+                    "__typename": "ProjectV2ItemIssueFieldValue",
+                    "issueFieldValue": {}
+                  },
+                  {
+                    "__typename": "ProjectV2ItemFieldIterationValue",
+                    "field": {
+                      "name": "Sprint"
+                    },
+                    "startDate": "2026-11-09",
+                    "title": "Sprint 40"
+                  },
+                  {
+                    "__typename": "ProjectV2ItemFieldTextValue"
+                  },
+                  {
+                    "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                    "color": "PURPLE",
+                    "field": {
+                      "name": "Status",
+                      "options": [
+                        {
+                          "id": "00000006"
+                        },
+                        {
+                          "id": "00000007"
+                        },
+                        {
+                          "id": "00000008"
+                        },
+                        {
+                          "id": "00000005"
+                        },
+                        {
+                          "id": "00000009"
+                        },
+                        {
+                          "id": "0000000a"
+                        },
+                        {
+                          "id": "0000000b"
+                        },
+                        {
+                          "id": "0000000c"
+                        },
+                        {
+                          "id": "0000000d"
+                        },
+                        {
+                          "id": "0000000e"
+                        }
+                      ]
+                    },
+                    "name": "In review",
+                    "optionId": "00000005"
+                  },
+                  {
+                    "__typename": "ProjectV2ItemFieldTextValue"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "repository": {
+          "nameWithOwner": "acme/api"
+        },
+        "title": "Retry failed uploads",
+        "updatedAt": "2026-11-09T15:37:50Z",
+        "url": "https://github.com/acme/api/issues/101"
+      }
+    }
+  }
+}

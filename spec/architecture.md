@@ -30,7 +30,7 @@ Ports and adapters: dependencies point inward, to the core and the domain.
 |---|---|---|---|
 | 1 | `leon-domain` | Pure types and rules: ids, projects, settings; later conversation state, events, status/unread rules, PR badge, fold matching | nothing internal |
 | 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain |
-| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json; Codex app-server and ACP for Copilot CLI through one JSON-RPC runner: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter |
+| 3 | adapters: `leon-config` (TOML → settings; writes the user's file for Settings: `ConfigFile`), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json; Codex app-server and ACP for Copilot CLI through one JSON-RPC runner: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter |
 | 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core |
 | 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any |
 | — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate |
@@ -174,12 +174,40 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   changes, after a review request or comment, and every 120 s for every open
   conversation (one `gh` call each, not batched yet).
 - My issues and PRs: read at startup and when the list is opened. Issues
-  come with their GitHub Project "Status" (`projectItems.fieldValueByName`);
-  without the `read:project` scope the query is retried without it and issues
-  show under "No status". A project's GitHub repository is read from its
-  `origin` remote (`Git::github_repo`) to pick the project for an issue.
+  come with their GitHub Project "Status", "Priority" (a board single-select
+  or an organization issue field) and iterations
+  (`projectItems(includeArchived: false).fieldValues`); without the
+  `read:project` scope the query is retried without them and issues show
+  under "No status". A project's GitHub repository is read from its `origin`
+  remote (`Git::github_repo`) to pick the project for an issue.
+- Details (the drawer): one query for the issue (body, assignees, comments)
+  or the PR (checks, reviewers, comments), by repository and number, read in
+  the background (`Intent::ShowDetail`). A conversation started from an issue
+  keeps it (`conversations.issue`, store migration 5).
 - Copilot review: `gh pr edit <n> --add-reviewer @copilot` (documented in
   `gh pr edit --help`, gh 2.101.0, 2026-11-17; never run for real).
+
+## Settings and connectors
+
+- Settings write `config.toml` in place with `toml_edit` (`leon-config`,
+  `write.rs`): only the keys Settings own change; comments, order and
+  unknown keys stay; a key equal to its default is removed. A file that does
+  not parse is never rewritten. The new file replaces the old in one rename.
+- Connectors (`Backends::connectors`, `crates/leon-backends/src/connectors.rs`):
+  per CLI, `plugin list --json` and `mcp list --json` (Claude's `mcp list` is
+  text; its `claude.ai …` lines are the account's connectors). Read in the
+  background each time the view opens.
+
+## UI shell
+
+- Icons: Lucide SVGs embedded in the binary (`assets/icons`, ISC licence),
+  served to GPUI by `leon_ui::Assets` (`crates/leon-ui/src/icons.rs`).
+- Menus and shortcuts: `crates/leon-ui/src/shortcuts.rs`; the workspace holds
+  a focus handle so shortcuts work with no text box focused.
+- Drawers (diffs, issue/PR details): `crates/leon-ui/src/drawer.rs`, over the
+  window on a backdrop that blocks the mouse to everything behind.
+- Every pane's top row is 48 px (`widgets::HEADER_HEIGHT`) so the dividers
+  line up.
 
 ## Doctor
 

@@ -1,0 +1,596 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "__typename": "Issue",
+          "labels": {
+            "nodes": [
+              {
+                "color": "d73a4a",
+                "name": "bug"
+              },
+              {
+                "color": "7d23f5",
+                "name": "backend"
+              }
+            ]
+          },
+          "number": 101,
+          "projectItems": {
+            "nodes": [
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldLabelValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemIssueFieldValue",
+                      "issueFieldValue": {}
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "BLUE",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "00000001"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000004"
+                          },
+                          {
+                            "id": "00000005"
+                          },
+                          {
+                            "id": "00000006"
+                          },
+                          {
+                            "id": "00000007"
+                          },
+                          {
+                            "id": "00000008"
+                          },
+                          {
+                            "id": "00000009"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Todo",
+                      "optionId": "00000001"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldIterationValue",
+                      "field": {
+                        "name": "Sprint"
+                      },
+                      "startDate": "2026-11-09",
+                      "title": "Sprint 40"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "repository": {
+            "nameWithOwner": "acme/api"
+          },
+          "title": "Retry failed uploads",
+          "updatedAt": "2026-11-16T09:27:20Z",
+          "url": "https://github.com/acme/api/issues/101"
+        },
+        {
+          "__typename": "Issue",
+          "labels": {
+            "nodes": []
+          },
+          "number": 102,
+          "projectItems": {
+            "nodes": [
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "GRAY",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "00000001"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000004"
+                          },
+                          {
+                            "id": "00000005"
+                          },
+                          {
+                            "id": "00000006"
+                          },
+                          {
+                            "id": "00000007"
+                          },
+                          {
+                            "id": "00000008"
+                          },
+                          {
+                            "id": "00000009"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Backlog",
+                      "optionId": "00000002"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "repository": {
+            "nameWithOwner": "acme/api"
+          },
+          "title": "Show the sync status",
+          "updatedAt": "2026-11-13T13:05:26Z",
+          "url": "https://github.com/acme/api/issues/102"
+        },
+        {
+          "__typename": "Issue",
+          "labels": {
+            "nodes": []
+          },
+          "number": 103,
+          "projectItems": {
+            "nodes": [
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemIssueFieldValue",
+                      "issueFieldValue": {
+                        "color": "RED",
+                        "field": {
+                          "name": "Priority",
+                          "options": [
+                            {
+                              "id": "000000000000000c"
+                            },
+                            {
+                              "id": "000000000000000b"
+                            },
+                            {
+                              "id": "000000000000000d"
+                            },
+                            {
+                              "id": "000000000000000e"
+                            }
+                          ]
+                        },
+                        "name": "P1",
+                        "optionId": "000000000000000b"
+                      }
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "GREEN",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "0000000f"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000010"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Backlog",
+                      "optionId": "00000002"
+                    }
+                  ]
+                }
+              },
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemIssueFieldValue",
+                      "issueFieldValue": {
+                        "color": "RED",
+                        "field": {
+                          "name": "Priority",
+                          "options": [
+                            {
+                              "id": "000000000000000c"
+                            },
+                            {
+                              "id": "000000000000000b"
+                            },
+                            {
+                              "id": "000000000000000d"
+                            },
+                            {
+                              "id": "000000000000000e"
+                            }
+                          ]
+                        },
+                        "name": "P1",
+                        "optionId": "000000000000000b"
+                      }
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "GREEN",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "0000000f"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000010"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Backlog",
+                      "optionId": "00000002"
+                    }
+                  ]
+                }
+              },
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemIssueFieldValue",
+                      "issueFieldValue": {
+                        "color": "RED",
+                        "field": {
+                          "name": "Priority",
+                          "options": [
+                            {
+                              "id": "000000000000000c"
+                            },
+                            {
+                              "id": "000000000000000b"
+                            },
+                            {
+                              "id": "000000000000000d"
+                            },
+                            {
+                              "id": "000000000000000e"
+                            }
+                          ]
+                        },
+                        "name": "P1",
+                        "optionId": "000000000000000b"
+                      }
+                    },
+                    {
+                      "__typename": "ProjectV2ItemIssueFieldValue",
+                      "issueFieldValue": {}
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "BLUE",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "00000001"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000004"
+                          },
+                          {
+                            "id": "00000005"
+                          },
+                          {
+                            "id": "00000006"
+                          },
+                          {
+                            "id": "00000007"
+                          },
+                          {
+                            "id": "00000008"
+                          },
+                          {
+                            "id": "00000009"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Todo",
+                      "optionId": "00000001"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldIterationValue",
+                      "field": {
+                        "name": "Sprint"
+                      },
+                      "startDate": "2026-11-23",
+                      "title": "Sprint 41"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "repository": {
+            "nameWithOwner": "acme/api"
+          },
+          "title": "Fix the login timeout",
+          "updatedAt": "2026-11-09T15:22:48Z",
+          "url": "https://github.com/acme/api/issues/103"
+        },
+        {
+          "__typename": "Issue",
+          "labels": {
+            "nodes": []
+          },
+          "number": 104,
+          "projectItems": {
+            "nodes": [
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "GREEN",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "0000000f"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000010"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Backlog",
+                      "optionId": "00000002"
+                    }
+                  ]
+                }
+              },
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "GREEN",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "0000000f"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000010"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Backlog",
+                      "optionId": "00000002"
+                    }
+                  ]
+                }
+              },
+              {
+                "fieldValues": {
+                  "nodes": [
+                    {
+                      "__typename": "ProjectV2ItemFieldUserValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldRepositoryValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemIssueFieldValue",
+                      "issueFieldValue": {}
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldSingleSelectValue",
+                      "color": "BLUE",
+                      "field": {
+                        "name": "Status",
+                        "options": [
+                          {
+                            "id": "00000002"
+                          },
+                          {
+                            "id": "00000001"
+                          },
+                          {
+                            "id": "00000003"
+                          },
+                          {
+                            "id": "00000004"
+                          },
+                          {
+                            "id": "00000005"
+                          },
+                          {
+                            "id": "00000006"
+                          },
+                          {
+                            "id": "00000007"
+                          },
+                          {
+                            "id": "00000008"
+                          },
+                          {
+                            "id": "00000009"
+                          },
+                          {
+                            "id": "0000000a"
+                          }
+                        ]
+                      },
+                      "name": "Todo",
+                      "optionId": "00000001"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldIterationValue",
+                      "field": {
+                        "name": "Sprint"
+                      },
+                      "startDate": "2026-11-09",
+                      "title": "Sprint 40"
+                    },
+                    {
+                      "__typename": "ProjectV2ItemFieldTextValue"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "repository": {
+            "nameWithOwner": "acme/api"
+          },
+          "title": "Paginate the audit log",
+          "updatedAt": "2026-11-03T15:41:52Z",
+          "url": "https://github.com/acme/api/issues/104"
+        }
+      ]
+    }
+  }
+}

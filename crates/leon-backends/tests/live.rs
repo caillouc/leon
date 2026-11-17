@@ -180,3 +180,19 @@ async fn claude_stops_then_resumes() {
         "{second:?}"
     );
 }
+
+#[test]
+#[ignore = "runs the real CLIs' list commands with the user's config"]
+fn connectors_are_listed() {
+    for cli in Clis::default().connectors() {
+        let mut counts = std::collections::BTreeMap::new();
+        for c in &cli.connectors {
+            *counts
+                .entry(format!("{:?} {:?}", c.kind, c.state))
+                .or_insert(0) += 1;
+        }
+        eprintln!("{:?}: {counts:?}, problem: {:?}", cli.backend, cli.problem);
+        assert_eq!(cli.problem, None, "{:?}", cli.backend);
+        assert!(!cli.connectors.is_empty(), "{:?}", cli.backend);
+    }
+}

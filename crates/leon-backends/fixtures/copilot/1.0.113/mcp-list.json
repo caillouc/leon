@@ -1,0 +1,58 @@
+{
+  "mcpServers": {
+    "computer-use": {
+      "tools": [
+        "*"
+      ],
+      "type": "stdio",
+      "command": "/home/user/Library/Caches/copilot/pkg/darwin-arm64/1.0.113/plugins/computer-use/computer-use-mcp",
+      "args": [],
+      "cwd": "${PLUGIN_ROOT}",
+      "sourcePlugin": "computer-use",
+      "sourcePluginVersion": "0.1.97",
+      "source": "builtin",
+      "sourcePluginSpec": true,
+      "env": {
+        "CLAUDE_PLUGIN_ROOT": "/home/user/Library/Caches/copilot/pkg/darwin-arm64/1.0.113/plugins/computer-use",
+        "COPILOT_PLUGIN_ROOT": "/home/user/Library/Caches/copilot/pkg/darwin-arm64/1.0.113/plugins/computer-use",
+        "PLUGIN_ROOT": "/home/user/Library/Caches/copilot/pkg/darwin-arm64/1.0.113/plugins/computer-use",
+        "CLAUDE_PLUGIN_DATA": "/home/user/.copilot/plugin-data/_direct/0000000000000000000000000000000000000000000000000000000000000000",
+        "COPILOT_PLUGIN_DATA": "/home/user/.copilot/plugin-data/_direct/0000000000000000000000000000000000000000000000000000000000000000",
+        "PLUGIN_DATA": "/home/user/.copilot/plugin-data/_direct/0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "isDefaultServer": true,
+      "events": [
+        "assistant.turn_start",
+        "assistant.turn_end",
+        "agent.turn_start",
+        "agent.turn_end"
+      ],
+      "notifications": [
+        "user.abort"
+      ],
+      "enabled": true
+    },
+    "github-mcp-server": {
+      "type": "http",
+      "url": "https://api.business.githubcopilot.com/mcp/readonly",
+      "headers": {
+        "X-MCP-Host": "copilot",
+        "Copilot-Harness-Id": "copilot-sdk",
+        "Copilot-Integration-Id": "copilot-developer-cli",
+        "X-MCP-Tools": "get_file_contents,search_code,get_copilot_space,list_copilot_spaces,web_search,search_users"
+      },
+      "tools": [
+        "*"
+      ],
+      "isDefaultServer": true,
+      "source": "builtin",
+      "filterMapping": {
+        "issue_read": "markdown",
+        "get_pull_request": "markdown",
+        "get_pull_request_comments": "markdown",
+        "get_pull_request_reviews": "markdown"
+      },
+      "enabled": true
+    }
+  }
+}

@@ -20,6 +20,8 @@ pub enum Intent {
         settings: SessionSettings,
         /// First message.
         text: String,
+        /// The issue it is started for (GH-2), if any.
+        issue: Option<leon_domain::GhRef>,
     },
     /// Send a message to an agent session (CONV-1).
     Send {
@@ -81,8 +83,13 @@ pub enum Intent {
     AddTool(leon_domain::McpServer),
     /// Remove a server from Leon's shared MCP list (TOOLS-1).
     RemoveTool(String),
-    /// Ask Copilot to review the conversation's pull request (GH-5).
-    RequestCopilotReview(ConversationId),
-    /// Comment on the conversation's pull request (GH-6).
-    CommentOnPr(ConversationId, String),
+    /// Save the user's settings to the config file and use them (SETTINGS-1).
+    SaveSettings(leon_domain::Settings),
+    /// Ask Copilot to review a pull request (GH-5).
+    RequestCopilotReview(leon_domain::GhRef),
+    /// Comment on a pull request or an issue (GH-6).
+    Comment(leon_domain::GhRef, String),
+    /// Show an issue's or a pull request's details (`None`: close them);
+    /// they are read from GitHub in the background.
+    ShowDetail(Option<leon_domain::GhRef>),
 }

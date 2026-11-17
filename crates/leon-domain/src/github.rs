@@ -33,6 +33,58 @@ pub struct Check {
     pub state: CheckState,
 }
 
+/// Which kind of GitHub item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GhKind {
+    /// An issue.
+    Issue,
+    /// A pull request.
+    PullRequest,
+}
+
+/// An issue or a pull request, by repository and number.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GhRef {
+    /// Issue or pull request.
+    pub kind: GhKind,
+    /// `owner/name`.
+    pub repo: String,
+    /// Number.
+    pub number: u64,
+}
+
+impl GhRef {
+    /// An issue.
+    pub fn issue(repo: &str, number: u64) -> Self {
+        Self {
+            kind: GhKind::Issue,
+            repo: repo.to_owned(),
+            number,
+        }
+    }
+
+    /// A pull request.
+    pub fn pull_request(repo: &str, number: u64) -> Self {
+        Self {
+            kind: GhKind::PullRequest,
+            repo: repo.to_owned(),
+            number,
+        }
+    }
+
+    /// `owner/name#12`.
+    pub fn text(&self) -> String {
+        format!("{}#{}", self.repo, self.number)
+    }
+
+    /// The issue `owner/name#12` names.
+    pub fn issue_from_text(text: &str) -> Option<Self> {
+        let (repo, number) = text.rsplit_once('#')?;
+        (repo.contains('/')).then_some(())?;
+        Some(Self::issue(repo, number.parse().ok()?))
+    }
+}
+
 /// A label (GH-4), with GitHub's own color.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Label {
@@ -42,15 +94,28 @@ pub struct Label {
     pub color: String,
 }
 
-/// Where an issue stands on its GitHub Project board: the board's "Status".
+/// An issue's value in a single-select field of its GitHub Project board,
+/// such as "Status" (the board's column) or "Priority".
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IssueStatus {
-    /// The column, e.g. "In progress".
+pub struct BoardOption {
+    /// The option, e.g. "In progress" or "P1".
     pub name: String,
-    /// Its place among the board's columns, for grouping in the board's order.
+    /// Its place among the field's options, for the board's order.
     pub order: usize,
     /// GitHub's color name for it (`GRAY`, `BLUE`, `GREEN`…), if any.
     pub color: Option<String>,
+}
+
+/// An iteration (a sprint) an issue is planned in, from an iteration field
+/// of its GitHub Project board.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Iteration {
+    /// The field, e.g. "Sprint".
+    pub field: String,
+    /// The iteration, e.g. "Sprint 12".
+    pub title: String,
+    /// Its first day, `YYYY-MM-DD`.
+    pub start: String,
 }
 
 /// A comment on a pull request or an issue.
@@ -127,29 +192,43 @@ pub struct Issue {
     pub labels: Vec<Label>,
     /// Last update, Unix milliseconds.
     pub updated_at: i64,
-    /// Its column on a GitHub Project board, if it is on one.
-    pub status: Option<IssueStatus>,
+    /// Its column on a GitHub Project board (the "Status" field), if any.
+    pub status: Option<BoardOption>,
+    /// Its "Priority" on the board, if any.
+    pub priority: Option<BoardOption>,
+    /// The iterations it is planned in, one per iteration field.
+    pub iterations: Vec<Iteration>,
+    /// Assignees, by login. Read with the issue alone (details).
+    pub assignees: Vec<String>,
+    /// Markdown body. Read with the issue alone (details).
+    pub body: String,
+    /// Comments, oldest first. Read with the issue alone (details).
+    pub comments: Vec<Comment>,
 }
 
 /// Issues grouped by their board column, in the board's order; issues on
-/// no board come last, under `None`. Order inside a group is kept.
-pub fn issues_by_status(issues: &[Issue]) -> Vec<(Option<&IssueStatus>, Vec<&Issue>)> {
-    let mut groups: Vec<(Option<&IssueStatus>, Vec<&Issue>)> = Vec::new();
+/// no board come last, under `None`. Inside a group, by priority (in the
+/// board's order, none last), else in the order given.
+pub fn issues_by_status(issues: &[Issue]) -> Vec<(Option<&BoardOption>, Vec<&Issue>)> {
+    let mut groups: Vec<(Option<&BoardOption>, Vec<&Issue>)> = Vec::new();
     for issue in issues {
         let key = issue.status.as_ref();
-        let same = |s: Option<&IssueStatus>| s.map(|s| &s.name) == key.map(|k| &k.name);
+        let same = |s: Option<&BoardOption>| s.map(|s| &s.name) == key.map(|k| &k.name);
         match groups.iter_mut().find(|(s, _)| same(*s)) {
             Some((_, members)) => members.push(issue),
             None => groups.push((key, vec![issue])),
         }
     }
     groups.sort_by_key(|(s, _)| s.map_or(usize::MAX, |s| s.order));
+    for (_, members) in &mut groups {
+        members.sort_by_key(|i| i.priority.as_ref().map_or(usize::MAX, |p| p.order));
+    }
     groups
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Check, CheckState, Issue, IssueStatus, PrState, PullRequest, issues_by_status};
+    use super::{BoardOption, Check, CheckState, Issue, PrState, PullRequest, issues_by_status};
 
     fn pr(states: &[CheckState]) -> PullRequest {
         PullRequest {
@@ -206,11 +285,24 @@ mod tests {
             url: String::new(),
             labels: vec![],
             updated_at: 0,
-            status: status.map(|(name, order)| IssueStatus {
+            status: status.map(|(name, order)| BoardOption {
                 name: name.into(),
                 order,
                 color: None,
             }),
+            priority: None,
+            iterations: vec![],
+            assignees: vec![],
+            body: String::new(),
+            comments: vec![],
+        };
+        let urgent = |number, status| Issue {
+            priority: Some(BoardOption {
+                name: "P0".into(),
+                order: 0,
+                color: None,
+            }),
+            ..issue(number, status)
         };
         let cases: [(Vec<Issue>, Groups); 3] = [
             (vec![], vec![]),
@@ -234,7 +326,15 @@ mod tests {
                 ],
             ),
         ];
-        for (issues, expected) in cases {
+        let prioritised = (
+            vec![
+                issue(1, Some(("Todo", 0))),
+                urgent(2, Some(("Todo", 0))),
+                issue(3, Some(("Todo", 0))),
+            ],
+            vec![(Some("Todo"), vec![2, 1, 3])],
+        );
+        for (issues, expected) in cases.into_iter().chain([prioritised]) {
             let got: Vec<_> = issues_by_status(&issues)
                 .into_iter()
                 .map(|(s, members)| {

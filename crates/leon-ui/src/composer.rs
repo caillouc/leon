@@ -4,7 +4,7 @@
 use gpui::{
     AnyElement, Context, Focusable, IntoElement, SharedString, Window, div, prelude::*, px,
 };
-use gpui_component::input::Textarea;
+use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
 use leon_domain::{AgentSessionId, Status};
 
@@ -86,29 +86,6 @@ impl Workspace {
                     .child(div().flex().gap_2().children(options)),
             );
         }
-        if !running && !s.suggestions.is_empty() && self.rewind.is_none() {
-            let chips = s.suggestions.iter().enumerate().map(|(ix, text)| {
-                let text = text.clone();
-                div()
-                    .id(("suggestion", ix))
-                    .px_3()
-                    .py(px(3.))
-                    .rounded_full()
-                    .border_1()
-                    .border_color(theme::border_strong())
-                    .text_size(px(12.5))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()))
-                    .child(text.clone())
-                    .on_click(cx.listener(move |this, _, _, _| {
-                        this.core.send(Intent::Send {
-                            session,
-                            text: text.clone(),
-                        });
-                    }))
-            });
-            column = column.child(div().flex().flex_wrap().gap_2().children(chips));
-        }
         if let Some((_, entry)) = self.rewind.filter(|(id, _)| *id == session) {
             let later = self
                 .snapshot
@@ -177,14 +154,23 @@ impl Workspace {
                 cx.listener(|this, _, window, cx| this.send_composer(window, cx)),
             )
         };
-        let _ = window;
         let project = self
             .snapshot
             .conversation(s.session.conversation)
             .map(|c| c.conversation.project);
         let slash = self.slash_list(&self.composer.clone(), project, cx);
         let chips = self.pasted_chips(cx);
-        let input_box = Self::paste_aware(div(), cx);
+        let suggestion = (!running && self.rewind.is_none())
+            .then(|| s.suggestions.first().cloned())
+            .flatten();
+        self.show_suggestion(suggestion.as_deref(), window, cx);
+        let input_box = Self::paste_aware(div(), cx).capture_action(cx.listener(
+            move |this, _: &IndentInline, window, cx| {
+                if let Some(text) = &suggestion {
+                    this.accept_suggestion(text, window, cx);
+                }
+            },
+        ));
         column
             .children(slash)
             .child(
@@ -198,7 +184,7 @@ impl Workspace {
                     .flex_col()
                     .gap_2()
                     .children(chips)
-                    .child(Textarea::new(&self.composer))
+                    .child(Textarea::new(&self.composer).appearance(false))
                     .child(
                         div()
                             .flex()

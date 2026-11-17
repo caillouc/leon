@@ -15,6 +15,7 @@ mod idle;
 mod intent;
 pub mod ports;
 mod repo;
+mod settings;
 mod snapshot;
 mod state;
 mod tools;
@@ -23,7 +24,8 @@ pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use doctor::About;
 pub use intent::Intent;
 pub use snapshot::{
-    ConversationView, GitView, Notification, Question, SessionView, Snapshot, TranscriptView,
+    ConversationView, Detail, GitView, Notification, Question, SessionView, Snapshot,
+    TranscriptView,
 };
 
 #[cfg(test)]

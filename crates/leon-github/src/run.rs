@@ -152,6 +152,14 @@ mod tests {
             matches!(classify(Some(1), offline), GhError::Failed(m) if m.ends_with("connection refused"))
         );
         assert_eq!(classify(None, ""), GhError::Failed("exit code None".into()));
+        // A pull request or issue read by number that does not exist.
+        let not_found = include_str!("../fixtures/gh/2.101.0/stderr-pull-request-not-found.txt");
+        assert_eq!(
+            classify(Some(1), not_found),
+            GhError::Failed(
+                "gh: Could not resolve to a PullRequest with the number of 99999999.".into()
+            )
+        );
     }
 
     #[test]

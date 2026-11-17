@@ -7,6 +7,7 @@ use gpui::{
     AnyElement, Context, IntoElement, SharedString, Window, anchored, deferred, div, prelude::*, px,
 };
 
+use crate::icons::{Icon, icon};
 use crate::theme;
 use crate::workspace::Workspace;
 
@@ -62,7 +63,11 @@ impl Workspace {
                 .text_color(theme::fg_muted())
                 .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
                 .when(open, |s| s.bg(theme::surface_2()))
-                .child(format!("{current} ▾")),
+                .flex()
+                .items_center()
+                .gap(px(3.))
+                .child(current.to_owned())
+                .child(icon(Icon::ChevronDown, theme::fg_faint(), 12.)),
             Look::Field => trigger
                 .w_full()
                 .h(px(32.))
@@ -89,7 +94,7 @@ impl Workspace {
                         .text_ellipsis()
                         .child(current.to_owned()),
                 )
-                .child(div().text_color(theme::fg_faint()).child("▾")),
+                .child(icon(Icon::ChevronDown, theme::fg_muted(), 14.)),
         };
         let trigger = trigger.on_click(cx.listener(move |this, _, _, cx| {
             this.open_picker = if this.open_picker.as_ref() == Some(&toggle_id) {

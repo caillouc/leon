@@ -39,6 +39,8 @@ pub struct Ports {
     pub app_tools: Option<Arc<dyn AppTools>>,
     /// Leon's shared MCP list (I14).
     pub shared_tools: Arc<dyn crate::ports::SharedTools>,
+    /// The user's config file, written by Settings.
+    pub config: Arc<dyn crate::ports::ConfigFile>,
     /// Current time, Unix milliseconds.
     pub clock: fn() -> i64,
     /// Leon's own facts for the doctor.
@@ -80,6 +82,7 @@ impl CoreHandle {
 pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
     let state = State {
         settings,
+        settings_path: ports.config.path().map(Path::to_path_buf),
         ..State::default()
     };
     let (publish, snapshots) = watch::channel(Arc::new(state.snapshot()));
@@ -242,14 +245,7 @@ impl Core {
             .collect();
         self.state.options = Arc::new(options);
         self.refresh_agents();
-        let fold = self
-            .state
-            .settings
-            .diff_fold
-            .iter()
-            .filter_map(|p| leon_domain::FoldPattern::parse(p))
-            .collect();
-        self.state.fold = Arc::new(fold);
+        self.apply_fold();
         self.state.loaded = true;
     }
 
@@ -293,7 +289,8 @@ impl Core {
                 project,
                 settings,
                 text,
-            } => self.new_conversation(project, settings, &text),
+                issue,
+            } => self.new_conversation(project, settings, &text, issue),
             Intent::Send { session, text } => self.send(session, &text),
             Intent::Rewind {
                 session,
@@ -325,8 +322,10 @@ impl Core {
             Intent::RefreshTools => self.refresh_tools(),
             Intent::AddTool(server) => self.add_tool(server),
             Intent::RemoveTool(name) => self.remove_tool(&name),
-            Intent::RequestCopilotReview(id) => self.request_review(id),
-            Intent::CommentOnPr(id, body) => self.comment(id, body),
+            Intent::SaveSettings(settings) => self.save_settings(settings),
+            Intent::RequestCopilotReview(item) => self.request_review(item),
+            Intent::Comment(item, body) => self.comment(item, body),
+            Intent::ShowDetail(item) => self.show_detail(item),
         }
     }
 
@@ -421,6 +420,7 @@ impl Core {
         project: leon_domain::ProjectId,
         settings: SessionSettings,
         text: &str,
+        issue: Option<leon_domain::GhRef>,
     ) {
         let Some(dir) = self.state.project(project).map(|p| p.path.clone()) else {
             return;
@@ -430,11 +430,15 @@ impl Core {
         let now = self.now();
         let title = title_from(text);
         let backend = settings.backend;
-        let Some(conversation) = Self::report(blocking(|| {
+        let Some(mut conversation) = Self::report(blocking(|| {
             storage.create_conversation(project, &title, now)
         })) else {
             return;
         };
+        if issue.is_some() {
+            conversation.issue = issue;
+            Self::report(blocking(|| storage.update_conversation(&conversation)));
+        }
         let new = NewSession {
             conversation: conversation.id,
             started_by: None,

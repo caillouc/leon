@@ -89,6 +89,8 @@ pub(crate) struct State {
     pub my_issues: Arc<Vec<leon_domain::Issue>>,
     pub my_prs: Arc<Vec<leon_domain::PullRequest>>,
     pub github_error: Option<String>,
+    /// The issue or pull request whose details are shown.
+    pub detail: Option<crate::Detail>,
     pub fold: Arc<Vec<leon_domain::FoldPattern>>,
     pub flash: Option<(u64, String)>,
     /// The last doctor report and when it was made.
@@ -97,9 +99,11 @@ pub(crate) struct State {
     /// Leon's shared MCP list (I14), and why it could not be read.
     pub shared: Arc<Vec<leon_domain::McpServer>>,
     pub shared_path: std::path::PathBuf,
+    /// The config file Settings writes.
+    pub settings_path: Option<std::path::PathBuf>,
     pub shared_error: Option<String>,
     /// What each CLI has as MCP servers and plugins, and when it was read.
-    pub tools: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
+    pub tools: Option<(i64, Arc<Vec<leon_domain::CliConnectors>>)>,
     pub tools_running: bool,
     /// The GitHub repository of each project, from its `origin`.
     pub project_repos: Arc<HashMap<ProjectId, String>>,
@@ -195,12 +199,14 @@ impl State {
             my_issues: Arc::clone(&self.my_issues),
             my_prs: Arc::clone(&self.my_prs),
             github_error: self.github_error.clone(),
+            detail: self.detail.clone(),
             fold: Arc::clone(&self.fold),
             flash: self.flash.clone(),
             doctor: self.doctor.clone(),
             doctor_running: self.doctor_running,
             shared_tools: Arc::clone(&self.shared),
             shared_tools_path: self.shared_path.clone(),
+            settings_path: self.settings_path.clone(),
             shared_tools_error: self.shared_error.clone(),
             tools: self.tools.clone(),
             tools_running: self.tools_running,

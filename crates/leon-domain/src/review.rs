@@ -7,11 +7,14 @@ use crate::LineKind;
 pub struct ReviewComment {
     /// Repo-relative path.
     pub path: String,
-    /// Line number: in the new file, or in the old one for a removed line.
+    /// First line number: in the new file, or in the old one for a removed
+    /// line.
     pub line: u32,
-    /// Kind of the commented line.
+    /// Last line number, counted the same way; `line` for one line.
+    pub end: u32,
+    /// Kind of the last commented line.
     pub kind: LineKind,
-    /// The commented line, as quoted to the agent.
+    /// The commented lines, as quoted to the agent, one per line.
     pub code: String,
     /// What the user wrote.
     pub text: String,
@@ -24,11 +27,18 @@ pub fn review_message(comments: &[ReviewComment]) -> String {
     let blocks: Vec<String> = comments
         .iter()
         .map(|c| {
-            let place = match c.kind {
-                LineKind::Removed => format!("{} (removed line {})", c.path, c.line),
-                LineKind::Added | LineKind::Context => format!("{}:{}", c.path, c.line),
+            let lines = if c.end > c.line {
+                format!("{}-{}", c.line, c.end)
+            } else {
+                c.line.to_string()
             };
-            format!("\n`{place}`\n> {}\n\n{}\n", c.code, c.text.trim())
+            let place = match (c.kind, c.end > c.line) {
+                (LineKind::Removed, false) => format!("{} (removed line {lines})", c.path),
+                (LineKind::Removed, true) => format!("{} (removed lines {lines})", c.path),
+                (LineKind::Added | LineKind::Context, _) => format!("{}:{lines}", c.path),
+            };
+            let quote: Vec<String> = c.code.lines().map(|l| format!("> {l}\n")).collect();
+            format!("\n`{place}`\n{}\n{}\n", quote.concat(), c.text.trim())
         })
         .collect();
     format!(
@@ -47,6 +57,7 @@ mod tests {
         ReviewComment {
             path: "src/retry.rs".into(),
             line,
+            end: line,
             kind,
             code: "let delay = base * 2;".into(),
             text: text.into(),
@@ -71,5 +82,14 @@ mod tests {
         for (comments, expected) in cases {
             assert_eq!(review_message(&comments), expected);
         }
+        let range = ReviewComment {
+            end: 44,
+            code: "let a = 1;\nlet b = 2;\nlet c = 3;".into(),
+            ..comment(LineKind::Added, 42, "Merge these.")
+        };
+        assert_eq!(
+            review_message(&[range]),
+            "**Review of the diff** (1 comment)\n\n`src/retry.rs:42-44`\n> let a = 1;\n> let b = 2;\n> let c = 3;\n\nMerge these.\n"
+        );
     }
 }

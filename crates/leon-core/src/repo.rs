@@ -6,10 +6,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use leon_domain::{ConversationId, Issue, PullRequest};
+use leon_domain::{ConversationId, GhKind, GhRef, Issue, PullRequest};
 
 use crate::app::Core;
-use crate::snapshot::GitView;
+use crate::snapshot::{Detail, GitView};
 
 /// Results of background work, applied by the core actor.
 #[derive(Debug)]
@@ -20,8 +20,11 @@ pub(crate) enum Internal {
     Pr(ConversationId, Option<PullRequest>),
     /// My issues and pull requests (GH-2, GH-3), or why they failed.
     Lists(Result<(Vec<Issue>, Vec<PullRequest>), String>),
-    /// A GitHub action finished: refresh this conversation's PR and say so.
-    Done(ConversationId, String),
+    /// A GitHub action on an item finished: say so, and read the item again
+    /// where it shows.
+    Done(GhRef, String),
+    /// An item's details, read for the drawer.
+    Detail(Detail),
     /// Time to refresh pull request badges.
     Tick,
     /// A title the CLI wrote for a conversation (NAV-9), with the title it
@@ -29,8 +32,8 @@ pub(crate) enum Internal {
     Title(ConversationId, String, String),
     /// The doctor's report.
     Doctor(Vec<leon_domain::DoctorSection>),
-    /// What each CLI has as MCP servers and plugins.
-    Tools(Vec<leon_domain::DoctorSection>),
+    /// What each CLI is connected to (TOOLS-1).
+    Tools(Vec<leon_domain::CliConnectors>),
 }
 
 impl Core {
@@ -97,35 +100,56 @@ impl Core {
         });
     }
 
-    /// Asks Copilot to review the conversation's pull request (GH-5).
-    pub(crate) fn request_review(&mut self, id: ConversationId) {
-        let Some(pr) = self.state.prs.get(&id).cloned() else {
-            return;
-        };
+    /// Asks Copilot to review a pull request (GH-5).
+    pub(crate) fn request_review(&mut self, item: GhRef) {
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || {
-            let message = match github.request_copilot_review(&pr.repo, pr.number) {
-                Ok(()) => format!("Copilot review requested on #{}", pr.number),
+            let message = match github.request_copilot_review(&item.repo, item.number) {
+                Ok(()) => format!("Copilot review requested on #{}", item.number),
                 Err(error) => format!("Could not request a Copilot review: {error}"),
             };
-            let _ = tx.send(Internal::Done(id, message));
+            let _ = tx.send(Internal::Done(item, message));
         });
     }
 
-    /// Posts a comment on the conversation's pull request (GH-6).
-    pub(crate) fn comment(&mut self, id: ConversationId, body: String) {
-        let Some(pr) = self.state.prs.get(&id).cloned() else {
-            return;
-        };
+    /// Posts a comment on a pull request or an issue (GH-6).
+    pub(crate) fn comment(&mut self, item: GhRef, body: String) {
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || {
-            let message = match github.comment(&pr.repo, pr.number, &body) {
-                Ok(()) => format!("Comment posted on #{}", pr.number),
+            let message = match github.comment(&item.repo, item.number, &body) {
+                Ok(()) => format!("Comment posted on #{}", item.number),
                 Err(error) => format!("Could not post the comment: {error}"),
             };
-            let _ = tx.send(Internal::Done(id, message));
+            let _ = tx.send(Internal::Done(item, message));
+        });
+    }
+
+    /// Shows an item's details, read in the background; `None` closes them.
+    pub(crate) fn show_detail(&mut self, item: Option<GhRef>) {
+        let Some(item) = item else {
+            self.state.detail = None;
+            return;
+        };
+        self.state.detail = Some(Detail::Loading(item.clone()));
+        self.load_detail(item);
+    }
+
+    fn load_detail(&self, item: GhRef) {
+        let github = Arc::clone(&self.ports.github);
+        let tx = self.internal_tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let detail = match item.kind {
+                GhKind::Issue => github
+                    .issue(&item.repo, item.number)
+                    .map(|i| Detail::Issue(Box::new(i))),
+                GhKind::PullRequest => github
+                    .pull_request_by_number(&item.repo, item.number)
+                    .map(|pr| Detail::PullRequest(Box::new(pr))),
+            };
+            let detail = detail.unwrap_or_else(|e| Detail::Failed(item, e.to_string()));
+            let _ = tx.send(Internal::Detail(detail));
         });
     }
 
@@ -156,9 +180,27 @@ impl Core {
                 self.state.github_error = None;
             }
             Internal::Lists(Err(error)) => self.state.github_error = Some(error),
-            Internal::Done(id, message) => {
+            Internal::Done(item, message) => {
                 self.flash(message);
-                self.refresh_pr(id);
+                let shown: Vec<ConversationId> = self
+                    .state
+                    .prs
+                    .iter()
+                    .filter(|(_, pr)| pr.repo == item.repo && pr.number == item.number)
+                    .map(|(id, _)| *id)
+                    .collect();
+                for id in shown {
+                    self.refresh_pr(id);
+                }
+                if self.state.detail.as_ref().map(Detail::item) == Some(item.clone()) {
+                    self.load_detail(item);
+                }
+            }
+            Internal::Detail(detail) => {
+                // Only the item still shown, not one closed or replaced since.
+                if self.state.detail.as_ref().map(Detail::item) == Some(detail.item()) {
+                    self.state.detail = Some(detail);
+                }
             }
             Internal::Title(id, old, new) => {
                 // A title the user or an agent already changed stays.

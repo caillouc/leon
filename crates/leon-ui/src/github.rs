@@ -1,21 +1,29 @@
 //! My issues and my open pull requests (GH-2, GH-3): two rows at the top of
-//! the left pane, each opening its list in the main pane. A row opens the
-//! issue or PR on GitHub; an issue can start a conversation in the project
-//! whose repository it belongs to.
+//! the left pane, each opening its list in the main pane. Issues are grouped
+//! by board column (each column foldable), sorted by priority, and can be
+//! filtered by sprint. A row opens the item's details in the drawer; an
+//! issue starts a conversation in the project whose repository it belongs
+//! to, or opens the one already started for it.
+
+use std::collections::HashSet;
 
 use gpui::{
-    AnyElement, Context, Div, FontWeight, IntoElement, Rgba, SharedString, div, prelude::*, px,
+    AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, SharedString, Window, div,
+    prelude::*, px,
 };
+use gpui_component::input::TextareaState;
 use leon_core::Intent;
 use leon_domain::{
-    CheckState, ConversationId, Issue, IssueStatus, PrState, ProjectId, PullRequest,
+    BoardOption, CheckState, ConversationId, GhRef, Issue, PrState, ProjectId, PullRequest,
     issues_by_status,
 };
 
-use crate::left::ago;
+use crate::icons::{Icon, icon};
+use crate::left::since;
+use crate::picker::Choice;
 use crate::pr_view::{check_color, labels, pr_state};
 use crate::theme;
-use crate::widgets::{button, empty, label};
+use crate::widgets::{button, empty, label, pane_header};
 use crate::workspace::{Screen, Workspace};
 
 /// Which GitHub list the main pane shows.
@@ -35,16 +43,43 @@ impl GhList {
 
     fn subtitle(self) -> &'static str {
         match self {
-            Self::Issues => "Open, assigned to you, by board status",
+            Self::Issues => "Open, assigned to you, by board column and priority",
             Self::PullRequests => "Open, written by you",
         }
     }
 }
 
+/// What the GitHub lists remember while the window is open.
+pub(crate) struct GhState {
+    /// Board columns folded by the user, by name.
+    pub folded: HashSet<String>,
+    /// The sprint shown: (iteration field, iteration title); all when `None`.
+    pub sprint: Option<(String, String)>,
+    /// The comment box of the details drawer.
+    pub comment: Entity<TextareaState>,
+}
+
+impl GhState {
+    pub(crate) fn new(window: &mut Window, cx: &mut Context<Workspace>) -> Self {
+        Self {
+            folded: HashSet::new(),
+            sprint: None,
+            comment: cx.new(|cx| {
+                TextareaState::new(window, cx)
+                    .auto_grow(2, 8)
+                    .placeholder("Comment on GitHub")
+            }),
+        }
+    }
+}
+
+/// The value of the sprint filter's "all" choice.
+const ALL_SPRINTS: &str = "";
+
 impl Workspace {
     /// The GitHub section of the left pane.
     pub(crate) fn render_github_rows(&self, cx: &mut Context<Self>) -> AnyElement {
-        let row = |list: GhList, count: usize, cx: &mut Context<Self>| {
+        let row = |list: GhList, glyph: Icon, count: usize, cx: &mut Context<Self>| {
             let selected = self.screen == Screen::GitHub(list);
             div()
                 .id(SharedString::from(list.title()))
@@ -53,9 +88,12 @@ impl Workspace {
                 .py(px(5.))
                 .rounded_md()
                 .flex()
+                .items_center()
+                .gap_2()
                 .cursor_pointer()
                 .when(selected, |s| s.bg(theme::accent_soft()))
                 .when(!selected, |s| s.hover(|s| s.bg(theme::surface_2())))
+                .child(icon(glyph, theme::fg_muted(), 14.))
                 .child(div().flex_1().child(list.title()))
                 .child(div().text_color(theme::fg_faint()).child(count.to_string()))
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -67,8 +105,18 @@ impl Workspace {
         };
         div()
             .child(label("GitHub"))
-            .child(row(GhList::Issues, self.snapshot.my_issues.len(), cx))
-            .child(row(GhList::PullRequests, self.snapshot.my_prs.len(), cx))
+            .child(row(
+                GhList::Issues,
+                Icon::Issue,
+                self.snapshot.my_issues.len(),
+                cx,
+            ))
+            .child(row(
+                GhList::PullRequests,
+                Icon::PullRequest,
+                self.snapshot.my_prs.len(),
+                cx,
+            ))
             .children(
                 self.snapshot
                     .github_error
@@ -80,12 +128,19 @@ impl Workspace {
 
     /// A GitHub list in the main pane.
     pub(crate) fn render_github_list(&self, list: GhList, cx: &mut Context<Self>) -> AnyElement {
+        let issues: Vec<Issue> = self
+            .snapshot
+            .my_issues
+            .iter()
+            .filter(|i| self.in_sprint(i))
+            .cloned()
+            .collect();
         let count = match list {
-            GhList::Issues => self.snapshot.my_issues.len(),
+            GhList::Issues => issues.len(),
             GhList::PullRequests => self.snapshot.my_prs.len(),
         };
         let sections: Vec<AnyElement> = match list {
-            GhList::Issues => issues_by_status(&self.snapshot.my_issues)
+            GhList::Issues => issues_by_status(&issues)
                 .into_iter()
                 .map(|(status, issues)| self.issue_group(status, &issues, cx))
                 .collect(),
@@ -101,25 +156,31 @@ impl Workspace {
         let empty_text = match (&self.snapshot.github_error, list) {
             (Some(error), _) => Some(error.clone()),
             (None, _) if count > 0 => None,
+            (None, GhList::Issues) if self.gh.sprint.is_some() => {
+                Some("No open issue of yours in this sprint.".to_owned())
+            }
             (None, GhList::Issues) => Some("No open issues assigned to you.".to_owned()),
             (None, GhList::PullRequests) => Some("No open pull requests by you.".to_owned()),
         };
+        let filter = (list == GhList::Issues)
+            .then(|| self.sprint_filter(cx))
+            .flatten();
         div()
             .size_full()
             .flex()
             .flex_col()
-            .child(header(list, count, cx))
+            .child(header(list, count, filter, cx))
             .child(
                 div().id("gh-list").flex_1().overflow_y_scroll().child(
                     div()
-                        .max_w(px(860.))
+                        .max_w(px(880.))
                         .w_full()
                         .mx_auto()
                         .px_6()
                         .py_5()
                         .flex()
                         .flex_col()
-                        .gap_6()
+                        .gap_5()
                         .children(empty_text.map(empty))
                         .children(sections),
                 ),
@@ -127,102 +188,198 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// One board column: its name and color, then its issues.
+    fn in_sprint(&self, issue: &Issue) -> bool {
+        self.gh.sprint.as_ref().is_none_or(|(field, title)| {
+            issue
+                .iterations
+                .iter()
+                .any(|i| &i.field == field && &i.title == title)
+        })
+    }
+
+    /// The sprint picker: every iteration of my issues, latest first; none
+    /// when no issue is in a sprint.
+    fn sprint_filter(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let mut sprints: Vec<_> = self
+            .snapshot
+            .my_issues
+            .iter()
+            .flat_map(|i| i.iterations.iter())
+            .collect();
+        if sprints.is_empty() {
+            return None;
+        }
+        sprints.sort_by(|a, b| b.start.cmp(&a.start).then(a.title.cmp(&b.title)));
+        sprints.dedup_by(|a, b| a.field == b.field && a.title == b.title);
+        let fields: HashSet<&str> = sprints.iter().map(|s| s.field.as_str()).collect();
+        let name = |field: &str, title: &str| {
+            if fields.len() > 1 {
+                format!("{field}: {title}")
+            } else {
+                title.to_owned()
+            }
+        };
+        let choices: Vec<Choice> = std::iter::once((ALL_SPRINTS.to_owned(), "All".to_owned()))
+            .chain(sprints.iter().map(|s| {
+                (
+                    format!("{}\t{}", s.field, s.title),
+                    name(&s.field, &s.title),
+                )
+            }))
+            .collect();
+        let current = self
+            .gh
+            .sprint
+            .as_ref()
+            .map_or_else(|| "All".to_owned(), |(f, t)| name(f, t));
+        let field = if fields.len() == 1 {
+            sprints[0].field.clone()
+        } else {
+            "Iteration".to_owned()
+        };
+        let picker = self.picker("gh-sprint", &current, choices, cx, |this, value, _, cx| {
+            this.gh.sprint = value
+                .split_once('\t')
+                .map(|(f, t)| (f.to_owned(), t.to_owned()));
+            cx.notify();
+        });
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_2()
+                .py(px(2.))
+                .rounded_md()
+                .border_1()
+                .border_color(theme::border())
+                .text_size(px(12.5))
+                .child(icon(Icon::Filter, theme::fg_muted(), 13.))
+                .child(div().text_color(theme::fg_muted()).child(field))
+                .child(picker)
+                .into_any_element(),
+        )
+    }
+
+    /// One board column: a foldable header, then its issues.
     fn issue_group(
         &self,
-        status: Option<&IssueStatus>,
+        status: Option<&BoardOption>,
         issues: &[&Issue],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let color = theme::github_color(status.and_then(|s| s.color.as_deref()));
-        let name = status.map_or("No status", |s| s.name.as_str());
+        let color = status.map_or(theme::fg_faint(), |s| theme::status_color(s.order));
+        let name = status.map_or("No status", |s| s.name.as_str()).to_owned();
+        let folded = self.gh.folded.contains(&name);
+        let key = name.clone();
         div()
             .flex()
             .flex_col()
             .gap_1()
             .child(
                 div()
+                    .id(SharedString::from(format!("gh-group-{name}")))
                     .flex()
                     .items_center()
                     .gap_2()
-                    .px_3()
-                    .pb_1()
-                    .child(div().size(px(9.)).rounded_full().bg(color))
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::surface()))
+                    .child(icon(
+                        if folded {
+                            Icon::ChevronRight
+                        } else {
+                            Icon::ChevronDown
+                        },
+                        theme::fg_muted(),
+                        15.,
+                    ))
+                    .child(div().size(px(10.)).rounded_full().bg(color))
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(px(13.5))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(name.to_owned()),
+                            .child(name),
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
-                            .text_color(theme::fg_faint())
+                            .px(px(7.))
+                            .rounded_full()
+                            .bg(theme::surface_2())
+                            .text_size(px(11.5))
+                            .text_color(theme::fg_muted())
                             .child(issues.len().to_string()),
-                    ),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.gh.folded.remove(&key) {
+                            this.gh.folded.insert(key.clone());
+                        }
+                        cx.notify();
+                    })),
             )
-            .children(issues.iter().map(|i| self.issue_row(i, color, cx)))
+            .when(!folded, |d| {
+                d.children(issues.iter().map(|i| self.issue_row(i, color, cx)))
+            })
             .into_any_element()
     }
 
     fn issue_row(&self, issue: &Issue, color: Rgba, cx: &mut Context<Self>) -> AnyElement {
-        let project = self.project_for_repo(&issue.repo);
-        let message = format!(
-            "Issue {}#{}: {}\n{}\n\n",
-            issue.repo, issue.number, issue.title, issue.url
-        );
-        let start = button(
-            SharedString::from(format!("gh-start-{}-{}", issue.repo, issue.number)),
-            "Start conversation",
-            cx.listener(move |this, _, window, cx| {
-                cx.stop_propagation();
-                this.open_new_conversation(project, Some(&message), window, cx);
-            }),
-        );
-        let icon = div()
-            .size(px(14.))
-            .rounded_full()
-            .border_2()
-            .border_color(color)
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(div().size(px(4.)).rounded_full().bg(color));
         let meta = div()
             .flex()
             .flex_wrap()
             .items_center()
             .gap_2()
             .child(repo_text(&issue.repo))
+            .children(issue.priority.as_ref().map(|p| chip(&p.name)))
+            .children(issue.iterations.iter().map(|i| chip(&i.title)))
             .child(labels(&issue.labels));
+        let item = GhRef::issue(&issue.repo, issue.number);
         Row {
-            id: SharedString::from(format!("gh-issue-{}-{}", issue.repo, issue.number)),
-            url: issue.url.clone(),
-            icon: icon.into_any_element(),
+            // "Start conversation" shows on hover; "Open conversation" always.
+            quiet: self.conversation_for_issue(&item).is_none(),
+            item,
+            icon: icon(Icon::Issue, color, 16.).into_any_element(),
             title: issue.title.clone(),
-            number: issue.number,
-            age: format!("{} ago", ago(issue.updated_at)),
+            age: since(issue.updated_at),
             meta,
-            action: start.into_any_element(),
+            action: self.issue_action(issue, cx),
         }
         .render(cx)
     }
 
+    /// "Open conversation" when one was started for the issue, else "Start
+    /// conversation" in the project whose repository it belongs to.
+    pub(crate) fn issue_action(&self, issue: &Issue, cx: &mut Context<Self>) -> AnyElement {
+        let item = GhRef::issue(&issue.repo, issue.number);
+        let id = SharedString::from(format!("gh-act-{}", item.text()));
+        if let Some(conversation) = self.conversation_for_issue(&item) {
+            return open_conversation(id, conversation, cx);
+        }
+        let project = self.project_for_repo(&issue.repo);
+        let message = format!(
+            "Issue {}#{}: {}\n{}\n\n",
+            issue.repo, issue.number, issue.title, issue.url
+        );
+        button(
+            id,
+            "Start conversation",
+            cx.listener(move |this, _, window, cx| {
+                cx.stop_propagation();
+                this.core.send(Intent::ShowDetail(None));
+                this.open_new_conversation(
+                    project,
+                    Some((item.clone(), message.clone())),
+                    window,
+                    cx,
+                );
+            }),
+        )
+        .into_any_element()
+    }
+
     fn pr_row(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
-        let (color, state) = pr_state(pr.state);
-        let conversation = self.conversation_for_pr(pr);
-        let action = match conversation {
-            Some(id) => button(
-                SharedString::from(format!("gh-open-{}-{}", pr.repo, pr.number)),
-                "Open conversation",
-                cx.listener(move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.select(id, cx);
-                }),
-            )
-            .into_any_element(),
-            None => div().into_any_element(),
-        };
         let meta = div()
             .flex()
             .flex_wrap()
@@ -239,16 +396,27 @@ impl Workspace {
             .children(pr.checks_state().map(checks))
             .child(labels(&pr.labels));
         Row {
-            id: SharedString::from(format!("gh-pr-{}-{}", pr.repo, pr.number)),
-            url: pr.url.clone(),
-            icon: pill(color, state, pr.state == PrState::Draft).into_any_element(),
+            quiet: false,
+            item: GhRef::pull_request(&pr.repo, pr.number),
+            icon: pr_icon(pr.state, 16.).into_any_element(),
             title: pr.title.clone(),
-            number: pr.number,
-            age: String::new(),
+            age: pr_state(pr.state).1.to_owned(),
             meta,
-            action,
+            action: self.pr_action(pr, cx),
         }
         .render(cx)
+    }
+
+    /// "Open conversation" when a conversation works on the pull request.
+    pub(crate) fn pr_action(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
+        match self.conversation_for_pr(pr) {
+            Some(conversation) => open_conversation(
+                SharedString::from(format!("gh-open-{}-{}", pr.repo, pr.number)),
+                conversation,
+                cx,
+            ),
+            None => div().into_any_element(),
+        }
     }
 
     /// The project whose `origin` is `repo` on GitHub.
@@ -260,6 +428,14 @@ impl Workspace {
             .map(|(id, _)| *id)
     }
 
+    fn conversation_for_issue(&self, item: &GhRef) -> Option<ConversationId> {
+        self.snapshot
+            .conversations
+            .iter()
+            .find(|c| c.conversation.issue.as_ref() == Some(item))
+            .map(|c| c.conversation.id)
+    }
+
     fn conversation_for_pr(&self, pr: &PullRequest) -> Option<ConversationId> {
         self.snapshot
             .prs
@@ -269,50 +445,60 @@ impl Workspace {
     }
 }
 
-/// The list's title, what it holds, its size and Refresh.
-fn header(list: GhList, count: usize, cx: &mut Context<Workspace>) -> Div {
+fn open_conversation(
+    id: SharedString,
+    conversation: ConversationId,
+    cx: &mut Context<Workspace>,
+) -> AnyElement {
+    button(
+        id,
+        "Open conversation",
+        cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.core.send(Intent::ShowDetail(None));
+            this.select(conversation, cx);
+        }),
+    )
+    .into_any_element()
+}
+
+/// A pull request's icon in its state's colour.
+pub(crate) fn pr_icon(state: PrState, size: f32) -> gpui::Svg {
+    let glyph = match state {
+        PrState::Open => Icon::PullRequest,
+        PrState::Draft => Icon::PullRequestDraft,
+        PrState::Merged => Icon::Merged,
+        PrState::Closed => Icon::PullRequestClosed,
+    };
+    icon(glyph, pr_state(state).0, size)
+}
+
+/// The checks summed up: an icon in their colour and what it means.
+pub(crate) fn checks(state: CheckState) -> Div {
+    let color = check_color(state);
+    let (glyph, text) = match state {
+        CheckState::Pass => (Icon::Passed, "Checks passing"),
+        CheckState::Fail => (Icon::Failed, "Checks failing"),
+        CheckState::Pending => (Icon::Pending, "Checks running"),
+    };
     div()
-        .flex_none()
-        .px_6()
-        .py_3()
         .flex()
         .items_center()
-        .gap_3()
-        .border_b_1()
-        .border_color(theme::border())
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_size(px(15.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(list.title()),
-                        )
-                        .child(
-                            div()
-                                .px(px(7.))
-                                .rounded_full()
-                                .bg(theme::surface_2())
-                                .text_size(px(11.5))
-                                .text_color(theme::fg_muted())
-                                .child(count.to_string()),
-                        ),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(theme::fg_faint())
-                        .child(list.subtitle()),
-                ),
-        )
-        .child(div().flex_1())
+        .gap(px(4.))
+        .text_color(color)
+        .child(icon(glyph, color, 12.))
+        .child(text)
+}
+
+/// The list's title, its size and what it holds, the filter and Refresh.
+fn header(
+    list: GhList,
+    count: usize,
+    filter: Option<AnyElement>,
+    cx: &mut Context<Workspace>,
+) -> Div {
+    pane_header(list.title(), Some(format!("{count} · {}", list.subtitle())))
+        .children(filter)
         .child(button(
             "gh-refresh",
             "Refresh",
@@ -320,14 +506,14 @@ fn header(list: GhList, count: usize, cx: &mut Context<Workspace>) -> Div {
         ))
 }
 
-/// A list row: icon, title and number, age; under it the details; the
-/// action on the right. Clicking anywhere else opens `url` on GitHub.
+/// A list row: icon, title, age; under it the details; the action on the
+/// right. Clicking anywhere else opens the item's details.
 struct Row {
-    id: SharedString,
-    url: String,
+    item: GhRef,
+    /// The action shows only while the row is hovered.
+    quiet: bool,
     icon: AnyElement,
     title: String,
-    number: u64,
     age: String,
     meta: Div,
     action: AnyElement,
@@ -336,34 +522,31 @@ struct Row {
 impl Row {
     fn render(self, cx: &mut Context<Workspace>) -> AnyElement {
         let Self {
-            id,
-            url,
+            item,
+            quiet,
             icon,
             title,
-            number,
             age,
             meta,
             action,
         } = self;
+        let number = item.number;
+        let group = SharedString::from(format!("gh-row-{}", item.text()));
         div()
-            .id(id)
+            .id(group.clone())
+            .group(group.clone())
             .px_3()
             .py(px(10.))
             .rounded_lg()
             .flex()
-            .items_center()
+            .items_start()
             .gap_3()
             .cursor_pointer()
             .hover(|s| s.bg(theme::surface()))
-            .on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
-            .child(
-                div()
-                    .w(px(56.))
-                    .flex_none()
-                    .flex()
-                    .justify_center()
-                    .child(icon),
-            )
+            .on_click(cx.listener(move |this, _, _, _| {
+                this.core.send(Intent::ShowDetail(Some(item.clone())));
+            }))
+            .child(div().pt(px(2.)).child(icon))
             .child(
                 div()
                     .flex_1()
@@ -395,7 +578,17 @@ impl Row {
                     )
                     .child(meta.text_size(px(12.)).text_color(theme::fg_muted())),
             )
-            .child(div().flex_none().child(action))
+            .child(
+                div()
+                    .w(px(150.))
+                    .flex_none()
+                    .flex()
+                    .justify_end()
+                    .when(quiet, |d| {
+                        d.opacity(0.).group_hover(group, |s| s.opacity(1.))
+                    })
+                    .child(action),
+            )
             .into_any_element()
     }
 }
@@ -407,34 +600,14 @@ fn repo_text(repo: &str) -> Div {
         .child(repo.to_owned())
 }
 
-/// A pull request's state as a tinted pill; a draft is outlined only.
-fn pill(color: Rgba, text: &'static str, outlined: bool) -> Div {
+/// A small outlined value: a priority, a sprint.
+pub(crate) fn chip(text: &str) -> Div {
     div()
-        .px(px(9.))
-        .py(px(2.))
+        .px(px(7.))
         .rounded_full()
         .border_1()
-        .border_color(Rgba { a: 0.6, ..color })
-        .when(!outlined, |d| d.bg(Rgba { a: 0.18, ..color }))
-        .text_size(px(11.5))
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(color)
-        .child(text)
-}
-
-/// The checks' sum: a dot in their color and what it means.
-fn checks(state: CheckState) -> Div {
-    let text = match state {
-        CheckState::Pass => "Checks passing",
-        CheckState::Fail => "Checks failing",
-        CheckState::Pending => "Checks running",
-    };
-    let color = check_color(state);
-    div()
-        .flex()
-        .items_center()
-        .gap(px(5.))
-        .text_color(color)
-        .child(div().size(px(7.)).rounded_full().bg(color))
-        .child(text)
+        .border_color(theme::border_strong())
+        .text_size(px(11.))
+        .text_color(theme::fg_muted())
+        .child(text.to_owned())
 }

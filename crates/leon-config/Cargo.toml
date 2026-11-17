@@ -1,6 +1,6 @@
 [package]
 name = "leon-config"
-description = "Reads Leon's TOML config files into the user's settings."
+description = "Reads Leon's TOML config files into the user's settings, and writes the user's own."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +9,11 @@ publish.workspace = true
 
 [dependencies]
 dirs.workspace = true
+leon-core.workspace = true
 leon-domain.workspace = true
+thiserror.workspace = true
 toml.workspace = true
+toml_edit.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

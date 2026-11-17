@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_core::ports::{AgentDefinition, BackendOptions};
-use leon_core::{ConversationView, Question, SessionView, Snapshot, TranscriptView};
+use leon_core::{ConversationView, Detail, Question, SessionView, Snapshot, TranscriptView};
 use leon_domain::{
     AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Entry, Project,
     ProjectId, SessionSettings, Settings, Status, TimedEntry, Usage,
@@ -76,9 +76,19 @@ fn conversation(id: i64, project: i64, title: &str, unread: bool, pinned: bool) 
         pinned,
         archived: false,
         unread,
-        updated_at: 0,
+        updated_at: hours_ago(id * 5),
         working_dir: None,
+        // The first conversation was started for issue #401.
+        issue: (id == 1).then(|| leon_domain::GhRef::issue("acme/payments-api", 401)),
     }
+}
+
+/// A time `hours` before now, Unix milliseconds.
+pub fn hours_ago(hours: i64) -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+    now - hours * 3_600_000
 }
 
 fn timed(entry: Entry) -> TimedEntry {
@@ -301,13 +311,28 @@ fn main() {
         ("review".to_owned(), Shot::Review(ConversationId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),
         ("my-issues".to_owned(), Shot::MyIssues),
+        ("doctor".to_owned(), Shot::Doctor),
+        ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
+        ("tools".to_owned(), Shot::Tools),
+        // Last: these leave the details drawer open.
+        (
+            "issue-detail".to_owned(),
+            Shot::Detail(Box::new(Detail::Issue(Box::new(
+                repo::my_issues()[0].clone(),
+            )))),
+        ),
+        (
+            "pr-detail".to_owned(),
+            Shot::Detail(Box::new(Detail::PullRequest(Box::new(
+                repo::prs()[&ConversationId(1)].clone(),
+            )))),
+        ),
         (
             "drawer".to_owned(),
             Shot::Drawer(ConversationId(1), "src/webhooks/retry.rs"),
         ),
-        ("doctor".to_owned(), Shot::Doctor),
-        ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
-        ("tools".to_owned(), Shot::Tools),
     ];
-    gpui_platform::application().run(move |cx| capture(&core, shots, out, cx));
+    gpui_platform::application()
+        .with_assets(leon_ui::Assets)
+        .run(move |cx| capture(&core, shots, out, cx));
 }

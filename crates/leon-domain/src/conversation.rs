@@ -67,6 +67,8 @@ pub struct Conversation {
     /// The folder an agent said the conversation moved to, e.g. a worktree
     /// (D3, P10); `None`: the first session's folder.
     pub working_dir: Option<PathBuf>,
+    /// The issue it was started for (GH-2, CTX-1), if any.
+    pub issue: Option<crate::GhRef>,
 }
 
 /// Choices that shape an agent session (CONV-2..4).

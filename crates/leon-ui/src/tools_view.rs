@@ -1,6 +1,9 @@
-//! The Tools view (TOOLS-1): Leon's shared MCP list, which every CLI gets
-//! (add and remove here, I14), then what each CLI has on its own (read-only).
+//! The Connectors view (TOOLS-1): what each coding CLI can reach — its
+//! plugins, its own MCP servers, its account's connectors (Slack, Gmail…) —
+//! read from the CLIs; then Leon's shared list of servers, which every CLI
+//! gets (add and remove here, I14).
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use gpui::{
@@ -8,16 +11,20 @@ use gpui::{
 };
 use gpui_component::input::{Input, InputState};
 use leon_core::Intent;
-use leon_domain::{McpServer, split_command};
+use leon_domain::{
+    BackendKind, CliConnectors, Connector, ConnectorKind, ConnectorState, McpServer, split_command,
+};
 
-use crate::doctor::report;
-use crate::left::ago;
+use crate::icons::{Icon, icon};
+use crate::left::since;
 use crate::theme;
-use crate::widgets::{button, empty, label, primary};
-use crate::workspace::{Screen, Workspace, value_of};
+use crate::widgets::{button, empty, pane_header, primary};
+use crate::workspace::{Workspace, value_of};
 
 /// The add form's inputs and its last error.
 pub(crate) struct ToolsForm {
+    /// CLIs whose not-connected account connectors are shown.
+    pub show_offered: HashSet<BackendKind>,
     name: Entity<InputState>,
     command: Entity<InputState>,
     env: Entity<InputState>,
@@ -31,6 +38,7 @@ impl ToolsForm {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
         };
         Self {
+            show_offered: HashSet::new(),
             name: input("Name, e.g. metabase", window, cx),
             command: input("Command, e.g. npx -y @org/metabase-mcp", window, cx),
             env: input(
@@ -71,109 +79,142 @@ pub(crate) fn server_from(name: &str, command: &str, env: &str) -> Result<McpSer
 }
 
 impl Workspace {
-    /// The Tools row at the bottom of the left pane.
-    pub(crate) fn render_tools_row(&self, cx: &mut Context<Self>) -> AnyElement {
-        let selected = self.screen == Screen::Tools;
-        let count = self.snapshot.shared_tools.len();
-        div()
-            .id("tools-row")
-            .flex_none()
-            .mx_1()
-            .px_2()
-            .py(px(6.))
-            .rounded_md()
-            .flex()
-            .items_center()
-            .gap_2()
-            .cursor_pointer()
-            .when(selected, |s| s.bg(theme::accent_soft()))
-            .when(!selected, |s| s.hover(|s| s.bg(theme::surface_2())))
-            .child(div().flex_1().child("Tools"))
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(theme::fg_faint())
-                    .child(format!("{count} shared")),
-            )
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.screen = Screen::Tools;
-                this.core.send(Intent::View(None));
-                if this.snapshot.tools.is_none() {
-                    this.core.send(Intent::RefreshTools);
-                }
-                cx.notify();
-            }))
-            .into_any_element()
-    }
-
+    /// The Connectors view: per CLI, what it is connected to; then the
+    /// servers Leon gives every CLI.
     pub(crate) fn render_tools(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let running = self.snapshot.tools_running;
-        let header = div()
-            .px_6()
-            .py_3()
-            .flex()
-            .items_center()
-            .gap_3()
-            .border_b_1()
-            .border_color(theme::border())
-            .child(
-                div()
-                    .text_size(px(15.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("Tools"),
+        let subtitle = match &self.snapshot.tools {
+            Some((at, _)) => format!("What each coding CLI can reach · checked {}", since(*at)),
+            None => "What each coding CLI can reach".to_owned(),
+        };
+        let header = pane_header("Connectors", Some(subtitle)).child(
+            button(
+                "tools-refresh",
+                if running { "Checking…" } else { "Refresh" },
+                cx.listener(|this, _, _, _| this.core.send(Intent::RefreshTools)),
             )
-            .children(self.snapshot.tools.as_ref().map(|(at, _)| {
-                div()
-                    .text_size(px(12.5))
-                    .text_color(theme::fg_muted())
-                    .child(format!("CLIs checked {} ago", ago(*at)))
-            }))
-            .child(div().flex_1())
-            .child(
-                button(
-                    "tools-refresh",
-                    if running {
-                        "Checking…"
-                    } else {
-                        "Check the CLIs again"
-                    },
-                    cx.listener(|this, _, _, _| this.core.send(Intent::RefreshTools)),
-                )
-                .when(running, |b| b.opacity(0.6)),
-            );
-        let shared = self.render_shared(cx);
-        let cli = match &self.snapshot.tools {
-            Some((_, sections)) => report(sections),
+            .when(running, |b| b.opacity(0.6)),
+        );
+        let clis: Vec<AnyElement> = match &self.snapshot.tools {
+            Some((_, clis)) => clis.iter().map(|c| self.cli_card(c, cx)).collect(),
             None => vec![empty("Asking each CLI…")],
         };
+        let shared = self.render_shared(cx);
         div()
             .size_full()
             .flex()
             .flex_col()
             .child(header)
             .child(
+                div().id("tools-body").flex_1().overflow_y_scroll().child(
+                    div()
+                        .max_w(px(820.))
+                        .w_full()
+                        .mx_auto()
+                        .px_6()
+                        .py_5()
+                        .flex()
+                        .flex_col()
+                        .gap_4()
+                        .text_size(px(13.))
+                        .children(clis)
+                        .child(shared),
+                ),
+            )
+            .into_any_element()
+    }
+
+    /// One CLI: its working connectors, then the disabled and failing ones;
+    /// the account's connectors not logged in stay folded behind a count.
+    fn cli_card(&self, cli: &CliConnectors, cx: &mut Context<Self>) -> AnyElement {
+        let backend = cli.backend;
+        let of = |state| cli.connectors.iter().filter(move |c| c.state == state);
+        let on = of(ConnectorState::On).count();
+        let offered: Vec<&Connector> = of(ConnectorState::NeedsLogin).collect();
+        let open = self.tools_form.show_offered.contains(&backend);
+        let rows = of(ConnectorState::On)
+            .chain(of(ConnectorState::Failed))
+            .chain(of(ConnectorState::Off))
+            .map(connector_row);
+        div()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .rounded_xl()
+            .border_1()
+            .border_color(theme::border())
+            .bg(theme::panel())
+            .child(
                 div()
-                    .id("tools-body")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .px_6()
-                    .py_4()
-                    .text_size(px(13.))
+                    .flex()
+                    .items_center()
+                    .gap_2()
                     .child(
                         div()
-                            .max_w(px(820.))
-                            .flex()
-                            .flex_col()
-                            .gap_2()
-                            .child(shared)
-                            .child(label("Each CLI's own (read-only)").px_0().pt_4())
-                            .child(hint(
-                                "Change these in the CLI itself: claude.ai connectors (Slack, Metabase…) on claude.ai, \
-                                 others with `claude mcp …` or `codex mcp …`.",
-                            ))
-                            .children(cli),
+                            .text_size(px(14.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(backend.display_name()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme::fg_muted())
+                            .child(format!("{on} working")),
                     ),
             )
+            .children(cli.problem.as_ref().map(|p| {
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme::warn())
+                    .child(p.clone())
+            }))
+            .when(cli.connectors.is_empty() && cli.problem.is_none(), |d| {
+                d.child(hint("No plugin, server or connector."))
+            })
+            .child(div().flex().flex_col().children(rows))
+            .when(!offered.is_empty(), |d| {
+                let n = offered.len();
+                d.child(
+                    div()
+                        .id(SharedString::from(format!("offered-{}", backend.id())))
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .py_1()
+                        .cursor_pointer()
+                        .text_size(px(12.5))
+                        .text_color(theme::fg_muted())
+                        .hover(|s| s.text_color(theme::fg()))
+                        .child(icon(
+                            if open {
+                                Icon::ChevronDown
+                            } else {
+                                Icon::ChevronRight
+                            },
+                            theme::fg_muted(),
+                            14.,
+                        ))
+                        .child(format!(
+                            "{n} more offered by your account, not connected — log in to one from the CLI"
+                        ))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let shown = &mut this.tools_form.show_offered;
+                            if !shown.remove(&backend) {
+                                shown.insert(backend);
+                            }
+                            cx.notify();
+                        })),
+                )
+                .when(open, |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .children(offered.into_iter().map(connector_row)),
+                    )
+                })
+            })
             .into_any_element()
     }
 
@@ -239,10 +280,15 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_2()
-            .child(label("Shared by Leon: every CLI gets these").px_0())
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Your own servers, for every CLI"),
+            )
             .child(hint(&format!(
-                "Saved in {path}. Agent sessions get a change when they start or resume. \
-                 Local servers only (a command); add servers that live at a URL in each CLI."
+                "For an MCP server you run yourself (a command): Leon gives it to every \
+                 agent session, whatever its CLI, so you set it up once. Saved in {path}."
             )))
             .children(self.snapshot.shared_tools_error.as_ref().map(|e| {
                 div()
@@ -312,6 +358,66 @@ impl Workspace {
         }
         cx.notify();
     }
+}
+
+/// One connector: a dot for its state, its name, what it is, a detail.
+fn connector_row(c: &Connector) -> gpui::Div {
+    let (color, state) = match c.state {
+        ConnectorState::On => (theme::ok(), "on"),
+        ConnectorState::Off => (theme::fg_faint(), "off"),
+        ConnectorState::NeedsLogin => (theme::fg_faint(), "not connected"),
+        ConnectorState::Failed => (theme::err(), "failing"),
+    };
+    let kind = match c.kind {
+        ConnectorKind::Plugin => "Plugin",
+        ConnectorKind::Server => "Server",
+        ConnectorKind::Account => "Account",
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .py(px(6.))
+        .border_t_1()
+        .border_color(theme::border())
+        .child(div().size(px(8.)).flex_none().rounded_full().bg(color))
+        .child(
+            div()
+                .w(px(220.))
+                .flex_none()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .font_weight(FontWeight::MEDIUM)
+                .child(c.name.clone()),
+        )
+        .child(
+            div()
+                .w(px(64.))
+                .flex_none()
+                .text_size(px(11.5))
+                .text_color(theme::fg_faint())
+                .child(kind),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_size(px(12.))
+                .text_color(theme::fg_muted())
+                .child(c.detail.clone()),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_size(px(11.5))
+                .text_color(color)
+                .child(state),
+        )
 }
 
 fn hint(text: &str) -> gpui::Div {

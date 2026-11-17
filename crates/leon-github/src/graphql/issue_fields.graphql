@@ -1,0 +1,6 @@
+fragment issue on Issue {
+  number title url updatedAt
+  repository { nameWithOwner }
+  labels(first: 20) { nodes { name color } }
+  __BOARD__
+}

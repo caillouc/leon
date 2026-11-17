@@ -97,20 +97,62 @@ pub fn hex(digits: &str) -> Option<Rgba> {
     (digits.trim_start_matches('#').len() == 6).then(|| rgb(value))
 }
 
-/// A GitHub Project column's color name (`GRAY`, `BLUE`, `GREEN`…) in the
-/// theme.
-pub fn github_color(name: Option<&str>) -> Rgba {
-    match name {
-        Some("BLUE") => accent(),
-        Some("GREEN") => ok(),
-        Some("YELLOW" | "ORANGE") => warn(),
-        Some("RED") => err(),
-        Some("PINK" | "PURPLE") => merged(),
-        _ => fg_muted(),
-    }
+/// A board column's colour, by its place on the board: each column its own
+/// colour, in an order that suits the usual Backlog → Todo → In progress →
+/// In review → Done.
+pub fn status_color(order: usize) -> Rgba {
+    let palette = [
+        fg_muted(),
+        accent(),
+        warn(),
+        merged(),
+        ok(),
+        rgb(0x0073_c6d9),
+        rgb(0x00e8_9a5e),
+        err(),
+    ];
+    palette[order % palette.len()]
 }
 
 /// Dims the window behind a drawer.
 pub fn scrim() -> Rgba {
     gpui::rgba(0x0000_0099)
+}
+
+/// An agent's colour in the flow diagram, by its place among the
+/// conversation's agents.
+pub fn agent_color(index: usize) -> Rgba {
+    const PALETTE: [u32; 8] = [
+        0x007a_a2f7, // blue
+        0x00bb_9af7, // purple
+        0x0073_daca, // teal
+        0x00e0_af68, // amber
+        0x00f7_768e, // rose
+        0x009e_ce6a, // green
+        0x00ff_9e64, // orange
+        0x007d_cfff, // cyan
+    ];
+    rgb(PALETTE[index % PALETTE.len()])
+}
+
+/// Gives the widget library (inputs, menus, scrollbars) Leon's colours:
+/// a focused text box gets an accent edge instead of a grey wash.
+pub fn install(cx: &mut gpui::App) {
+    use gpui::Hsla;
+    let theme = gpui_component::Theme::global_mut(cx);
+    let hsla = |c: Rgba| Hsla::from(c);
+    theme.background = hsla(window());
+    theme.foreground = hsla(fg());
+    theme.muted_foreground = hsla(fg_muted());
+    theme.border = hsla(border());
+    theme.input = hsla(border_strong());
+    theme.ring = hsla(accent());
+    theme.popover = hsla(surface());
+    theme.secondary = hsla(surface_2());
+    theme.accent = hsla(surface_2());
+    theme.caret = hsla(fg());
+    theme.selection = hsla(Rgba {
+        a: 0.35,
+        ..accent()
+    });
 }

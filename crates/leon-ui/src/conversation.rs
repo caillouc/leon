@@ -8,7 +8,7 @@ use leon_core::SessionView;
 use leon_domain::{ConversationId, Status};
 
 use crate::theme;
-use crate::widgets::{empty, status_dot};
+use crate::widgets::{HEADER_HEIGHT, empty, status_dot};
 use crate::workspace::{Tab, Workspace};
 
 impl Workspace {
@@ -125,22 +125,28 @@ impl Workspace {
         let _ = window;
         div()
             .flex_none()
-            .px_4()
-            .pt_3()
-            .border_b_1()
-            .border_color(theme::border())
             .flex()
             .flex_col()
-            .gap_2()
             .child(
                 div()
+                    .h(px(HEADER_HEIGHT))
+                    .px_5()
                     .flex()
                     .items_center()
                     .gap_3()
+                    .border_b_1()
+                    .border_color(theme::border())
                     .child(div().flex_1().min_w_0().child(title))
                     .child(chip),
             )
-            .child(tabs)
+            .child(
+                div()
+                    .px_4()
+                    .pt_2()
+                    .border_b_1()
+                    .border_color(theme::border())
+                    .child(tabs),
+            )
             .into_any_element()
     }
 

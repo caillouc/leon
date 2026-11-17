@@ -9,7 +9,7 @@ use std::time::Duration;
 use leon_domain::{BackendKind, DoctorCheck, DoctorSection, Health, version_check};
 use serde_json::Value;
 
-use crate::process::{RunError, run};
+use crate::process::{RunError, program, run, strings};
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -20,18 +20,6 @@ fn checked_with(backend: BackendKind) -> Option<&'static str> {
         BackendKind::Codex => Some("0.160.0"),
         BackendKind::CopilotCli => None,
     }
-}
-
-fn program(backend: BackendKind) -> &'static str {
-    match backend {
-        BackendKind::ClaudeCode => "claude",
-        BackendKind::Codex => "codex",
-        BackendKind::CopilotCli => "copilot",
-    }
-}
-
-fn strings(items: &[&str]) -> Vec<String> {
-    items.iter().map(|s| (*s).to_owned()).collect()
 }
 
 pub(crate) fn section(path: Option<&OsString>, backend: BackendKind) -> DoctorSection {

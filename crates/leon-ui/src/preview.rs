@@ -47,6 +47,8 @@ pub enum Shot {
     Tools,
     /// A conversation's changed file, large in the drawer (path).
     Drawer(ConversationId, &'static str),
+    /// An issue's or a pull request's details in the drawer.
+    Detail(Box<leon_core::Detail>),
 }
 
 impl Workspace {
@@ -105,6 +107,7 @@ impl Workspace {
                     source: DiffSource::Changes,
                     path: "src/webhooks/retry.rs".into(),
                     line,
+                    end: line,
                     kind: LineKind::Added,
                     code: String::new(),
                 };
@@ -116,6 +119,7 @@ impl Workspace {
                         comment: ReviewComment {
                             path: first.path,
                             line: first.line,
+                            end: first.end,
                             kind: first.kind,
                             code: first.code,
                             text: "15 minutes is long for a webhook; make it a setting?".into(),
@@ -126,6 +130,16 @@ impl Workspace {
             }
             Shot::MyPullRequests => self.screen = Screen::GitHub(GhList::PullRequests),
             Shot::MyIssues => self.screen = Screen::GitHub(GhList::Issues),
+            Shot::Detail(detail) => {
+                self.screen = Screen::GitHub(match detail.item().kind {
+                    leon_domain::GhKind::Issue => GhList::Issues,
+                    leon_domain::GhKind::PullRequest => GhList::PullRequests,
+                });
+                self.snapshot = std::sync::Arc::new(leon_core::Snapshot {
+                    detail: Some((**detail).clone()),
+                    ..(*self.snapshot).clone()
+                });
+            }
             Shot::Doctor => self.screen = Screen::Doctor,
             Shot::Tools => self.screen = Screen::Tools,
             Shot::RowMenu(id) => {
@@ -143,6 +157,7 @@ impl Workspace {
 pub fn capture(core: &CoreHandle, shots: Vec<(String, Shot)>, out: PathBuf, cx: &mut App) {
     gpui_component::init(cx);
     Theme::change(ThemeMode::Dark, None, cx);
+    crate::theme::install(cx);
     let bounds = Bounds {
         origin: point(px(-10_000.), px(-10_000.)),
         size: size(px(1360.), px(860.)),

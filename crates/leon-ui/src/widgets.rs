@@ -90,3 +90,77 @@ fn base_button(
         .child(text.into())
         .on_click(on_click)
 }
+
+/// What a click on a control does.
+pub type OnClick = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
+/// A choice between a few options shown side by side; the chosen one is
+/// filled. Each option: its label, whether it is chosen, what a click does.
+pub fn segmented(id: &'static str, options: Vec<(SharedString, bool, OnClick)>) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .p(px(2.))
+        .gap(px(2.))
+        .rounded_md()
+        .border_1()
+        .border_color(theme::border_strong())
+        .bg(theme::window())
+        .children(
+            options
+                .into_iter()
+                .enumerate()
+                .map(|(ix, (text, on, click))| {
+                    div()
+                        .id((id, ix))
+                        .px_2()
+                        .py(px(2.))
+                        .rounded(px(4.))
+                        .text_size(px(12.))
+                        .cursor_pointer()
+                        .when(on, |d| d.bg(theme::accent_soft()).text_color(theme::fg()))
+                        .when(!on, |d| {
+                            d.text_color(theme::fg_muted())
+                                .hover(|s| s.text_color(theme::fg()))
+                        })
+                        .child(text)
+                        .on_click(move |e, w, cx| click(e, w, cx))
+                }),
+        )
+}
+
+/// Height of every pane's top row, so the dividers under them line up.
+pub const HEADER_HEIGHT: f32 = 48.;
+
+/// A pane's top row: its title, a muted subtitle, then whatever the caller
+/// adds on the right (after a spacer).
+pub fn pane_header(title: impl Into<SharedString>, subtitle: Option<String>) -> Div {
+    let title: SharedString = title.into();
+    div()
+        .flex_none()
+        .h(px(HEADER_HEIGHT))
+        .px_5()
+        .flex()
+        .items_center()
+        .gap_3()
+        .border_b_1()
+        .border_color(theme::border())
+        .child(
+            div()
+                .flex_none()
+                .text_size(px(15.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .child(title),
+        )
+        .children(subtitle.map(|text| {
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_size(px(12.5))
+                .text_color(theme::fg_faint())
+                .child(text)
+        }))
+        .child(div().flex_1())
+}

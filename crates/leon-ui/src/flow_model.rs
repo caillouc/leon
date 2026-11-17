@@ -62,12 +62,13 @@ impl Edge {
     }
 }
 
-/// Boxes, arrows and how deep each box is (who started whom).
+/// Boxes, arrows, and who started each agent session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FlowModel {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
-    pub depth: HashMap<Node, usize>,
+    /// The box that started each session's box: "You" or another session.
+    pub parent: HashMap<Node, Node>,
 }
 
 /// Builds the flow of one conversation from its sessions (in order) and
@@ -77,12 +78,11 @@ pub(crate) fn build(
     transcripts: &HashMap<AgentSessionId, Arc<TranscriptView>>,
 ) -> FlowModel {
     let mut nodes = vec![Node::You];
-    let mut depth = HashMap::from([(Node::You, 0)]);
+    let mut parent = HashMap::new();
     for s in sessions {
-        let parent = s.session.started_by.map_or(Node::You, Node::Session);
-        let d = depth.get(&parent).copied().unwrap_or(0) + 1;
-        depth.insert(Node::Session(s.session.id), d);
-        nodes.push(Node::Session(s.session.id));
+        let me = Node::Session(s.session.id);
+        parent.insert(me, s.session.started_by.map_or(Node::You, Node::Session));
+        nodes.push(me);
     }
     let mut edges: Vec<Edge> = Vec::new();
     let mut add = |from: Node, to: Node, kind: EdgeKind, item: Item| match edges
@@ -158,7 +158,7 @@ pub(crate) fn build(
     FlowModel {
         nodes,
         edges,
-        depth,
+        parent,
     }
 }
 
@@ -186,142 +186,6 @@ pub(crate) fn status_text(s: &SessionView, waiting_for: Option<&str>) -> String 
         Status::Idle => {
             waiting_for.map_or_else(|| "Done".to_owned(), |name| format!("Waiting for {name}"))
         }
-    }
-}
-
-/// A point or a size in the diagram's own units (before zoom).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Pt {
-    pub x: f32,
-    pub y: f32,
-}
-
-/// A box's place in the diagram.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Rect {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-}
-
-pub(crate) const NODE: Pt = Pt { x: 200., y: 96. };
-pub(crate) const YOU: Pt = Pt { x: 140., y: 56. };
-const COL_GAP: f32 = 124.;
-const ROW_GAP: f32 = 46.;
-
-pub(crate) fn size_of(node: Node) -> Pt {
-    match node {
-        Node::You => YOU,
-        Node::Session(_) => NODE,
-    }
-}
-
-/// Columns by depth, boxes centred on each column (the automatic layout).
-#[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
-pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
-    let mut columns: Vec<Vec<Node>> = Vec::new();
-    for node in &model.nodes {
-        let d = model.depth.get(node).copied().unwrap_or(0);
-        if columns.len() <= d {
-            columns.resize(d + 1, Vec::new());
-        }
-        columns[d].push(*node);
-    }
-    let mut pos = HashMap::new();
-    for (d, column) in columns.iter().enumerate() {
-        let total: f32 = column.iter().map(|n| size_of(*n).y).sum::<f32>()
-            + ROW_GAP * column.len().saturating_sub(1) as f32;
-        let mut y = -total / 2.;
-        for node in column {
-            let size = size_of(*node);
-            let x = d as f32 * (NODE.x + COL_GAP) + (NODE.x - size.x) / 2.;
-            pos.insert(*node, Pt { x, y });
-            y += size.y + ROW_GAP;
-        }
-    }
-    pos
-}
-
-pub(crate) fn rect(node: Node, at: Pt) -> Rect {
-    let size = size_of(node);
-    Rect {
-        x: at.x,
-        y: at.y,
-        w: size.x,
-        h: size.y,
-    }
-}
-
-/// The smallest rectangle holding every box.
-pub(crate) fn bounds(rects: impl IntoIterator<Item = Rect>) -> Option<Rect> {
-    rects.into_iter().reduce(|a, b| {
-        let x = a.x.min(b.x);
-        let y = a.y.min(b.y);
-        Rect {
-            x,
-            y,
-            w: (a.x + a.w).max(b.x + b.w) - x,
-            h: (a.y + a.h).max(b.y + b.h) - y,
-        }
-    })
-}
-
-/// An orthogonal route from box `a` to box `b`, shifted by `off` so that the
-/// two directions between the same boxes do not overlap.
-pub(crate) fn route(a: Rect, b: Rect, off: f32) -> Vec<Pt> {
-    let (acx, acy) = (a.x + a.w / 2., a.y + a.h / 2.);
-    let (bcx, bcy) = (b.x + b.w / 2., b.y + b.h / 2.);
-    let gap_x = (bcx - acx).abs() - f32::midpoint(a.w, b.w);
-    let gap_y = (bcy - acy).abs() - f32::midpoint(a.h, b.h);
-    if gap_x >= gap_y {
-        let right = bcx > acx;
-        let (x1, x2) = if right {
-            (a.x + a.w, b.x)
-        } else {
-            (a.x, b.x + b.w)
-        };
-        let (y1, y2) = (acy + off, bcy + off);
-        if (y1 - y2).abs() < 2. {
-            return vec![Pt { x: x1, y: y1 }, Pt { x: x2, y: y1 }];
-        }
-        let mx = f32::midpoint(x1, x2) + off;
-        return vec![
-            Pt { x: x1, y: y1 },
-            Pt { x: mx, y: y1 },
-            Pt { x: mx, y: y2 },
-            Pt { x: x2, y: y2 },
-        ];
-    }
-    let down = bcy > acy;
-    let (y1, y2) = if down {
-        (a.y + a.h, b.y)
-    } else {
-        (a.y, b.y + b.h)
-    };
-    let (x1, x2) = (acx + off, bcx + off);
-    if (x1 - x2).abs() < 2. {
-        return vec![Pt { x: x1, y: y1 }, Pt { x: x1, y: y2 }];
-    }
-    let my = f32::midpoint(y1, y2) + off;
-    vec![
-        Pt { x: x1, y: y1 },
-        Pt { x: x1, y: my },
-        Pt { x: x2, y: my },
-        Pt { x: x2, y: y2 },
-    ]
-}
-
-/// Where an arrow's label sits: the middle of its first long segment.
-pub(crate) fn label_at(points: &[Pt]) -> Pt {
-    let (a, b) = match points {
-        [a, b] | [_, a, b, ..] => (*a, *b),
-        [a] => (*a, *a),
-        [] => (Pt { x: 0., y: 0. }, Pt { x: 0., y: 0. }),
-    };
-    Pt {
-        x: f32::midpoint(a.x, b.x),
-        y: f32::midpoint(a.y, b.y),
     }
 }
 
@@ -370,5 +234,8 @@ impl View {
     }
 }
 
+mod layout;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use layout::{Pt, Rect, Step, bends, bounds, label_at, layout, rect, route};

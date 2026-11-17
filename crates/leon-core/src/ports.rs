@@ -127,6 +127,14 @@ pub trait SharedTools: Send + Sync + 'static {
     fn remove(&self, name: &str) -> Result<(), PortError>;
 }
 
+/// The user's config file (P9), which the Settings view writes.
+pub trait ConfigFile: Send + Sync + 'static {
+    /// Where it is; `None` when the user has no home folder.
+    fn path(&self) -> Option<&Path>;
+    /// Writes `settings` into it, keeping the rest of the file.
+    fn save(&self, settings: &leon_domain::Settings) -> Result<(), PortError>;
+}
+
 /// Where agent definitions come from (EXT-1, P3).
 pub trait Catalog: Send + Sync + 'static {
     /// Agents available in `project`, user-level and project-level, sorted by
@@ -301,9 +309,9 @@ pub trait Backends: Send + Sync + 'static {
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError>;
     /// Doctor: one section per CLI (installed, version, logged in). Blocks.
     fn doctor(&self) -> Vec<DoctorSection>;
-    /// Tools view: one section per CLI listing its own MCP servers (with
-    /// their state) and plugins. Blocks; can take seconds.
-    fn tools(&self) -> Vec<DoctorSection>;
+    /// Connectors view (TOOLS-1): each CLI's plugins, MCP servers and
+    /// account connectors, with their state. Blocks; can take seconds.
+    fn connectors(&self) -> Vec<leon_domain::CliConnectors>;
 }
 
 /// The `PATH` adapters start programs with: the user's login-shell `PATH`,
@@ -346,6 +354,10 @@ pub trait GitHub: Send + Sync + 'static {
     fn my_issues(&self) -> Result<Vec<Issue>, PortError>;
     /// Open pull requests the user opened (GH-3).
     fn my_pull_requests(&self) -> Result<Vec<PullRequest>, PortError>;
+    /// One pull request with its checks, reviewers and comments (GH-3).
+    fn pull_request_by_number(&self, repo: &str, number: u64) -> Result<PullRequest, PortError>;
+    /// One issue with its board fields, assignees, body and comments (GH-2).
+    fn issue(&self, repo: &str, number: u64) -> Result<Issue, PortError>;
     /// Asks Copilot to review a pull request (GH-5).
     fn request_copilot_review(&self, repo: &str, number: u64) -> Result<(), PortError>;
     /// Posts a comment on a pull request or an issue (GH-6).

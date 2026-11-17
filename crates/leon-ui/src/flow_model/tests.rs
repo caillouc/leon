@@ -8,7 +8,8 @@ use leon_domain::{
     TimedEntry,
 };
 
-use super::{EdgeKind, Node, Pt, Rect, View, build, layout, route};
+use super::layout::rings;
+use super::{Edge, EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build, layout, route};
 
 fn session(id: i64, started_by: Option<i64>) -> SessionView {
     SessionView {
@@ -128,7 +129,7 @@ fn arrows_come_from_what_the_sessions_did() {
             "{from:?} → {to:?} {kind:?}"
         );
     }
-    assert_eq!(model.depth[&coder], 2);
+    assert_eq!(model.parent[&coder], planner);
 
     let pos = layout(&model);
     assert!(pos[&Node::You].x < pos[&planner].x && pos[&planner].x < pos[&coder].x);
@@ -185,4 +186,115 @@ fn zoom_keeps_the_point_under_the_cursor() {
         600.,
     );
     assert!((fit.scale - 1.1).abs() < f32::EPSILON);
+}
+
+#[test]
+fn bends_are_rounded_within_their_segments() {
+    let p = |x, y| Pt { x, y };
+    let route = [p(0., 0.), p(100., 0.), p(100., 10.), p(200., 10.)];
+    assert_eq!(
+        bends(&route, 0.),
+        [
+            Step::Line(p(100., 0.)),
+            Step::Line(p(100., 10.)),
+            Step::Line(p(200., 10.))
+        ]
+    );
+    // The 10-long middle segment limits each bend to a radius of 5.
+    assert_eq!(
+        bends(&route, 16.),
+        [
+            Step::Line(p(95., 0.)),
+            Step::Curve {
+                to: p(100., 5.),
+                ctrl: p(100., 0.)
+            },
+            Step::Line(p(100., 5.)),
+            Step::Curve {
+                to: p(105., 10.),
+                ctrl: p(100., 10.)
+            },
+            Step::Line(p(200., 10.)),
+        ]
+    );
+    assert_eq!(
+        bends(&[p(0., 0.), p(50., 0.)], 16.),
+        [Step::Line(p(50., 0.))]
+    );
+}
+
+/// A model from (session, who started it) and (from, to) prompts.
+fn model(sessions: &[(i64, Option<i64>)], messages: &[(i64, i64)]) -> FlowModel {
+    let node = |id| {
+        if id == 0 {
+            Node::You
+        } else {
+            Node::Session(AgentSessionId(id))
+        }
+    };
+    FlowModel {
+        nodes: std::iter::once(Node::You)
+            .chain(sessions.iter().map(|(id, _)| node(*id)))
+            .collect(),
+        edges: messages
+            .iter()
+            .map(|(from, to)| Edge {
+                from: node(*from),
+                to: node(*to),
+                kind: EdgeKind::Prompt,
+                items: vec![],
+            })
+            .collect(),
+        parent: sessions
+            .iter()
+            .map(|(id, by)| (node(*id), by.map_or(Node::You, node)))
+            .collect(),
+    }
+}
+
+type Rings = Vec<(Node, Vec<Node>)>;
+
+#[test]
+fn agents_messaging_in_a_loop_make_a_ring() {
+    let s = |id| Node::Session(AgentSessionId(id));
+    let chain = [(1, None), (2, Some(1)), (3, Some(2))];
+    let cases: Vec<(FlowModel, Rings)> = vec![
+        // Only who-started-whom messages, and yours: no ring.
+        (
+            model(&chain, &[(0, 1), (1, 2), (2, 3), (3, 2), (0, 3)]),
+            vec![],
+        ),
+        // planner → coder → reviewer, and the reviewer back to the planner.
+        (
+            model(&chain, &[(1, 2), (2, 3), (3, 1)]),
+            vec![(s(1), vec![s(2), s(3)])],
+        ),
+        // The planner straight to the reviewer the coder started.
+        (model(&chain, &[(1, 3)]), vec![(s(1), vec![s(2), s(3)])]),
+        // Two agents the planner started, talking to each other.
+        (
+            model(&[(1, None), (2, Some(1)), (3, Some(1))], &[(2, 3)]),
+            vec![(s(1), vec![s(2), s(3)])],
+        ),
+    ];
+    for (model, expected) in cases {
+        assert_eq!(rings(&model), expected, "{:?}", model.edges);
+    }
+}
+
+#[test]
+fn a_ring_sits_in_one_bowed_column_after_its_first_agent() {
+    let s = |id| Node::Session(AgentSessionId(id));
+    // planner (1) → coder (2) → reviewer (3) → back to planner; the reviewer
+    // started a tester (4).
+    let m = model(
+        &[(1, None), (2, Some(1)), (3, Some(2)), (4, Some(3))],
+        &[(1, 2), (2, 3), (3, 1), (3, 4)],
+    );
+    let pos = layout(&m);
+    let (planner, coder, reviewer, tester) = (pos[&s(1)], pos[&s(2)], pos[&s(3)], pos[&s(4)]);
+    assert!(planner.x < coder.x, "{pos:?}");
+    assert!((coder.x - reviewer.x).abs() < 1., "same column: {pos:?}");
+    assert!(coder.y < reviewer.y, "in loop order: {pos:?}");
+    assert!(tester.x > reviewer.x, "{pos:?}");
 }

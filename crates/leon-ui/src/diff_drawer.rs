@@ -1,99 +1,89 @@
-//! One file's diff, large, in a drawer over the middle of the window
-//! (GIT-1, GIT-3): opened from a file in Changes or Branch, closed with ×
-//! or a click beside it. Comments work as in the right pane.
+//! Every file's diff, large, in a drawer over the middle of the window
+//! (GIT-2, GIT-3, GIT-5): opened at the file clicked in Changes or Branch,
+//! scrolled through file after file, closed with Close or a click beside it.
+//! Comments are written here, and the pending review is sent from here too.
 
-use gpui::{AnyElement, Context, FontWeight, IntoElement, div, prelude::*, px, relative};
+use gpui::{AnyElement, Context, FontWeight, Window, div, prelude::*, px};
 
-use crate::diff_view::{DiffSource, counts, path_text, status_letter};
+use crate::diff_rows::counts;
+use crate::diff_view::DiffSource;
+use crate::drawer::drawer;
 use crate::theme;
-use crate::widgets::button;
 use crate::workspace::{Screen, Workspace};
 
+/// The open drawer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Drawer {
+    pub source: DiffSource,
+    /// The file to scroll to on the next render.
+    pub scroll_to: Option<String>,
+}
+
 impl Workspace {
+    /// Opens the drawer at `path`, unfolding it if `diff.fold` folded it.
     pub(crate) fn open_drawer(&mut self, source: DiffSource, path: String, cx: &mut Context<Self>) {
         if let Screen::Conversation(id) = self.screen {
-            // A fresh list: the file opens at its top.
-            self.right.lists.remove(&(id, source, true));
+            self.right.open.insert((id, source, path.clone()), true);
         }
-        self.right.drawer = Some((source, path));
+        self.right.drawer = Some(Drawer {
+            source,
+            scroll_to: Some(path),
+        });
         cx.notify();
     }
 
-    fn close_drawer(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close_drawer(&mut self, cx: &mut Context<Self>) {
         self.right.drawer = None;
         cx.notify();
     }
 
-    /// The drawer, when a file is open in it.
-    pub(crate) fn render_drawer(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// The drawer, when it is open.
+    pub(crate) fn render_drawer(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
         let Screen::Conversation(id) = self.screen else {
             return None;
         };
-        let (source, path) = self.right.drawer.clone()?;
-        let file = self.snapshot.git.get(&id).and_then(|git| {
-            let files = match source {
-                DiffSource::Changes => &git.changes,
-                DiffSource::Branch => &git.branch_diff,
-            };
-            files.iter().find(|f| f.path == path).cloned()
-        });
-        let body = self.render_diff(id, source, Some(&path), cx);
-        let header = div()
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap_2()
-            .px_4()
-            .py_3()
-            .border_b_1()
-            .border_color(theme::border())
-            .text_size(px(13.))
-            .children(file.as_ref().map(|f| status_letter(f.status)))
-            .child(path_text(&path).font_weight(FontWeight::MEDIUM))
-            .children(file.as_ref().map(|f| counts(f.added, f.removed)))
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(theme::fg_faint())
-                    .child(match source {
-                        DiffSource::Changes => "Uncommitted",
-                        DiffSource::Branch => "Branch",
-                    }),
-            )
-            .child(button(
-                "drawer-close",
-                "Close",
-                cx.listener(|this, _, _, cx| this.close_drawer(cx)),
-            ));
-        let panel = div()
-            .id("drawer")
-            .w(relative(0.84))
-            .max_w(px(1400.))
-            .h(relative(0.9))
-            .flex()
-            .flex_col()
-            .rounded_xl()
-            .border_1()
-            .border_color(theme::border_strong())
-            .bg(theme::window())
-            .shadow_lg()
-            .overflow_hidden()
-            // A click inside the drawer does not reach the scrim.
-            .on_click(|_, _, cx| cx.stop_propagation())
-            .child(header)
-            .child(div().flex_1().min_h_0().flex().flex_col().child(body));
-        Some(
+        let open = self.right.drawer.as_mut()?;
+        let source = open.source;
+        let scroll_to = open.scroll_to.take();
+        let summary = self.diff_files(id, source).ok().map(|diff| {
+            let n = diff.files.len();
+            let added: u32 = diff.files.iter().map(|f| f.added).sum();
+            let removed: u32 = diff.files.iter().map(|f| f.removed).sum();
             div()
-                .id("drawer-scrim")
-                .absolute()
-                .inset_0()
                 .flex()
                 .items_center()
-                .justify_center()
-                .bg(theme::scrim())
-                .on_click(cx.listener(|this, _, _, cx| this.close_drawer(cx)))
-                .child(panel)
-                .into_any_element(),
-        )
+                .gap_2()
+                .text_size(px(12.5))
+                .text_color(theme::fg_muted())
+                .child(format!("{n} file{}", if n == 1 { "" } else { "s" }))
+                .child(counts(added, removed))
+                .child(diff.against)
+        });
+        let header = div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(match source {
+                        DiffSource::Changes => "Uncommitted changes",
+                        DiffSource::Branch => "Branch diff",
+                    }),
+            )
+            .children(summary);
+        let body = self.diff_rows(id, source, scroll_to.as_deref(), cx);
+        let review = self.render_review_bar(id, window, cx);
+        Some(drawer(
+            header,
+            body,
+            review,
+            cx.listener(|this, _, _, cx| this.close_drawer(cx)),
+        ))
     }
 }

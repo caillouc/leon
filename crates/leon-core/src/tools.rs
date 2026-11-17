@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use leon_domain::{DoctorSection, McpServer};
+use leon_domain::{CliConnectors, McpServer};
 
 use crate::app::Core;
 use crate::repo::Internal;
@@ -53,13 +53,13 @@ impl Core {
         let backends = Arc::clone(&self.ports.backends);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || {
-            let _ = tx.send(Internal::Tools(backends.tools()));
+            let _ = tx.send(Internal::Tools(backends.connectors()));
         });
     }
 
-    pub(crate) fn tools_done(&mut self, sections: Vec<DoctorSection>) {
+    pub(crate) fn tools_done(&mut self, connectors: Vec<CliConnectors>) {
         self.state.tools_running = false;
-        self.state.tools = Some((self.now_ms(), Arc::new(sections)));
+        self.state.tools = Some((self.now_ms(), Arc::new(connectors)));
     }
 
     /// The MCP servers a session gets: Leon's own tools, then the shared

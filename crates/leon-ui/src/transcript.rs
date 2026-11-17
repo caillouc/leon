@@ -9,6 +9,7 @@ use gpui_component::text::TextView;
 use leon_core::TranscriptView;
 use leon_domain::{AgentSessionId, Entry, TimedEntry};
 
+use crate::icons::chevron;
 use crate::theme;
 use crate::widgets::empty;
 use crate::workspace::Workspace;
@@ -97,10 +98,13 @@ fn entry_view(
         Entry::User { text } => {
             let (view_edit, text_edit) = (view.clone(), text.clone());
             let group: SharedString = format!("user-{ix}").into();
+            // "Edit from here" floats in the top-right corner on hover, so a
+            // one-line message keeps a one-line box.
             div()
+                .relative()
                 .my_1()
                 .px_3()
-                .py_2()
+                .py(px(9.))
                 .rounded_lg()
                 .border_1()
                 .border_color(theme::border())
@@ -110,9 +114,15 @@ fn entry_view(
                 .child(
                     div()
                         .id(id("edit"))
-                        .mt_1()
+                        .absolute()
+                        .top(px(6.))
+                        .right(px(8.))
+                        .px_2()
+                        .py(px(2.))
+                        .rounded_md()
+                        .bg(theme::surface_2())
                         .text_size(px(11.5))
-                        .text_color(theme::fg_faint())
+                        .text_color(theme::fg_muted())
                         .opacity(0.)
                         .group_hover(group, |s| s.opacity(1.))
                         .cursor_pointer()
@@ -186,11 +196,9 @@ fn entry_view(
                     div()
                         .flex()
                         .gap_2()
-                        .child(
-                            div()
-                                .text_color(theme::fg())
-                                .child(format!("{} {name}", if expanded { "▾" } else { "▸" })),
-                        )
+                        .items_center()
+                        .child(chevron(expanded, theme::fg_muted(), 12.))
+                        .child(div().text_color(theme::fg()).child(name.clone()))
                         .child(
                             div()
                                 .overflow_hidden()

@@ -222,7 +222,7 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
             Vec::new()
         }
-        fn tools(&self) -> Vec<leon_domain::DoctorSection> {
+        fn connectors(&self) -> Vec<leon_domain::CliConnectors> {
             Vec::new()
         }
     }
@@ -240,6 +240,7 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         project: ProjectId(1),
         settings: settings(BackendKind::Codex),
         text: "hi".into(),
+        issue: None,
     });
     let s = until(&core, "error", |s| {
         s.conversations

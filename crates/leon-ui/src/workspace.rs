@@ -29,8 +29,10 @@ pub(crate) enum Screen {
     GitHub(GhList),
     /// What works and what needs setting up.
     Doctor,
-    /// MCP servers: Leon's shared list and each CLI's own (TOOLS-1).
+    /// What each CLI is connected to (TOOLS-1).
     Tools,
+    /// The user's settings (SETTINGS-1).
+    Settings,
 }
 
 /// The tab shown for a conversation (FLOW-3): the flow, or one agent session.
@@ -45,6 +47,8 @@ pub(crate) enum Tab {
 pub(crate) struct NewForm {
     pub project: Option<ProjectId>,
     pub settings: SessionSettings,
+    /// The issue the conversation is started for (GH-2).
+    pub issue: Option<leon_domain::GhRef>,
 }
 
 /// Root view of the window.
@@ -54,6 +58,10 @@ pub struct Workspace {
     pub(crate) screen: Screen,
     pub(crate) tabs: HashMap<ConversationId, Tab>,
     pub(crate) composer: Entity<TextareaState>,
+    /// The workspace's own focus, so shortcuts work with no text box focused.
+    pub(crate) focus: gpui::FocusHandle,
+    /// What the message box shows while empty: the suggestion, if any.
+    pub(crate) composer_placeholder: SharedString,
     pub(crate) form_text: Entity<TextareaState>,
     pub(crate) search: Entity<InputState>,
     /// The conversation being renamed in the left pane, its input, and the
@@ -75,7 +83,9 @@ pub struct Workspace {
     pub(crate) right: RightState,
     pub(crate) flow: FlowState,
     pub(crate) panes: crate::panes::Panes,
+    pub(crate) gh: crate::github::GhState,
     pub(crate) tools_form: crate::tools_view::ToolsForm,
+    pub(crate) settings_form: crate::settings_view::SettingsForm,
     /// The flash message shown, by id (an action's result).
     flash: Option<(u64, String)>,
     /// Open the next new conversation when it shows up.
@@ -110,7 +120,7 @@ impl Workspace {
             TextareaState::new(window, cx)
                 .auto_grow(1, 10)
                 .submit_on_enter(true)
-                .placeholder("Message the agent")
+                .placeholder(crate::message_input::PLACEHOLDER)
         });
         let form_text = cx.new(|cx| {
             TextareaState::new(window, cx)
@@ -121,6 +131,7 @@ impl Workspace {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search conversations"));
         let (right, right_subscriptions) = RightState::new(window, cx);
         let tools_form = crate::tools_view::ToolsForm::new(window, cx);
+        let settings_form = crate::settings_view::SettingsForm::new(window, cx);
         let mut subscriptions = vec![
             cx.subscribe_in(
                 &composer,
@@ -149,12 +160,15 @@ impl Workspace {
         subscriptions.extend(right_subscriptions);
         let snapshot = core.snapshot();
         let defaults = snapshot.settings.defaults.clone();
+        let gh = crate::github::GhState::new(window, cx);
         Self {
             core: core.clone(),
             snapshot,
             screen: Screen::Nothing,
             tabs: HashMap::new(),
             composer,
+            focus: cx.focus_handle(),
+            composer_placeholder: crate::message_input::PLACEHOLDER.into(),
             form_text,
             search,
             rename: None,
@@ -168,6 +182,7 @@ impl Workspace {
                     effort: defaults.effort,
                     permission: defaults.permission,
                 },
+                issue: None,
             },
             open_picker: None,
             show_archived: false,
@@ -178,7 +193,9 @@ impl Workspace {
             right,
             flow: FlowState::default(),
             panes: crate::panes::Panes::default(),
+            gh,
             tools_form,
+            settings_form,
             flash: None,
             pending_open: false,
             shown_notifications: 0,
@@ -257,6 +274,7 @@ impl Workspace {
     pub(crate) fn select(&mut self, id: ConversationId, cx: &mut Context<Self>) {
         self.screen = Screen::Conversation(id);
         self.tabs.remove(&id);
+        self.close_detail();
         self.open_picker = None;
         self.rename = None;
         self.row_menu = None;
@@ -277,7 +295,15 @@ impl Workspace {
         }
     }
 
+    /// Closes the issue or pull request drawer, if open.
+    pub(crate) fn close_detail(&self) {
+        if self.snapshot.detail.is_some() {
+            self.core.send(Intent::ShowDetail(None));
+        }
+    }
+
     pub(crate) fn show_new_conversation(&mut self, cx: &mut Context<Self>) {
+        self.close_detail();
         self.screen = Screen::NewConversation;
         self.open_picker = None;
         if self.form.project.is_none() {
@@ -289,10 +315,12 @@ impl Workspace {
 
     /// Opens the new-conversation form on `project` (when known), with
     /// `message` written in it when given, ready to type.
+    /// Opens the new-conversation form on `project` (when known). For an
+    /// issue, the conversation is linked to it and the message names it.
     pub(crate) fn open_new_conversation(
         &mut self,
         project: Option<ProjectId>,
-        message: Option<&str>,
+        issue: Option<(leon_domain::GhRef, String)>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -301,8 +329,8 @@ impl Workspace {
             self.form.settings.agent = None;
         }
         self.show_new_conversation(cx);
-        if let Some(message) = message {
-            let message = message.to_owned();
+        if let Some((issue, message)) = issue {
+            self.form.issue = Some(issue);
             self.form_text.update(cx, |state, cx| {
                 state.set_value(message, window, cx);
             });
@@ -376,6 +404,7 @@ impl Render for Workspace {
             Screen::GitHub(list) => self.render_github_list(list, cx),
             Screen::Doctor => self.render_doctor(cx),
             Screen::Tools => self.render_tools(cx),
+            Screen::Settings => self.render_settings(cx),
         };
         let flash = self.flash.as_ref().map(|(_, text)| {
             div()
@@ -398,8 +427,8 @@ impl Render for Workspace {
                         .child(text.clone()),
                 )
         });
-        div()
-            .size_full()
+        let root = self.shortcut_handlers(div(), cx);
+        root.size_full()
             .relative()
             .flex()
             .flex_row()
@@ -409,7 +438,10 @@ impl Render for Workspace {
             .on_mouse_move(cx.listener(|this, e, window, cx| this.resize_panes(e, window, cx)))
             .on_mouse_up(
                 gpui::MouseButton::Left,
-                cx.listener(|this, _, _, _| this.panes.resizing = None),
+                cx.listener(|this, _, window, cx| {
+                    this.panes.resizing = None;
+                    this.finish_selection(window, cx);
+                }),
             )
             .child(self.render_left(window, cx))
             .child(Self::pane_handle(Side::Left, cx))
@@ -424,7 +456,8 @@ impl Render for Workspace {
             )
             .child(Self::pane_handle(Side::Right, cx))
             .child(self.render_right(window, cx))
-            .children(self.render_drawer(cx))
+            .children(self.render_drawer(window, cx))
+            .children(self.render_detail(cx))
             .children(flash)
     }
 }

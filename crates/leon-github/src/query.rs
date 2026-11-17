@@ -1,17 +1,27 @@
 //! The `gh` argument lists Leon runs. Each value is one argument; branch,
-//! search and comment text go through `-f` (raw: no `@file` reading, no
-//! type guessing), only the `{owner}`/`{repo}` placeholders through `-F`.
+//! search, repository and comment text go through `-f` (raw: no `@file`
+//! reading, no type guessing); `-F` only takes the `{owner}`/`{repo}`
+//! placeholders and numbers (sent as GraphQL `Int`).
 
 /// The pull requests of one head branch, with comments and checks; `gh`
 /// fills `{owner}` and `{repo}` from the folder it runs in.
 const PULL_REQUEST: &str = include_str!("graphql/pull_request.graphql");
+/// One pull request by number, with comments and checks.
+const PULL_REQUEST_NUMBER: &str = include_str!("graphql/pull_request_number.graphql");
+/// One issue by number, with assignees, body and comments.
+const ISSUE: &str = include_str!("graphql/issue.graphql");
 /// One search over issues and pull requests.
 const SEARCH: &str = include_str!("graphql/search.graphql");
-/// The pull request fields both queries read.
+/// The pull request fields every query reads.
 const PR_FIELDS: &str = include_str!("graphql/pr_fields.graphql");
-/// An issue's column on its GitHub Project board; needs the token's
+/// The checks and comments of a pull request read alone.
+const PR_DETAILS: &str = include_str!("graphql/pr_details.graphql");
+/// The issue fields every query reads; `__BOARD__` marks where the board
+/// fields go.
+const ISSUE_FIELDS: &str = include_str!("graphql/issue_fields.graphql");
+/// An issue's fields on its GitHub Project boards; needs the token's
 /// `read:project` scope.
-const ISSUE_STATUS: &str = include_str!("graphql/issue_status.graphql");
+const BOARD: &str = include_str!("graphql/board.graphql");
 
 /// Open issues assigned to the user (GH-2).
 pub(crate) const MY_ISSUES: &str = "is:issue is:open assignee:@me sort:updated-desc";
@@ -35,29 +45,73 @@ pub(crate) fn pull_request(branch: &str) -> Vec<String> {
         "-f",
         &format!("branch={branch}"),
         "-f",
-        &format!("query={PULL_REQUEST}{PR_FIELDS}"),
+        &format!("query={PULL_REQUEST}{PR_FIELDS}{PR_DETAILS}"),
     ])
 }
 
+/// `gh api graphql` for pull request `number` of `owner/name`.
+pub(crate) fn pull_request_by_number(owner: &str, name: &str, number: u64) -> Vec<String> {
+    by_number(
+        owner,
+        name,
+        number,
+        &format!("{PULL_REQUEST_NUMBER}{PR_FIELDS}{PR_DETAILS}"),
+    )
+}
+
+/// `gh api graphql` for issue `number` of `owner/name`; with `board`, with
+/// its Project board fields.
+pub(crate) fn issue(owner: &str, name: &str, number: u64, board: bool) -> Vec<String> {
+    by_number(
+        owner,
+        name,
+        number,
+        &format!("{ISSUE}{}", issue_fields(board)),
+    )
+}
+
+fn by_number(owner: &str, name: &str, number: u64, query: &str) -> Vec<String> {
+    owned([
+        "api",
+        "graphql",
+        "-f",
+        &format!("owner={owner}"),
+        "-f",
+        &format!("name={name}"),
+        "-F",
+        &format!("number={number}"),
+        "-f",
+        &format!("query={query}"),
+    ])
+}
+
+/// The owner and the name of an `owner/name` repository.
+pub(crate) fn owner_and_name(repo: &str) -> Option<(&str, &str)> {
+    let (owner, name) = repo.split_once('/')?;
+    let valid = !owner.is_empty() && !name.is_empty() && !name.contains('/');
+    valid.then_some((owner, name))
+}
+
 /// `gh api graphql` for a GitHub search (`q` in GitHub's search syntax);
-/// with `status`, issues come with their Project board column.
-pub(crate) fn search(q: &str, status: bool) -> Vec<String> {
-    let query = if status {
-        format!(
-            "{}{PR_FIELDS}{ISSUE_STATUS}",
-            SEARCH.replace("__STATUS__", "...issueStatus")
-        )
-    } else {
-        format!("{}{PR_FIELDS}", SEARCH.replace("__STATUS__", ""))
-    };
+/// with `board`, issues come with their Project board fields.
+pub(crate) fn search(q: &str, board: bool) -> Vec<String> {
     owned([
         "api",
         "graphql",
         "-f",
         &format!("q={q}"),
         "-f",
-        &format!("query={query}"),
+        &format!("query={SEARCH}{PR_FIELDS}{}", issue_fields(board)),
     ])
+}
+
+/// The issue fields fragment, with the board fields or without them.
+fn issue_fields(board: bool) -> String {
+    if board {
+        format!("{}{BOARD}", ISSUE_FIELDS.replace("__BOARD__", "...board"))
+    } else {
+        ISSUE_FIELDS.replace("__BOARD__", "")
+    }
 }
 
 /// `gh pr edit` asking Copilot to review pull request `number` of `repo`.
@@ -88,7 +142,10 @@ pub(crate) fn comment(repo: &str, number: u64, body: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PR_FIELDS, PULL_REQUEST, SEARCH, comment, copilot_review, pull_request, search};
+    use super::{
+        PR_DETAILS, PR_FIELDS, PULL_REQUEST, comment, copilot_review, issue, owner_and_name,
+        pull_request, pull_request_by_number, search,
+    };
 
     #[test]
     fn pull_request_passes_the_branch_raw() {
@@ -107,26 +164,109 @@ mod tests {
             ]
         );
         assert_eq!(args[8], "-f");
-        assert_eq!(args[9], format!("query={PULL_REQUEST}{PR_FIELDS}"));
+        assert_eq!(
+            args[9],
+            format!("query={PULL_REQUEST}{PR_FIELDS}{PR_DETAILS}")
+        );
         assert_eq!(args.len(), 10);
+    }
+
+    /// The repository goes raw, the number typed (`gh` sends `-F` integers
+    /// as JSON numbers, which `Int!` needs: live run, gh 2.101.0, 2026-11-18).
+    #[test]
+    fn by_number_args() {
+        for args in [
+            pull_request_by_number("@o", "r=1", 12),
+            issue("@o", "r=1", 12, true),
+        ] {
+            assert_eq!(
+                args[..8],
+                [
+                    "api",
+                    "graphql",
+                    "-f",
+                    "owner=@o",
+                    "-f",
+                    "name=r=1",
+                    "-F",
+                    "number=12"
+                ]
+            );
+            assert_eq!((args[8].as_str(), args.len()), ("-f", 10));
+        }
     }
 
     #[test]
     fn search_args() {
-        let args = search("is:pr author:@me", false);
-        assert_eq!(args[..4], ["api", "graphql", "-f", "q=is:pr author:@me"]);
-        assert!(!args[5].contains("__STATUS__") && !args[5].contains("issueStatus"));
-        let with = search("is:issue", true);
-        assert!(
-            with[5].contains("...issueStatus") && with[5].contains("fragment issueStatus on Issue")
+        assert_eq!(
+            search("is:pr author:@me", false)[..4],
+            ["api", "graphql", "-f", "q=is:pr author:@me"]
         );
     }
 
-    /// The queries spread `...pr`; every one must carry its definition.
+    /// Board fields only when asked: without the `read:project` scope GitHub
+    /// refuses the whole query.
     #[test]
-    fn queries_carry_the_fragment_they_use() {
-        assert!(PR_FIELDS.starts_with("fragment pr on PullRequest"));
-        assert!(PULL_REQUEST.contains("...pr ") && SEARCH.contains("...pr\n"));
+    fn board_fields_only_when_asked() {
+        let cases = [
+            (search("is:issue", true), true),
+            (search("is:issue", false), false),
+            (issue("o", "r", 1, true), true),
+            (issue("o", "r", 1, false), false),
+            (pull_request_by_number("o", "r", 1), false),
+        ];
+        for (args, board) in cases {
+            let query = &args[args.len() - 1];
+            assert_eq!(query.contains("projectItems"), board, "{query}");
+            assert!(!query.contains("__BOARD__"), "{query}");
+        }
+    }
+
+    /// GitHub rejects a query that spreads a fragment it does not define, or
+    /// defines one it does not spread.
+    #[test]
+    fn queries_carry_exactly_the_fragments_they_use() {
+        let queries = [
+            pull_request("b"),
+            pull_request_by_number("o", "r", 1),
+            search("q", false),
+            search("q", true),
+            issue("o", "r", 1, false),
+            issue("o", "r", 1, true),
+        ];
+        for args in queries {
+            let query = args[args.len() - 1].strip_prefix("query=").unwrap();
+            let mut spread: Vec<&str> = query
+                .split("...")
+                .skip(1)
+                .filter_map(|s| s.split(|c: char| !c.is_alphanumeric()).next())
+                .filter(|name| !name.is_empty() && *name != "on")
+                .collect();
+            spread.sort_unstable();
+            spread.dedup();
+            let mut defined: Vec<&str> = query
+                .split("fragment ")
+                .skip(1)
+                .filter_map(|s| s.split_whitespace().next())
+                .collect();
+            defined.sort_unstable();
+            assert_eq!(spread, defined, "{query}");
+        }
+    }
+
+    #[test]
+    fn owner_and_name_of_a_repository() {
+        let cases = [
+            ("acme/api", Some(("acme", "api"))),
+            ("acme", None),
+            ("/api", None),
+            ("acme/", None),
+            ("acme/api/extra", None),
+            ("", None),
+        ];
+        for (repo, expected) in cases {
+            assert_eq!(owner_and_name(repo), expected, "{repo}");
+        }
     }
 
     #[test]

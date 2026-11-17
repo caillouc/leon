@@ -5,17 +5,18 @@ use gpui::{AnyElement, Context, FontWeight, IntoElement, Rgba, div, prelude::*, 
 use leon_core::Intent;
 use leon_domain::{DoctorSection, Health};
 
-use crate::left::ago;
+use crate::icons::{Icon, icon};
+use crate::left::since;
 use crate::theme;
-use crate::widgets::{button, empty};
-use crate::workspace::{Screen, Workspace};
+use crate::widgets::{button, empty, pane_header};
+use crate::workspace::Workspace;
 
-fn mark(health: Health) -> (&'static str, Rgba) {
+fn mark(health: Health) -> (Icon, Rgba) {
     match health {
-        Health::Ok => ("✓", theme::ok()),
-        Health::Warning => ("!", theme::warn()),
-        Health::Problem => ("✕", theme::err()),
-        Health::Info => ("·", theme::fg_faint()),
+        Health::Ok => (Icon::Passed, theme::ok()),
+        Health::Warning => (Icon::Info, theme::warn()),
+        Health::Problem => (Icon::Failed, theme::err()),
+        Health::Info => (Icon::Info, theme::fg_faint()),
     }
 }
 
@@ -31,6 +32,15 @@ fn counts(sections: &[DoctorSection]) -> (usize, usize) {
     (count(Health::Problem), count(Health::Warning))
 }
 
+/// The colour of a report's worst finding.
+pub(crate) fn worst(sections: &[DoctorSection]) -> Rgba {
+    match counts(sections) {
+        (0, 0) => theme::ok(),
+        (0, _) => theme::warn(),
+        _ => theme::err(),
+    }
+}
+
 fn summary(problems: usize, warnings: usize) -> String {
     let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
     match (problems, warnings) {
@@ -42,84 +52,21 @@ fn summary(problems: usize, warnings: usize) -> String {
 }
 
 impl Workspace {
-    /// The Doctor row at the bottom of the left pane, with a summary.
-    pub(crate) fn render_doctor_row(&self, cx: &mut Context<Self>) -> AnyElement {
-        let selected = self.screen == Screen::Doctor;
-        let (text, color) = match &self.snapshot.doctor {
-            _ if self.snapshot.doctor_running && self.snapshot.doctor.is_none() => {
-                ("checking…".to_owned(), theme::fg_faint())
-            }
-            None => (String::new(), theme::fg_faint()),
-            Some((_, sections)) => {
-                let (p, w) = counts(sections);
-                let color = if p > 0 {
-                    theme::err()
-                } else if w > 0 {
-                    theme::warn()
-                } else {
-                    theme::ok()
-                };
-                (summary(p, w), color)
-            }
-        };
-        div()
-            .id("doctor-row")
-            .flex_none()
-            .mx_1()
-            .mb_1()
-            .px_2()
-            .py(px(6.))
-            .rounded_md()
-            .flex()
-            .items_center()
-            .gap_2()
-            .cursor_pointer()
-            .when(selected, |s| s.bg(theme::accent_soft()))
-            .when(!selected, |s| s.hover(|s| s.bg(theme::surface_2())))
-            .child(div().flex_1().child("Doctor"))
-            .child(div().text_size(px(11.5)).text_color(color).child(text))
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.screen = Screen::Doctor;
-                this.core.send(Intent::View(None));
-                this.core.send(Intent::RunDoctor);
-                cx.notify();
-            }))
-            .into_any_element()
-    }
-
     /// The report in the main pane.
     pub(crate) fn render_doctor(&self, cx: &mut Context<Self>) -> AnyElement {
         let running = self.snapshot.doctor_running;
-        let header = div()
-            .px_6()
-            .py_3()
-            .flex()
-            .items_center()
-            .gap_3()
-            .border_b_1()
-            .border_color(theme::border())
-            .child(
-                div()
-                    .text_size(px(15.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("Doctor"),
+        let subtitle = self.snapshot.doctor.as_ref().map(|(at, sections)| {
+            let (p, w) = counts(sections);
+            format!("{} · checked {}", summary(p, w), since(*at))
+        });
+        let header = pane_header("Doctor", subtitle).child(
+            button(
+                "doctor-run",
+                if running { "Checking…" } else { "Run again" },
+                cx.listener(|this, _, _, _| this.core.send(Intent::RunDoctor)),
             )
-            .children(self.snapshot.doctor.as_ref().map(|(at, sections)| {
-                let (p, w) = counts(sections);
-                div()
-                    .text_size(px(12.5))
-                    .text_color(theme::fg_muted())
-                    .child(format!("{} · checked {} ago", summary(p, w), ago(*at)))
-            }))
-            .child(div().flex_1())
-            .child(
-                button(
-                    "doctor-run",
-                    if running { "Checking…" } else { "Run again" },
-                    cx.listener(|this, _, _, _| this.core.send(Intent::RunDoctor)),
-                )
-                .when(running, |b| b.opacity(0.6)),
-            );
+            .when(running, |b| b.opacity(0.6)),
+        );
         let Some((_, sections)) = &self.snapshot.doctor else {
             return div()
                 .size_full()
@@ -143,61 +90,96 @@ impl Workspace {
                     .px_6()
                     .py_4()
                     .text_size(px(13.))
-                    .child(div().max_w(px(820.)).children(body)),
+                    .child(
+                        div()
+                            .max_w(px(820.))
+                            .w_full()
+                            .mx_auto()
+                            .flex()
+                            .flex_col()
+                            .gap_4()
+                            .children(body),
+                    ),
             )
             .into_any_element()
     }
 }
 
-/// A report's sections: a title with its worst mark, then one row per check
-/// with its mark, name, detail and fix. Used by the Doctor and the Tools view.
+/// A report's sections, each a card: its title with its worst mark, then
+/// one row per check — mark, name, detail — and under a problem, what to do
+/// in a tinted box.
 pub(crate) fn report(sections: &[DoctorSection]) -> Vec<AnyElement> {
     sections
         .iter()
         .map(|section| {
             let (glyph, color) = mark(section.health());
-            let rows = section.checks.iter().map(|check| {
+            let rows = section.checks.iter().enumerate().map(|(ix, check)| {
                 let (glyph, color) = mark(check.health);
                 div()
+                    .px_4()
+                    .py(px(8.))
                     .flex()
-                    .gap_3()
-                    .py(px(5.))
-                    .child(div().w(px(14.)).flex_none().text_color(color).child(glyph))
+                    .flex_col()
+                    .gap(px(6.))
+                    .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
                     .child(
                         div()
-                            .w(px(180.))
-                            .flex_none()
-                            .text_color(theme::fg_muted())
-                            .child(check.name.clone()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
                             .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(check.detail.clone())
-                            .children(check.fix.as_ref().map(|fix| {
+                            .items_start()
+                            .gap_3()
+                            .child(div().pt(px(1.)).child(icon(glyph, color, 15.)))
+                            .child(
                                 div()
-                                    .text_size(px(12.))
-                                    .text_color(color)
-                                    .child(fix.clone())
-                            })),
+                                    .w(px(170.))
+                                    .flex_none()
+                                    .text_color(theme::fg())
+                                    .child(check.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_color(theme::fg_muted())
+                                    .child(check.detail.clone()),
+                            ),
                     )
+                    .children(check.fix.as_ref().map(|fix| {
+                        div()
+                            .ml(px(27.))
+                            .px_3()
+                            .py(px(6.))
+                            .rounded_md()
+                            .bg(Rgba { a: 0.12, ..color })
+                            .border_1()
+                            .border_color(Rgba { a: 0.35, ..color })
+                            .text_size(px(12.5))
+                            .child(fix.clone())
+                    }))
             });
             div()
-                .mb_4()
+                .rounded_xl()
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::panel())
+                .overflow_hidden()
                 .child(
                     div()
+                        .px_4()
+                        .py_3()
                         .flex()
+                        .items_center()
                         .gap_2()
-                        .mb_1()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(div().text_color(color).child(glyph))
-                        .child(section.title.clone()),
+                        .border_b_1()
+                        .border_color(theme::border())
+                        .child(icon(glyph, color, 16.))
+                        .child(
+                            div()
+                                .text_size(px(14.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(section.title.clone()),
+                        ),
                 )
-                .child(div().pl_6().children(rows))
+                .children(rows)
                 .into_any_element()
         })
         .collect()

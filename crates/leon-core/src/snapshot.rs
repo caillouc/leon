@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use leon_domain::{
     AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, FileDiff, FoldPattern,
-    Issue, Project, ProjectId, PullRequest, Settings, Status, TimedEntry,
+    GhRef, Issue, Project, ProjectId, PullRequest, Settings, Status, TimedEntry,
 };
 
 use crate::ports::{AgentDefinition, BackendOptions};
@@ -42,6 +42,8 @@ pub struct Snapshot {
     pub my_prs: Arc<Vec<PullRequest>>,
     /// Why the GitHub lists could not be read, if they could not.
     pub github_error: Option<String>,
+    /// The issue or pull request whose details are shown (GH-2, GH-3).
+    pub detail: Option<Detail>,
     /// `diff.fold` patterns (GIT-4).
     pub fold: Arc<Vec<FoldPattern>>,
     /// The latest short message to show the user (an action's result), with
@@ -55,10 +57,12 @@ pub struct Snapshot {
     pub shared_tools: Arc<Vec<leon_domain::McpServer>>,
     /// Where that list is saved.
     pub shared_tools_path: std::path::PathBuf,
+    /// The config file the Settings view writes (P9).
+    pub settings_path: Option<std::path::PathBuf>,
     /// Why that list could not be read, if it could not.
     pub shared_tools_error: Option<String>,
     /// What each CLI has as MCP servers and plugins, and when it was read.
-    pub tools: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
+    pub tools: Option<(i64, Arc<Vec<leon_domain::CliConnectors>>)>,
     /// The CLIs are being asked.
     pub tools_running: bool,
     /// The GitHub repository (`owner/name`) of each project, from its
@@ -150,4 +154,28 @@ pub struct GitView {
     pub branch_diff: Arc<Vec<FileDiff>>,
     /// Why git could not be read (not a repository…).
     pub error: Option<String>,
+}
+
+/// An issue's or a pull request's details, as read from GitHub.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Detail {
+    /// Being read.
+    Loading(GhRef),
+    /// An issue, with its body and comments.
+    Issue(Box<Issue>),
+    /// A pull request, with its checks, reviewers and comments.
+    PullRequest(Box<PullRequest>),
+    /// Could not be read, and why.
+    Failed(GhRef, String),
+}
+
+impl Detail {
+    /// Which item it is about.
+    pub fn item(&self) -> GhRef {
+        match self {
+            Self::Loading(item) | Self::Failed(item, _) => item.clone(),
+            Self::Issue(issue) => GhRef::issue(&issue.repo, issue.number),
+            Self::PullRequest(pr) => GhRef::pull_request(&pr.repo, pr.number),
+        }
+    }
 }

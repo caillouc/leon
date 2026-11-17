@@ -4,9 +4,24 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::Stdio;
 
+use leon_domain::BackendKind;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStderr, Command};
 use tokio::task::JoinHandle;
+
+/// The program that runs `backend`'s CLI.
+pub(crate) fn program(backend: BackendKind) -> &'static str {
+    match backend {
+        BackendKind::ClaudeCode => "claude",
+        BackendKind::Codex => "codex",
+        BackendKind::CopilotCli => "copilot",
+    }
+}
+
+/// `items` as owned arguments for [`run`].
+pub(crate) fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| (*s).to_owned()).collect()
+}
 
 /// Variables a host coding app sets for its own child sessions. Inherited by
 /// a CLI started from Leon, they would make it behave as a child of that app

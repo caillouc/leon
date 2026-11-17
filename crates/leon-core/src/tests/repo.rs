@@ -2,7 +2,9 @@
 
 use std::sync::Mutex;
 
-use leon_domain::{FileDiff, FileStatus, Issue, PrState, PullRequest};
+use leon_domain::{FileDiff, FileStatus, GhRef, Issue, PrState, PullRequest};
+
+use crate::Detail;
 
 use super::*;
 use crate::ports::{Git, GitHub};
@@ -79,6 +81,27 @@ impl GitHub for FakeGitHub {
     fn my_pull_requests(&self) -> Result<Vec<PullRequest>, PortError> {
         Ok(vec![])
     }
+    fn pull_request_by_number(&self, repo: &str, number: u64) -> Result<PullRequest, PortError> {
+        let pr = self.pull_request(Path::new("/code/api"), "fix-retry")?;
+        pr.filter(|pr| pr.repo == repo && pr.number == number)
+            .ok_or_else(|| PortError::new("reading a pull request", "not found"))
+    }
+    fn issue(&self, repo: &str, number: u64) -> Result<Issue, PortError> {
+        Ok(Issue {
+            repo: repo.into(),
+            number,
+            title: "Retries give up".into(),
+            url: String::new(),
+            labels: vec![],
+            updated_at: 0,
+            status: None,
+            priority: None,
+            iterations: vec![],
+            assignees: vec!["octocat".into()],
+            body: "They stop after 30 s.".into(),
+            comments: vec![],
+        })
+    }
     fn request_copilot_review(&self, _repo: &str, number: u64) -> Result<(), PortError> {
         self.reviews.lock().unwrap().push(number);
         Ok(())
@@ -128,7 +151,10 @@ async fn requesting_a_copilot_review_says_so() {
         .id;
     h.core.send(Intent::View(Some(id)));
     until(&h.core, "pull request", |s| s.prs.contains_key(&id)).await;
-    h.core.send(Intent::RequestCopilotReview(id));
+    h.core
+        .send(Intent::RequestCopilotReview(GhRef::pull_request(
+            "acme/api", 7,
+        )));
     let s = until(&h.core, "flash", |s| s.flash.is_some()).await;
     assert_eq!(
         s.flash.as_ref().map(|f| f.1.as_str()),
@@ -147,4 +173,37 @@ async fn the_doctor_runs_at_start_with_every_section() {
     assert_eq!(leon, ["Version", "Tools for agents"]);
     assert_eq!(sections[1].health(), leon_domain::Health::Problem);
     assert!(!s.doctor_running);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn details_load_in_the_background_and_close() {
+    let h = harness();
+    until(&h.core, "loaded", |s| s.loaded).await;
+    let item = GhRef::issue("acme/api", 12);
+    h.core.send(Intent::ShowDetail(Some(item.clone())));
+    let s = until(&h.core, "issue", |s| {
+        matches!(&s.detail, Some(Detail::Issue(_)))
+    })
+    .await;
+    let Some(Detail::Issue(issue)) = &s.detail else {
+        unreachable!()
+    };
+    assert_eq!(
+        (issue.number, issue.body.as_str()),
+        (12, "They stop after 30 s.")
+    );
+
+    h.core.send(Intent::ShowDetail(Some(GhRef::pull_request(
+        "acme/api", 99,
+    ))));
+    let s = until(&h.core, "failure", |s| {
+        matches!(&s.detail, Some(Detail::Failed(..)))
+    })
+    .await;
+    assert_eq!(
+        s.detail.as_ref().map(Detail::item),
+        Some(GhRef::pull_request("acme/api", 99))
+    );
+    h.core.send(Intent::ShowDetail(None));
+    until(&h.core, "closed", |s| s.detail.is_none()).await;
 }

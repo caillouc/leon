@@ -11,9 +11,13 @@ use gpui_component::input::{InputEvent, TextareaState};
 use leon_core::Intent;
 use leon_domain::{AgentSessionId, ConversationId, ReviewComment, review_message};
 
-use crate::diff_view::{DiffList, DiffSource, DraftAt, ListKey};
+use crate::diff_drawer::Drawer;
+use crate::diff_rows::{DiffList, counts};
+use crate::diff_view::{DiffSource, DraftAt};
+use crate::github::pr_icon;
+use crate::icons::{Icon, icon};
 use crate::theme;
-use crate::widgets::{button, empty, label, primary};
+use crate::widgets::{HEADER_HEIGHT, button, empty, label, primary, status_dot};
 use crate::workspace::{Screen, Workspace};
 
 /// The right pane's tabs.
@@ -43,11 +47,13 @@ pub(crate) struct RightState {
     pub review_to: HashMap<ConversationId, AgentSessionId>,
     /// The line a comment is being written on.
     pub draft: Option<DraftAt>,
+    /// Lines being chosen by dragging a line's +, before the comment box.
+    pub selecting: Option<crate::diff_rows::Selecting>,
     pub comment: Entity<TextareaState>,
     pub pr_comment: Entity<TextareaState>,
-    pub lists: HashMap<ListKey, DiffList>,
-    /// The file read large in the drawer, and which diff it is from.
-    pub drawer: Option<(DiffSource, String)>,
+    pub lists: HashMap<(ConversationId, DiffSource), DiffList>,
+    /// The diff drawer, when open.
+    pub drawer: Option<Drawer>,
 }
 
 impl RightState {
@@ -81,6 +87,7 @@ impl RightState {
             review: HashMap::new(),
             review_to: HashMap::new(),
             draft: None,
+            selecting: None,
             comment,
             pr_comment,
             lists: HashMap::new(),
@@ -113,45 +120,60 @@ impl Workspace {
                 .into_any_element();
         };
         let body = match self.right.tab {
-            RightTab::Changes => self.render_diff(id, DiffSource::Changes, None, cx),
-            RightTab::Branch => self.render_diff(id, DiffSource::Branch, None, cx),
+            RightTab::Changes => self.render_diff(id, DiffSource::Changes, cx),
+            RightTab::Branch => self.render_diff(id, DiffSource::Branch, cx),
             RightTab::Pr => self.render_pr(id, cx),
-            RightTab::Info => self.render_info(id),
+            RightTab::Info => self.render_info(id, cx),
         };
         frame
             .child(self.right_tabs(id, cx))
             .child(div().flex_1().min_h_0().flex().flex_col().child(body))
-            .children(self.render_review_bar(id, window, cx))
+            // While the drawer is open, the review is sent from there.
+            .when(self.right.drawer.is_none(), |d| {
+                d.children(self.render_review_bar(id, window, cx))
+            })
             .into_any_element()
     }
 
     fn right_tabs(&self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
         let git = self.snapshot.git.get(&id);
-        let count = |n: usize| (n > 0).then(|| n.to_string());
+        // Lines added and removed, as git counts them.
+        let lines = |files: &[leon_domain::FileDiff]| {
+            (!files.is_empty()).then(|| {
+                let added: u32 = files.iter().map(|f| f.added).sum();
+                let removed: u32 = files.iter().map(|f| f.removed).sum();
+                counts(added, removed)
+            })
+        };
         let tabs = [
             (
                 RightTab::Changes,
                 "Changes",
-                git.and_then(|g| count(g.changes.len())),
+                git.and_then(|g| lines(&g.changes)),
             ),
             (
                 RightTab::Branch,
                 "Branch",
-                git.and_then(|g| count(g.branch_diff.len())),
+                git.and_then(|g| lines(&g.branch_diff)),
             ),
             (
                 RightTab::Pr,
                 "PR",
-                self.snapshot
-                    .prs
-                    .get(&id)
-                    .map(|pr| format!("#{}", pr.number)),
+                self.snapshot.prs.get(&id).map(|pr| {
+                    div()
+                        .flex()
+                        .items_center()
+                        .child(pr_icon(pr.state, 13.))
+                        .into_any_element()
+                }),
             ),
             (RightTab::Info, "Info", None),
         ];
         div()
             .flex()
             .flex_none()
+            .h(px(HEADER_HEIGHT))
+            .items_end()
             .gap(px(2.))
             .px_2()
             .border_b_1()
@@ -161,8 +183,7 @@ impl Workspace {
                 div()
                     .id(SharedString::from(format!("right-tab-{text}")))
                     .px_2()
-                    .pt(px(9.))
-                    .pb(px(7.))
+                    .pb(px(10.))
                     .border_b_2()
                     .border_color(if selected {
                         theme::accent()
@@ -180,13 +201,8 @@ impl Workspace {
                     .flex()
                     .gap(px(5.))
                     .child(text)
-                    .children(n.map(|n| {
-                        div()
-                            .text_size(px(11.))
-                            .font_family(theme::MONO)
-                            .text_color(theme::fg_faint())
-                            .child(n)
-                    }))
+                    .items_center()
+                    .children(n.map(|n| div().text_size(px(11.)).child(n)))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.right.tab = tab;
                         match tab {
@@ -201,7 +217,9 @@ impl Workspace {
             .into_any_element()
     }
 
-    fn render_info(&self, id: ConversationId) -> AnyElement {
+    /// The Info tab (CTX-1): where the conversation works, the issue it is
+    /// for, and one card per agent session.
+    fn render_info(&self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
         let Some(view) = self.snapshot.conversation(id) else {
             return empty("This conversation no longer exists.");
         };
@@ -216,67 +234,134 @@ impl Workspace {
             .filter_map(|s| self.snapshot.sessions.get(s))
             .collect();
         let git = self.snapshot.git.get(&id);
-        let where_rows = [
-            (
-                "Project",
-                project.map_or_default(|p| p.path.display().to_string()),
-            ),
-            (
-                "Working dir",
-                sessions
-                    .first()
-                    .map_or_default(|s| s.session.working_dir.display().to_string()),
-            ),
-            (
-                "Branch",
-                git.and_then(|g| g.branch.clone())
-                    .unwrap_or_else(|| "none".into()),
-            ),
-            (
-                "Base",
-                git.and_then(|g| g.base.clone())
-                    .unwrap_or_else(|| "none".into()),
-            ),
-        ];
-        let session_rows = sessions.iter().map(|s| {
+        let none = || "none".to_owned();
+        let place = card(
+            "Where",
+            vec![
+                (
+                    "Project",
+                    project.map_or_default(|p| p.path.display().to_string()),
+                    true,
+                ),
+                (
+                    "Working dir",
+                    sessions
+                        .first()
+                        .map_or_default(|s| s.session.working_dir.display().to_string()),
+                    true,
+                ),
+                (
+                    "Branch",
+                    git.and_then(|g| g.branch.clone()).unwrap_or_else(none),
+                    true,
+                ),
+                (
+                    "Base",
+                    git.and_then(|g| g.base.clone()).unwrap_or_else(none),
+                    true,
+                ),
+            ],
+        );
+        let issue = view.conversation.issue.clone().map(|item| {
+            let text = item.text();
+            div()
+                .id("info-issue")
+                .mx_3()
+                .px_3()
+                .py_2()
+                .flex()
+                .items_center()
+                .gap_2()
+                .rounded_lg()
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::window())
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::surface_2()))
+                .child(icon(Icon::Issue, theme::fg_muted(), 14.))
+                .child(div().text_size(px(12.5)).child("Issue"))
+                .child(
+                    div()
+                        .flex_1()
+                        .font_family(theme::MONO)
+                        .text_size(px(12.))
+                        .text_color(theme::fg_muted())
+                        .child(text),
+                )
+                .on_click(cx.listener(move |this, _, _, _| {
+                    this.core.send(Intent::ShowDetail(Some(item.clone())));
+                }))
+        });
+        let session_cards = sessions.iter().map(|s| {
             let settings = &s.session.settings;
             let (model, effort) = self.model_and_effort(settings);
-            key_values(vec![
-                ("Agent", self.session_name(s)),
-                ("CLI", settings.backend.display_name().to_owned()),
-                ("Model", model),
-                ("Effort", effort),
-                ("Permission", settings.permission.clone()),
-                (
-                    "CLI session",
-                    s.session
-                        .cli_session
-                        .clone()
-                        .unwrap_or_else(|| "not started".into()),
-                ),
-                (
-                    "Usage",
-                    self.snapshot.transcripts.get(&s.session.id).map_or_else(
-                        || "not loaded".to_owned(),
-                        |t| crate::transcript::usage_text(leon_domain::Usage::total(&t.entries)),
+            let usage = self.snapshot.transcripts.get(&s.session.id).map_or_else(
+                || "not loaded".to_owned(),
+                |t| crate::transcript::usage_text(leon_domain::Usage::total(&t.entries)),
+            );
+            card(
+                "",
+                vec![
+                    ("Model", model, false),
+                    ("Effort", effort, false),
+                    ("Permission", settings.permission.clone(), false),
+                    (
+                        "CLI session",
+                        s.session
+                            .cli_session
+                            .clone()
+                            .unwrap_or_else(|| "not started".into()),
+                        true,
                     ),
-                ),
-            ])
-            .pb_3()
+                    ("Usage", usage, false),
+                ],
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .px_3()
+                    .pt_2()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(status_dot(s.status))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(self.session_name(s)),
+                    )
+                    .child(
+                        div()
+                            .px(px(6.))
+                            .rounded(px(4.))
+                            .bg(theme::surface_2())
+                            .text_size(px(11.))
+                            .text_color(theme::fg_muted())
+                            .child(settings.backend.display_name()),
+                    ),
+            )
         });
         div()
             .id("right-info")
             .flex_1()
             .overflow_y_scroll()
-            .px_1()
-            .child(label("Where"))
-            .child(key_values(where_rows.into()))
-            .child(label("Agent sessions"))
-            .children(session_rows)
+            .py_3()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(place)
+            .children(issue)
+            .child(label("Agent sessions").pt_1())
+            .children(session_cards)
             .into_any_element()
     }
 
-    fn render_review_bar(
+    pub(crate) fn render_review_bar(
         &self,
         id: ConversationId,
         _window: &mut Window,
@@ -391,31 +476,51 @@ impl Workspace {
     }
 }
 
-/// Two columns: faint keys, monospace values.
-fn key_values(rows: Vec<(&'static str, String)>) -> gpui::Div {
+/// A bordered card: an optional title, then keys and values; a value is in
+/// monospace when it is a path, a branch or an id.
+fn card(title: &'static str, rows: Vec<(&'static str, String, bool)>) -> gpui::Div {
     div()
+        .relative()
+        .mx_3()
         .px_3()
+        .pb_3()
+        .pt(px(if title.is_empty() { 36. } else { 10. }))
         .flex()
         .flex_col()
-        .gap(px(5.))
-        .children(rows.into_iter().map(|(k, v)| {
+        .gap(px(6.))
+        .rounded_lg()
+        .border_1()
+        .border_color(theme::border())
+        .bg(theme::window())
+        .when(!title.is_empty(), |d| {
+            d.child(
+                div()
+                    .pb_1()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(title),
+            )
+        })
+        .children(rows.into_iter().map(|(k, v, mono)| {
             div()
                 .flex()
-                .gap_2()
-                .text_size(px(12.))
+                .gap_3()
+                .text_size(px(12.5))
                 .child(
                     div()
-                        .w(px(96.))
+                        .w(px(88.))
                         .flex_none()
-                        .text_color(theme::fg_faint())
+                        .text_color(theme::fg_muted())
                         .child(k),
                 )
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
-                        .font_family(theme::MONO)
-                        .text_size(px(11.5))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .when(mono, |d| d.font_family(theme::MONO).text_size(px(12.)))
                         .child(v),
                 )
         }))

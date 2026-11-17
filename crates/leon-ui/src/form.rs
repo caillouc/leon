@@ -5,6 +5,7 @@ use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*, px};
 use gpui_component::input::Textarea;
 use leon_core::Intent;
 
+use crate::icons::{Icon, icon};
 use crate::picker::{Choice, Look};
 use crate::theme;
 use crate::widgets::{button, empty, primary};
@@ -134,6 +135,26 @@ impl Workspace {
                         .flex()
                         .flex_col()
                         .gap_2()
+                        .children(self.form.issue.as_ref().map(|issue| {
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .text_size(px(12.))
+                                .text_color(theme::fg_muted())
+                                .child(icon(Icon::Issue, theme::fg_muted(), 13.))
+                                .child(format!("For issue {}", issue.text()))
+                                .child(
+                                    div()
+                                        .id("form-unlink-issue")
+                                        .cursor_pointer()
+                                        .child(icon(Icon::Close, theme::fg_faint(), 12.))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.form.issue = None;
+                                            cx.notify();
+                                        })),
+                                )
+                        }))
                         .children(slash)
                         .child(
                             input_box
@@ -146,7 +167,7 @@ impl Workspace {
                                 .flex_col()
                                 .gap_2()
                                 .children(chips)
-                                .child(Textarea::new(&self.form_text)),
+                                .child(Textarea::new(&self.form_text).appearance(false)),
                         )
                         .into_any_element(),
                     None,
@@ -208,6 +229,7 @@ impl Workspace {
             project,
             settings: self.form.settings.clone(),
             text,
+            issue: self.form.issue.take(),
         });
         self.form_text
             .update(cx, |state, cx| state.set_value("", window, cx));

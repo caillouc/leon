@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use leon_core::ports::{NewSession, PortError, Storage};
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Project, ProjectId,
-    SessionSettings, TimedEntry,
+    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, GhRef, Project,
+    ProjectId, SessionSettings, TimedEntry,
 };
 use rusqlite::{Row, params};
 
@@ -38,6 +38,10 @@ fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
         unread: row.get(5)?,
         updated_at: row.get(6)?,
         working_dir: row.get::<_, Option<String>>(7)?.map(PathBuf::from),
+        issue: row
+            .get::<_, Option<String>>(8)?
+            .as_deref()
+            .and_then(GhRef::issue_from_text),
     })
 }
 
@@ -105,7 +109,7 @@ impl Storage for Store {
         let conn = self.lock();
         let mut stmt = conn
             .prepare_cached(
-                "SELECT id, project_id, title, pinned, archived, unread, updated_at, working_dir FROM conversations
+                "SELECT id, project_id, title, pinned, archived, unread, updated_at, working_dir, issue FROM conversations
                  ORDER BY updated_at DESC, id DESC",
             )
             .map_err(err(C))?;
@@ -147,6 +151,7 @@ impl Storage for Store {
             unread: false,
             updated_at: now,
             working_dir: None,
+            issue: None,
         })
     }
 
@@ -154,7 +159,7 @@ impl Storage for Store {
         self.lock()
             .execute(
                 "UPDATE conversations SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
-                 working_dir = ?7 WHERE id = ?1",
+                 working_dir = ?7, issue = ?8 WHERE id = ?1",
                 params![
                     c.id.0,
                     c.title,
@@ -162,7 +167,8 @@ impl Storage for Store {
                     c.archived,
                     c.unread,
                     c.updated_at,
-                    c.working_dir.as_deref().map(path_text)
+                    c.working_dir.as_deref().map(path_text),
+                    c.issue.as_ref().map(GhRef::text)
                 ],
             )
             .map(drop)
@@ -361,6 +367,7 @@ mod tests {
         store.update_session(&session).unwrap();
         conv.pinned = true;
         conv.working_dir = Some(PathBuf::from("/code/api/.worktrees/fix"));
+        conv.issue = Some(leon_domain::GhRef::issue("acme/api", 12));
         store.update_conversation(&conv).unwrap();
         store
             .append_entry(

@@ -114,8 +114,13 @@ they move into a worktree, the Changes tab follows).
   "Start conversation" opens the new-conversation form in the project whose
   `origin` remote is the issue's repository, with the issue's title and link
   as the first message.
-- Clicking a file in Changes or Branch opens its diff large in a drawer;
-  comments work there too.
+- Clicking a file in Changes or Branch opens a drawer with every file's
+  diff, at the one clicked. Press a line's + to comment, or drag it over
+  several lines; comments pile up into one review sent from the drawer.
+- Settings (bottom left) edits `config.toml`: defaults for new
+  conversations, diff folding, source folders, flow arrows.
+- Connectors (bottom left) shows, per CLI, its plugins, its own MCP servers
+  and its account's connectors (Slack, Gmail…), read from the CLIs.
 
 ## Where things live
 
@@ -160,6 +165,12 @@ accepted by you on 2026-11-17 and recorded in
 | 14 | "My issues" / "My open PRs" at the top of the left pane | Elsewhere | GH-2 | |
 | 15 | Pending review comments live in the window only (lost on restart) | Saved in the database | I12 | |
 | 16 | The Doctor | — | DOCTOR-1 | |
+| 17 | Settings write `config.toml` in place with `toml_edit` (comments kept, default values removed) | Rewrite the whole file | ⚠️ to confirm | You did not answer; the recommended option was taken. `toml_edit` was already in the build. A file that does not parse is never touched. |
+| 18 | Icons: Lucide SVGs copied into `assets/icons` and embedded | The `gpui-kit-assets` crate | ⚠️ to confirm | No new dependency; ISC licence file kept next to them. |
+| 19 | A conversation started from an issue stores it (`conversations.issue`, store migration 5) | Find the link from branch names or PR bodies | ⚠️ to confirm | Exact and simple; only conversations started from the issue list are linked. |
+| 20 | Issue priority also read from an organization issue field named "Priority" | Board fields only | ⚠️ to confirm | On a real account, priority lived there and not on the board. |
+| 21 | Connectors are read-only (each CLI's list commands, JSON) | Enable, disable, install from Leon | ⚠️ to confirm | Managing plugins changes your CLI setup; Codex has no command to enable or disable one. |
+| 22 | `cargo run` starts Leon (`default-members`) | `cargo run -p leon` | ⚠️ to confirm | Plain `cargo build` / `cargo test` now cover the app crate only; CI passes `--workspace`. |
 
 ## Not built, and why
 

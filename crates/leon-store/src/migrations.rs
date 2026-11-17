@@ -48,6 +48,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE conversations ADD COLUMN working_dir TEXT;",
     // 4: projects folded in the left pane (NAV-2).
     "ALTER TABLE projects ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;",
+    // 5: the issue a conversation was started for, `owner/name#12` (GH-2).
+    "ALTER TABLE conversations ADD COLUMN issue TEXT;",
 ];
 
 /// Latest schema version this build knows.

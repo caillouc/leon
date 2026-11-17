@@ -1,0 +1,10 @@
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      ...issue
+      assignees(first: 20) { nodes { login } }
+      body
+      comments(last: 50) { nodes { author { login } body createdAt } }
+    }
+  }
+}

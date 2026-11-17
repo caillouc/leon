@@ -81,6 +81,7 @@ impl Storage for FakeStorage {
             unread: false,
             updated_at: now,
             working_dir: None,
+            issue: None,
         };
         list.push(c.clone());
         Ok(c)
@@ -183,14 +184,16 @@ impl Backends for FakeBackends {
             .clone()
             .ok_or_else(|| PortError::new("writing a title", "no title in this test"))
     }
-    fn tools(&self) -> Vec<leon_domain::DoctorSection> {
-        vec![leon_domain::DoctorSection {
-            title: "Codex".into(),
-            checks: vec![leon_domain::DoctorCheck::new(
-                leon_domain::Health::Ok,
-                "node_repl",
-                "enabled",
-            )],
+    fn connectors(&self) -> Vec<leon_domain::CliConnectors> {
+        vec![leon_domain::CliConnectors {
+            backend: BackendKind::Codex,
+            connectors: vec![leon_domain::Connector {
+                name: "node_repl".into(),
+                kind: leon_domain::ConnectorKind::Server,
+                state: leon_domain::ConnectorState::On,
+                detail: "node".into(),
+            }],
+            problem: None,
         }]
     }
     fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
@@ -243,6 +246,7 @@ fn ports(storage: Arc<dyn Storage>, backends: Arc<dyn Backends>) -> Ports {
         github: Arc::new(repo::FakeGitHub::default()),
         app_tools: Some(Arc::new(agents::FakeTools)),
         shared_tools: Arc::new(tools::FakeShared::default()),
+        config: Arc::new(tools::FakeConfig::default()),
         clock: || 1_000,
         about: Arc::new(|| {
             vec![leon_domain::DoctorCheck::new(
@@ -271,6 +275,10 @@ fn settings(backend: BackendKind) -> SessionSettings {
 }
 
 fn harness() -> Harness {
+    harness_with_config(Arc::new(tools::FakeConfig::default()))
+}
+
+fn harness_with_config(config: Arc<dyn crate::ports::ConfigFile>) -> Harness {
     let storage = Arc::new(FakeStorage::default());
     storage
         .add_project("api", Path::new("/code/api"), 0)
@@ -278,10 +286,13 @@ fn harness() -> Harness {
     let backends = Arc::new(FakeBackends::default());
     let core = start(
         &tokio::runtime::Handle::current(),
-        ports(
-            Arc::clone(&storage) as Arc<dyn Storage>,
-            Arc::clone(&backends) as Arc<dyn Backends>,
-        ),
+        Ports {
+            config,
+            ..ports(
+                Arc::clone(&storage) as Arc<dyn Storage>,
+                Arc::clone(&backends) as Arc<dyn Backends>,
+            )
+        },
         Settings::default(),
     );
     Harness {
@@ -341,8 +352,14 @@ async fn new_conversation(h: &Harness, backend: BackendKind) -> AgentSessionId {
         project: ProjectId(1),
         settings: settings(backend),
         text: "Fix the retry bug".into(),
+        issue: Some(leon_domain::GhRef::issue("acme/api", 12)),
     });
     let s = until(&h.core, "conversation", |s| !s.conversations.is_empty()).await;
+    // The issue it was started for is kept with it (GH-2).
+    assert_eq!(
+        s.conversations[0].conversation.issue,
+        Some(leon_domain::GhRef::issue("acme/api", 12))
+    );
     started(h, 1).await;
     s.conversations[0].sessions[0]
 }

@@ -28,6 +28,7 @@ fn main() -> anyhow::Result<()> {
     let store = open_store(&data)?;
     let socket = data.join("tools.sock");
     let exe = std::env::current_exe().context("finding Leon's own program")?;
+    let user_config = leon_config::UserConfig::new(config.clone());
     let about = about::about(about::Facts {
         config,
         config_warnings,
@@ -59,6 +60,7 @@ fn main() -> anyhow::Result<()> {
         shared_tools: Arc::new(leon_catalog::SharedFile::new(
             shared_tools.unwrap_or_else(|| data.join("mcp.json")),
         )),
+        config: Arc::new(user_config),
         clock: now_ms,
         about,
     };

@@ -6,9 +6,10 @@ use gpui_component::input::Input;
 use leon_core::{ConversationView, Intent};
 use leon_domain::Status;
 
+use crate::icons::{Icon, chevron, icon};
 use crate::pr_view::pr_badge;
 use crate::theme;
-use crate::widgets::{empty, label, primary, status_dot};
+use crate::widgets::{HEADER_HEIGHT, empty, label, status_dot};
 use crate::workspace::{Screen, Workspace, value_of};
 
 impl Workspace {
@@ -36,7 +37,7 @@ impl Workspace {
         let pinned: Vec<_> = snapshot
             .conversations
             .iter()
-            .filter(|c| c.conversation.pinned && !c.conversation.archived)
+            .filter(|c| is_pinned(c))
             .filter(matches)
             .collect();
         if !pinned.is_empty() {
@@ -49,17 +50,31 @@ impl Workspace {
             let rows: Vec<_> = snapshot
                 .conversations
                 .iter()
-                .filter(|c| {
-                    c.conversation.project == project.id
-                        && !c.conversation.pinned
-                        && !c.conversation.archived
-                })
+                .filter(|c| in_project(c, project.id))
                 .filter(matches)
                 .collect();
-            // A search shows matches even in a folded project.
+            // A search shows matches even in a folded project, and a folded
+            // project still shows the open conversation.
             let folded = project.collapsed && query.is_empty();
-            body = body.child(Self::project_header(project, rows.len(), cx));
+            let attention = rows
+                .iter()
+                .map(|c| c.status)
+                .max_by_key(|s| match s {
+                    Status::Error => 2,
+                    Status::NeedsInput => 1,
+                    Status::Running | Status::Idle => 0,
+                })
+                .and_then(|s| match s {
+                    Status::Error => Some(theme::err()),
+                    Status::NeedsInput => Some(theme::warn()),
+                    Status::Running | Status::Idle => None,
+                });
+            body = body.child(Self::project_header(project, rows.len(), attention, cx));
             if folded {
+                let open = rows
+                    .into_iter()
+                    .filter(|c| self.screen == Screen::Conversation(c.conversation.id));
+                body = body.children(open.map(|c| self.row(c, false, cx)));
                 continue;
             }
             if rows.is_empty() {
@@ -86,11 +101,21 @@ impl Workspace {
             body = body.child(
                 div()
                     .id("archived-toggle")
+                    .mx_1()
+                    .mt_3()
+                    .px_2()
+                    .py(px(5.))
+                    .rounded_md()
+                    .flex()
+                    .items_center()
+                    .gap_2()
                     .cursor_pointer()
-                    .child(label(format!(
-                        "{} Archived ({count})",
-                        if shown { "▾" } else { "▸" }
-                    )))
+                    .hover(|s| s.bg(theme::surface_2()))
+                    .text_size(px(12.5))
+                    .text_color(theme::fg_muted())
+                    .child(chevron(shown, theme::fg_muted(), 14.))
+                    .child("Archived")
+                    .child(div().text_color(theme::fg_faint()).child(count.to_string()))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.show_archived = !this.show_archived;
                         cx.notify();
@@ -112,34 +137,47 @@ impl Workspace {
             .border_color(theme::border())
             .child(
                 div()
-                    .p_2()
+                    .flex_none()
+                    .h(px(HEADER_HEIGHT))
+                    .px_2()
                     .flex()
-                    .flex_col()
+                    .items_center()
                     .gap_2()
                     .border_b_1()
                     .border_color(theme::border())
+                    .child(div().flex_1().min_w_0().child(Input::new(&self.search)))
                     .child(
-                        primary(
-                            "new-conversation",
-                            "New conversation",
-                            cx.listener(|this, _, _, cx| this.show_new_conversation(cx)),
-                        )
-                        .flex()
-                        .justify_center(),
-                    )
-                    .child(Input::new(&self.search)),
+                        div()
+                            .id("new-conversation")
+                            .flex_none()
+                            .size(px(30.))
+                            .rounded_md()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::accent())
+                            .cursor_pointer()
+                            .hover(|s| s.opacity(0.9))
+                            .child(icon(Icon::NewConversation, theme::on_accent(), 16.))
+                            .on_click(cx.listener(|this, _, _, cx| this.show_new_conversation(cx))),
+                    ),
             )
             .child(body)
             .children(self.render_row_menu(cx))
-            .child(
-                div()
-                    .border_t_1()
-                    .border_color(theme::border())
-                    .pt_1()
-                    .child(self.render_tools_row(cx))
-                    .child(self.render_doctor_row(cx)),
-            )
+            .child(self.render_bottom_nav(cx))
             .into_any_element()
+    }
+
+    /// Conversations in the left pane's order: pinned, then each project's.
+    pub(crate) fn left_order(&self) -> Vec<leon_domain::ConversationId> {
+        let all = &self.snapshot.conversations;
+        let pinned = all.iter().filter(|c| is_pinned(c));
+        let projects = self
+            .snapshot
+            .projects
+            .iter()
+            .flat_map(|p| all.iter().filter(move |c| in_project(c, p.id)));
+        pinned.chain(projects).map(|c| c.conversation.id).collect()
     }
 
     /// "Projects" and its own button to add one (NAV-1).
@@ -238,49 +276,64 @@ impl Workspace {
     /// A project's group label, with a + that starts a conversation in it.
     /// A project's group label: click to fold or unfold its conversations
     /// (NAV-2); the + starts a conversation in it (NAV-10).
+    /// A project's row: fold chevron, name, count, a dot when a folded
+    /// conversation needs you, and + (on hover) to start one in it.
     fn project_header(
         project: &leon_domain::Project,
         count: usize,
+        attention: Option<gpui::Rgba>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (id, collapsed) = (project.id, project.collapsed);
+        let group = SharedString::from(format!("project-{}", id.0));
         div()
-            .id(SharedString::from(format!("project-{}", id.0)))
+            .id(group.clone())
+            .group(group.clone())
+            .mx_1()
+            .mt_2()
+            .px_2()
+            .h(px(30.))
+            .rounded_md()
             .flex()
             .items_center()
-            .pr_2()
+            .gap_2()
             .cursor_pointer()
+            .hover(|s| s.bg(theme::surface_2()))
             .on_click(cx.listener(move |this, _, _, _| {
                 this.core.send(Intent::CollapseProject(id, !collapsed));
             }))
+            .child(chevron(!collapsed, theme::fg_muted(), 14.))
             .child(
                 div()
                     .flex_1()
-                    .flex()
-                    .items_center()
-                    .child(label(format!(
-                        "{} {}",
-                        if collapsed { "▸" } else { "▾" },
-                        project.name
-                    )))
-                    .child(
-                        div()
-                            .pt_2()
-                            .text_size(px(10.5))
-                            .text_color(theme::fg_faint())
-                            .child(count.to_string()),
-                    ),
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .text_size(px(13.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(project.name.clone()),
+            )
+            .children(
+                attention
+                    .filter(|_| collapsed)
+                    .map(|color| div().size(px(8.)).rounded_full().bg(color)),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme::fg_faint())
+                    .child(count.to_string()),
             )
             .child(
                 div()
                     .id(SharedString::from(format!("new-in-{}", id.0)))
-                    .mt_2()
-                    .px(px(6.))
+                    .p(px(3.))
                     .rounded_md()
-                    .text_color(theme::fg_faint())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
-                    .child("+")
+                    .opacity(0.)
+                    .group_hover(group, |s| s.opacity(1.))
+                    .hover(|s| s.bg(theme::surface()))
+                    .child(icon(Icon::Plus, theme::fg_muted(), 14.))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         cx.stop_propagation();
                         this.open_new_conversation(Some(id), None, window, cx);
@@ -315,6 +368,14 @@ impl Workspace {
 }
 
 /// "now", "5m", "3h", "2d".
+/// How long ago, as a phrase: "just now", "5m ago".
+pub(crate) fn since(at_ms: i64) -> String {
+    match ago(at_ms).as_str() {
+        "now" => "just now".to_owned(),
+        short => format!("{short} ago"),
+    }
+}
+
 pub(crate) fn ago(at_ms: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -327,4 +388,14 @@ pub(crate) fn ago(at_ms: i64) -> String {
         m if m < 60 * 24 => format!("{}h", m / 60),
         m => format!("{}d", m / (60 * 24)),
     }
+}
+
+/// Shown under Pinned.
+fn is_pinned(c: &ConversationView) -> bool {
+    c.conversation.pinned && !c.conversation.archived
+}
+
+/// Shown under its project.
+fn in_project(c: &ConversationView, project: leon_domain::ProjectId) -> bool {
+    c.conversation.project == project && !c.conversation.pinned && !c.conversation.archived
 }

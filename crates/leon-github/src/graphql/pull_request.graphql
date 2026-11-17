@@ -6,11 +6,3 @@ query($owner: String!, $name: String!, $branch: String!) {
     }
   }
 }
-fragment prDetails on PullRequest {
-  comments(last: 30) { nodes { author { login } body createdAt } }
-  commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-    __typename
-    ... on CheckRun { name status conclusion }
-    ... on StatusContext { context state }
-  } } } } } }
-}
