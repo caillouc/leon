@@ -33,6 +33,15 @@ the user can open and talk to. All sessions that come from the user's first
 message form one conversation in the left pane. CLI subagents still work but
 are shown only as counts (CONV-13). How the call works: P15.
 
+**D6 — Prefer the reliable solution.** (2026-11-17)
+When two designs work, take the more reliable one: an official CLI over a
+hand-written API client, a proven mechanism over a clever one.
+Why: the maintainer would rather have something that keeps working than
+something slightly faster or more direct (e.g. P7: `gh` over GitHub's API).
+
+**D7 — Supported CLIs: Claude Code, Codex, Copilot CLI.** (2026-11-17)
+No Google CLI (Antigravity is not supported; see P11).
+
 ## Accepted on 2026-11-17
 
 Proposals P1–P15, accepted as written by the maintainer on 2026-11-17. Their
@@ -54,10 +63,11 @@ through WebKitGTK); Iced (no diff view); Slint (no code or diff view); egui
 
 **P2 — How the app talks to each CLI.**
 Claude Code: `stream-json` in and out. Codex: `codex app-server` (JSON-RPC).
-Copilot and Google: ACP. Inside the app, one event model shaped like ACP's.
-Why: ACP is stable (v1, official Rust crate) and native in Copilot and
-Antigravity; Claude and Codex reach it only through Node adapters that lag
-their features; quotas and agent choice need per-CLI code anyway.
+Copilot CLI: ACP. Inside the app, one event model shaped like ACP's.
+Why: ACP is stable (v1) and native in Copilot CLI; Claude and Codex reach it
+only through Node adapters that lag their features; quotas and agent choice
+need per-CLI code anyway. Codex marks app-server as experimental; accepted
+(see I13).
 Alternatives: ACP everywhere through adapters; each CLI's native protocol only.
 
 **P3 — Agents, skills and MCP defined once.**
@@ -81,10 +91,14 @@ Why: four private transcript formats would break with every CLI update.
 Why: behaves exactly like the user's git (config, worktrees); no C or large
 dependency. Alternatives: `git2` (C library), `gix` (still maturing).
 
-**P7 — GitHub.** Call GitHub's API directly, with the token from
-`gh auth token` or `GITHUB_TOKEN`; one batched request refreshes every PR
-badge. Fall back to `gh` for an action the API lacks.
-Alternative: run `gh` for every call (slow, no batching).
+**P7 — GitHub through the `gh` CLI.** (changed 2026-11-17)
+Every GitHub read and action runs `gh` with the user's own login (`gh api
+graphql` for reads); the app never reads the token. PR badges refresh with one
+`gh` call per conversation every 2 minutes.
+Why: more reliable (D6): `gh` owns login, hosts and rate limits; no HTTP
+library in the app.
+Alternative: call GitHub's API directly with the token from `gh auth token`
+(one batched request for every badge, but the app owns auth and HTTP).
 
 **P8 — Concurrency.** The core runs on tokio; GPUI stays in the UI crate; they
 talk through channels. Why: the core stays independent of the UI framework.
@@ -100,10 +114,9 @@ Why: your workflow uses the Claude desktop app's equivalents
 (`set_session_title`, `bind_pr`, `EnterWorktree`). Without it, the app can only
 guess title, PR and folder from the CLI's events.
 
-**P11 — Google CLI: Antigravity (`agy`) only.**
-Why: Gemini CLI is being replaced by Antigravity CLI; since 2026-06-18 it no
-longer serves free and AI Pro/Ultra users
-([Google](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)).
+**P11 — No Google CLI.** (changed 2026-11-17)
+Antigravity (`agy`) is not supported, nor Gemini CLI (D7).
+Why: the maintainer does not want it.
 
 **P12 — Build, don't fork Zeron.**
 Zeron (MIT, GPUI, 3.7k ★) covers much of the same scope. Build our own, study
@@ -127,3 +140,56 @@ Returning at once works the same on every CLI (it only needs MCP and sending a
 message), and the user can talk to the coder in the meantime.
 Alternative: the tool waits for the answer, like a subagent call (simpler for
 the calling agent, but timeouts and a blocked caller).
+
+## Implementation choices, accepted on 2026-11-17
+
+Made while building v1 where the decisions above were silent, reviewed and
+accepted by the maintainer on 2026-11-17 (list in
+[docs/how-leon-works.md](../docs/how-leon-works.md#choices-to-review)).
+
+**I1 — How agents reach the app's tools (P10).** Each CLI starts `leon mcp`,
+the app's own program as a stdio MCP server, which only relays to a Unix
+socket the app listens on (`tools.sock` in the data folder). A second app
+finding the socket in use refuses to start.
+Why: every CLI supports stdio MCP servers; no HTTP server in the app.
+
+**I2 — Stopping Claude Code.** Stop ends its process; the next message
+resumes the CLI session by its id.
+
+**I3 — Copilot CLI.** Started as `copilot --acp --stdio`; the "auto"
+permission is `--allow-all-tools`; an agent's instructions go in ACP's system
+prompt when Copilot offers it, else before the first message.
+
+**I4 — Going back / editing a message (CONV-7, CONV-8).** Later entries are
+dropped and a new CLI session starts with the conversation so far as text.
+The same on every CLI, instead of each CLI's own rewind.
+
+**I5 — Titles (NAV-9, D1).** One short CLI call per new conversation:
+Claude Code `-p` with `haiku`, Codex `exec` with low effort. Copilot CLI keeps
+the first line of the first message.
+
+**I6 — The app's tools run without a prompt.** Claude Code
+`--allowedTools mcp__leon`, Codex per-server approval, Copilot CLI
+`--allow-tool`. The user's own MCP servers keep their usual prompts.
+
+**I7 — A started agent's settings.** An agent started by another uses the
+caller's CLI, model, effort and permission.
+
+**I8 — No notification for answers between agents.** NOTIF-1 fires when an
+answer is for the user.
+
+**I9 — Idle CLIs.** A CLI process idle for 10 minutes is stopped and resumed
+by its session id on the next message.
+
+**I10 — Source folders per CLI (P3).** Claude Code loads each folder with
+`--plugin-dir`; Codex and Copilot CLI get the folders' `.mcp.json` stdio
+servers only (skills from source folders do not reach them).
+
+**I11 — `PATH`.** Read once from the user's login shell and given to every
+program the app starts, so an app started from the Finder finds the CLIs.
+
+**I12 — Pending review.** Diff comments waiting to be sent live in the
+window only; they are lost when the app quits.
+
+**I13 — Codex app-server.** Kept although Codex marks it experimental (P2).
+

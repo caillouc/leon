@@ -2,9 +2,9 @@
 
 Leon (working name) is an open-source native desktop app, in Rust, to run many
 coding-agent conversations across many repositories, on top of the coding CLIs
-(Claude Code, Codex, Copilot CLI, Google's CLI).
+(Claude Code, Codex, Copilot CLI).
 
-**Phase: M0, foundations** (started 2026-11-17). Milestones:
+**Phase: v1 built, under review** (2026-11-17). Milestones:
 [spec/features.md](spec/features.md#milestones-proposal).
 
 ## Who owns what
@@ -37,6 +37,8 @@ coding-agent conversations across many repositories, on top of the coding CLIs
    write `⚠️ not verified`.
 8. **Safety.** Tests never touch a real repository, the network or a real
    account. No secrets or personal data in code, fixtures or logs.
+9. **Prefer the reliable solution** (D6): an official CLI over a hand-written
+   API client, a proven mechanism over a clever one.
 
 When blocked — unclear feature, missing decision, two readings that lead to
 different code — stop and ask: the question, the options, your recommendation.
@@ -110,7 +112,7 @@ One word per concept, in code, UI and docs. A new concept: ask to add it here.
 | Agent session | One agent's own CLI conversation (its id, its transcript, one working directory at a time), started by the user or by another agent. |
 | Flow | Who started which agent session, with the prompts sent and the answers returned. |
 | Turn | One user message and everything the agent does until it waits again. |
-| Backend | A coding CLI the app drives (`claude`, `codex`, `copilot`, `agy`). Not an agent's *tool*. |
+| Backend | A coding CLI the app drives (`claude`, `codex`, `copilot`). Not an agent's *tool*. |
 | Agent | A named definition (markdown + frontmatter) the user talks to directly. |
 | Subagent | An agent the CLI itself runs inside an agent session. Shown only as counts. |
 | Pending review | Diff comments collected before being sent as one message. |

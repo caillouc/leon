@@ -8,7 +8,7 @@ maintainer's go.
 
 One native, fast window to run and follow many coding-agent conversations
 across many repositories, on top of the coding CLIs the user already pays for by
-subscription: Claude Code, Codex, Copilot CLI and Google's CLI (P11).
+subscription: Claude Code, Codex and Copilot CLI (D7).
 
 - Talk to any agent directly. No generic agent in between.
 - See how agents work together: which agent started which, what they told each
@@ -49,8 +49,7 @@ subscription: Claude Code, Codex, Copilot CLI and Google's CLI (P11).
 
 - **CONV-1** Send messages; see the agent's answer stream live.
 - **CONV-2** Start a conversation directly with a chosen agent.
-- **CONV-3** Choose the CLI per conversation: Claude Code, Codex, Copilot,
-  Google.
+- **CONV-3** Choose the CLI per conversation: Claude Code, Codex, Copilot CLI.
 - **CONV-4** Choose the model, the effort and the permission mode (default:
   auto).
 - **CONV-5** Change CLI, model, effort or permission mid-conversation. When the
@@ -112,7 +111,7 @@ conversation**: one item in the left pane (D5).
 
 ### GitHub
 
-- **GH-2** My issues.
+- **GH-2** My issues, at the top of the left pane (with GH-3).
 - **GH-3** My open PRs.
 - **GH-4** Labels of issues and PRs.
 - **GH-5** Request a Copilot review on a PR.
@@ -121,6 +120,13 @@ conversation**: one item in the left pane (D5).
 ### Notifications
 
 - **NOTIF-1** Desktop notification when an agent's answer is ready.
+
+### Doctor
+
+- **DOCTOR-1** A doctor view, like `flutter doctor`: Leon's version and setup
+  (config, data folder, notifications…), and for each CLI and tool it uses
+  whether it is installed, which version, whether it is logged in, and what
+  to do when something is missing. Opened from the left pane.
 
 ### Usage
 
@@ -197,21 +203,18 @@ conversation**: one item in the left pane (D5).
 | M5 | Git: uncommitted, branch diff, auto-fold, review comments | GIT-1…5 |
 | M6 | GitHub | NAV-6, GH-* |
 | M7 | Shared agents, skills, tools | EXT-* |
-| M8 | Copilot and Google CLIs | CONV-3 |
+| M8 | Copilot CLI | CONV-3 |
 | M9 | Usage stats | USE-1 |
 | M10 | Scheduled tasks, git buttons | SCHED-1, GIT-6 |
 
 ## Open
 
 - Right pane: Changes · Branch · PR · Info enough? (CTX-1)
-- Can an agent start a session on another CLI (planner on Claude, coder on
-  Codex)? *(proposal: same CLI as the caller unless the agent file says
-  otherwise)*
 - When you talk directly to the coder, its answer stays with you; only answers
   to the planner's messages go back to the planner. *(proposal)*
 - Queue the next message while an answer is running?
 - Notifications (NOTIF-1): also when an agent asks a question?
-- My issues / PRs: where in the UI? Include review requests?
+- My issues / PRs: include review requests?
 - Usage (USE-1): on subscriptions, plan limits (5 h / weekly windows) and tokens
   rather than cost? Where shown?
 - GitHub (GH-6): inline review comments and replies? Review state? Other actions?
