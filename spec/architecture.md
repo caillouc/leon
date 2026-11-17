@@ -174,6 +174,15 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 - Copilot review: `gh pr edit <n> --add-reviewer @copilot` (documented in
   `gh pr edit --help`, gh 2.101.0, 2026-11-17; never run for real).
 
+## Doctor
+
+Every port that reaches an outside tool has a `doctor` method that checks it
+(installed, version, logged in), each in its adapter; the binary adds Leon's
+own facts (`crates/leon/src/about.rs`). The core runs them all off its
+thread at start and on `Intent::RunDoctor` (`crates/leon-core/src/doctor.rs`)
+and publishes the report in the snapshot. Versions are compared with the ones
+each adapter was checked with; older ones are warnings.
+
 ## Speed targets (QUAL-1, QUAL-2)
 
 Engineering targets for "as fast as Zed", app process only (CLIs excluded).
