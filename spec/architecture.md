@@ -15,9 +15,9 @@ How the code is organised. Owned by agents; must follow
 - One CLI child process per agent session while a turn runs or input is
   awaited; stopped after an idle timeout, resumed by the CLI's session id. A CLI
   crash sets that agent session to `error`; it never takes the app down.
-- `git` and `gh` spawned per query (P6, P7). ⚠️ P7 says GitHub's API over
-  HTTPS; the code runs `gh` instead (no HTTP/TLS crate yet). Waiting for the
-  maintainer's decision.
+- `git` and `gh` spawned per query (P6, P7). GitHub goes through the `gh` CLI,
+  not direct HTTPS calls: the maintainer chose this on 2026-11-17 (P7 in
+  decisions.md still describes the API; the maintainer updates it).
 - Every adapter that starts a program gets the user's login-shell `PATH` from
   the binary (`leon_core::ports::SearchPath`), read once on first use: an app
   started from the Finder inherits a `PATH` without `/opt/homebrew/bin`.
