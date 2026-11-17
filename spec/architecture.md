@@ -131,9 +131,21 @@ Where each CLI looks (docs, 2026-11-17):
 | Agents | `.claude/agents/*.md` | TOML in `.codex/agents/` | `*.agent.md` | `.gemini/agents/*.md`; agy: plugins |
 | Plugins | `.claude-plugin/` | reads Claude manifests | reads `.claude-plugin/` | agy imports Claude plugins |
 
-`leon-catalog` reads the user's source folders (agents, skills, `.mcp.json`) for
-the agent picker and the MCP list; each adapter translates the chosen agent and
-MCP list for its CLI.
+`leon-catalog` reads, in this order (a later entry hides an earlier one of the
+same name): the user's standard folders, the source folders listed in
+`[sources] folders` of the config (plugin layout: `agents/`, `skills/`,
+`commands/`, `.mcp.json`), then the project's folders. It feeds the agent
+picker and the `/` list (CONV-11). Each session gets the source folders:
+
+- Claude Code: `--plugin-dir <folder>` each (local `--help`, 2.1.288), so its
+  skills, commands, agents and MCP servers load natively. ⚠️ Not verified
+  without a `.claude-plugin/plugin.json` in the folder.
+- Codex: the folders' stdio MCP servers in `thread/start.config.mcp_servers`.
+  Skills from source folders do not reach Codex (no per-session option found
+  in 0.160.0 `--help`).
+- ACP CLIs: the folders' MCP servers in `session/new.mcpServers`.
+
+Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 
 ## git (P6)
 

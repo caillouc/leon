@@ -76,7 +76,23 @@ pub fn parse(text: &str) -> Loaded {
         match key.as_str() {
             "version" => check_version(value, &mut out.warnings),
             "defaults" => read_defaults(value, &mut out.settings.defaults, &mut out.warnings),
-            "diff" => read_diff(value, &mut out.settings.diff_fold, &mut out.warnings),
+            "diff" => {
+                out.settings.diff_fold = read_list(value, "diff", "fold", &mut out.warnings, |p| {
+                    leon_domain::FoldPattern::parse(p)
+                        .map(drop)
+                        .ok_or_else(|| format!("\"{p}\" is not a valid glob or regex, ignored"))
+                });
+            }
+            "sources" => {
+                out.settings.sources =
+                    read_list(value, "sources", "folders", &mut out.warnings, |f| {
+                        if f.trim().is_empty() {
+                            Err("empty folder, ignored".to_owned())
+                        } else {
+                            Ok(())
+                        }
+                    });
+            }
             other => out
                 .warnings
                 .push(Warning::new(other, "unknown key, ignored")),
@@ -126,36 +142,42 @@ fn read_defaults(value: &Value, defaults: &mut SessionDefaults, warnings: &mut V
     }
 }
 
-fn read_diff(value: &Value, fold: &mut Vec<String>, warnings: &mut Vec<Warning>) {
+/// `[section] key = ["…", …]`: the strings `accept` takes; everything else
+/// is a warning.
+fn read_list(
+    value: &Value,
+    section: &str,
+    key: &str,
+    warnings: &mut Vec<Warning>,
+    accept: impl Fn(&str) -> Result<(), String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
     let Some(table) = value.as_table() else {
-        warnings.push(Warning::new("diff", "must be a table, ignored"));
-        return;
+        warnings.push(Warning::new(section, "must be a table, ignored"));
+        return out;
     };
-    for (key, value) in table {
-        if key != "fold" {
-            warnings.push(Warning::new(format!("diff.{key}"), "unknown key, ignored"));
+    let dotted = format!("{section}.{key}");
+    for (name, value) in table {
+        if name != key {
+            warnings.push(Warning::new(
+                format!("{section}.{name}"),
+                "unknown key, ignored",
+            ));
             continue;
         }
         let Some(items) = value.as_array() else {
-            warnings.push(Warning::new(
-                "diff.fold",
-                "must be a list of patterns, ignored",
-            ));
+            warnings.push(Warning::new(&dotted, "must be a list, ignored"));
             continue;
         };
         for item in items {
-            match item.as_str() {
-                Some(pattern) if leon_domain::FoldPattern::parse(pattern).is_some() => {
-                    fold.push(pattern.to_owned());
-                }
-                Some(pattern) => warnings.push(Warning::new(
-                    "diff.fold",
-                    format!("\"{pattern}\" is not a valid glob or regex, ignored"),
-                )),
-                None => warnings.push(Warning::new("diff.fold", "patterns must be strings")),
+            match item.as_str().map(|text| (text, accept(text))) {
+                Some((text, Ok(()))) => out.push(text.to_owned()),
+                Some((_, Err(message))) => warnings.push(Warning::new(&dotted, message)),
+                None => warnings.push(Warning::new(&dotted, "entries must be strings")),
             }
         }
     }
+    out
 }
 
 #[cfg(test)]
@@ -180,6 +202,11 @@ mod tests {
         assert_eq!(d.model.as_deref(), Some("gpt-5.5-codex"));
         assert_eq!(d.effort.as_deref(), Some("high"));
         assert_eq!(d.permission, "on-request");
+        assert_eq!(loaded.settings.sources, ["~/agent-kit"]);
+        assert_eq!(
+            loaded.settings.diff_fold,
+            ["glob:**/*.lock", "re:^generated/"]
+        );
     }
 
     #[test]
@@ -193,6 +220,9 @@ mod tests {
             ("[defaults]\nbackend = \"gemini\"", "defaults.backend"),
             ("[defaults]\nmodel = 4", "defaults.model"),
             ("[defaults]\ncolour = \"blue\"", "defaults.colour"),
+            ("[sources]\nfolders = \"~/kit\"", "sources.folders"),
+            ("[sources]\nfolders = [\"\"]", "sources.folders"),
+            ("[sources]\npaths = []", "sources.paths"),
         ];
         for (text, key) in cases {
             let loaded = parse(text);

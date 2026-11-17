@@ -7,6 +7,9 @@ pub struct Settings {
     pub defaults: SessionDefaults,
     /// `diff.fold` patterns (GIT-4), as written.
     pub diff_fold: Vec<String>,
+    /// `sources.folders`: the user's agents, skills and MCP servers in the
+    /// plugin layout (P3, EXT-2), as written (`~/` allowed).
+    pub sources: Vec<String>,
 }
 
 /// Choices prefilled when the user starts a conversation (CONV-3, CONV-4).

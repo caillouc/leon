@@ -65,6 +65,13 @@ pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
             allowed.join(","),
         ]);
     }
+    // Source folders in the plugin layout load natively (EXT-2, P3).
+    for source in &spec.sources {
+        args.extend([
+            "--plugin-dir".to_owned(),
+            source.dir.to_string_lossy().into_owned(),
+        ]);
+    }
     if let Some(id) = &spec.resume {
         args.extend(["--resume".to_owned(), id.clone()]);
     }
@@ -412,8 +419,13 @@ mod tests {
                 args: vec!["mcp".into()],
                 env: vec![],
             }],
+            sources: vec![leon_core::ports::Source {
+                dir: PathBuf::from("/kit"),
+                mcp_servers: Vec::new(),
+            }],
         };
         let list = args(&spec);
+        assert!(list.join(" ").contains("--plugin-dir /kit --resume s1"));
         let at = list.iter().position(|a| a == "--mcp-config").unwrap();
         let config: Value = serde_json::from_str(&list[at + 1]).unwrap();
         assert_eq!(

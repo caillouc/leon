@@ -5,31 +5,34 @@
 //! and the instructions as body. Folders, in priority order (a project agent
 //! hides a user agent of the same name):
 //!
-//! - project: `.agents/agents/`, `.claude/agents/`, `.github/agents/*.agent.md`
 //! - user: `~/.agents/agents/`, `~/.claude/agents/`
+//! - source folders the user registered (P3): `agents/`
+//! - project: `.agents/agents/`, `.claude/agents/`, `.github/agents/*.agent.md`
 //!
 //! Must not: write anything, or depend on another adapter.
 
 mod commands;
 mod frontmatter;
+mod sources;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use leon_core::ports::{AgentDefinition, Catalog, SlashCommand};
+use leon_core::ports::{AgentDefinition, Catalog, SlashCommand, Source};
 
 use crate::frontmatter::split;
 
-/// Agent files on disk, relative to a home folder.
+/// Agent files on disk: the user's, the source folders', the project's.
 #[derive(Debug, Clone)]
 pub struct AgentFiles {
     home: PathBuf,
+    sources: Vec<PathBuf>,
 }
 
 impl AgentFiles {
-    /// Reads user-level agents under `home`.
-    pub fn new(home: PathBuf) -> Self {
-        Self { home }
+    /// Reads user-level files under `home` and the user's source folders.
+    pub fn new(home: PathBuf, sources: Vec<PathBuf>) -> Self {
+        Self { home, sources }
     }
 }
 
@@ -37,20 +40,28 @@ const FOLDERS: [&str; 3] = [".agents/agents", ".claude/agents", ".github/agents"
 
 impl Catalog for AgentFiles {
     fn agents(&self, project: &Path) -> Vec<AgentDefinition> {
-        let mut by_name = BTreeMap::new();
         // User folders first, project folders last: later entries win.
-        for root in [self.home.as_path(), project] {
-            for folder in FOLDERS {
-                for agent in read_folder(&root.join(folder)) {
-                    by_name.insert(agent.name.clone(), agent);
-                }
-            }
+        let mut found = Vec::new();
+        for folder in FOLDERS {
+            found.extend(read_folder(&self.home.join(folder)));
         }
+        for source in &self.sources {
+            found.extend(read_folder(&source.join("agents")));
+        }
+        for folder in FOLDERS {
+            found.extend(read_folder(&project.join(folder)));
+        }
+        let by_name: BTreeMap<String, AgentDefinition> =
+            found.into_iter().map(|a| (a.name.clone(), a)).collect();
         by_name.into_values().collect()
     }
 
     fn commands(&self, project: &Path) -> Vec<SlashCommand> {
-        commands::commands(&self.home, project)
+        commands::commands(&self.home, &self.sources, project)
+    }
+
+    fn sources(&self) -> Vec<Source> {
+        self.sources.iter().map(|dir| sources::read(dir)).collect()
     }
 }
 
@@ -114,7 +125,7 @@ mod tests {
         )
         .unwrap();
 
-        let agents = AgentFiles::new(home.path().to_path_buf()).agents(project.path());
+        let agents = AgentFiles::new(home.path().to_path_buf(), Vec::new()).agents(project.path());
         let names: Vec<_> = agents.iter().map(|a| a.name.as_str()).collect();
         assert_eq!(names, ["coder", "planner"]);
         assert_eq!(agents[1].description, "project planner");
@@ -126,7 +137,7 @@ mod tests {
     fn missing_folders_give_no_agents() {
         let empty = tempfile::tempdir().unwrap();
         assert_eq!(
-            AgentFiles::new(empty.path().to_path_buf()).agents(empty.path()),
+            AgentFiles::new(empty.path().to_path_buf(), Vec::new()).agents(empty.path()),
             Vec::new()
         );
     }

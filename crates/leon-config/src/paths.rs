@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// The user config file: `$XDG_CONFIG_HOME/leon/config.toml`, else
 /// `~/.config/leon/config.toml`, on macOS and Linux alike (P9).
@@ -19,11 +19,28 @@ pub fn user_config_path_from(
     Some(base.join("leon").join("config.toml"))
 }
 
+/// A path from the config: `~/…` is under `home`, anything else as written.
+pub fn expand_home(text: &str, home: &Path) -> PathBuf {
+    match text.strip_prefix("~/") {
+        Some(rest) => home.join(rest),
+        None if text == "~" => home.to_owned(),
+        None => PathBuf::from(text),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
-    use super::user_config_path_from;
+    use super::{expand_home, user_config_path_from};
+
+    #[test]
+    fn tilde_means_home() {
+        let home = Path::new("/home/u");
+        assert_eq!(expand_home("~/kit", home), PathBuf::from("/home/u/kit"));
+        assert_eq!(expand_home("~", home), PathBuf::from("/home/u"));
+        assert_eq!(expand_home("/opt/kit", home), PathBuf::from("/opt/kit"));
+    }
 
     #[test]
     fn xdg_config_home_wins() {

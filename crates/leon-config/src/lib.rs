@@ -9,4 +9,4 @@ mod parse;
 mod paths;
 
 pub use parse::{CURRENT_VERSION, Loaded, Warning, load, parse};
-pub use paths::{user_config_path, user_config_path_from};
+pub use paths::{expand_home, user_config_path, user_config_path_from};

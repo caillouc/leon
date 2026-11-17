@@ -60,15 +60,26 @@ impl Session {
         if let Some(agent) = &spec.agent {
             params["developerInstructions"] = json!(agent.instructions);
         }
-        if !spec.mcp_servers.is_empty() {
-            // The app's own tools (P10) run without asking.
-            let mut servers = crate::mcp::servers(&spec.mcp_servers);
-            if let Some(map) = servers.as_object_mut() {
-                for server in map.values_mut() {
-                    server["default_tools_approval_mode"] = json!("approve");
+        // The app's own tools (P10) run without asking; the user's servers
+        // from their source folders (EXT-2) follow their usual approvals.
+        let mut servers = crate::mcp::servers(&spec.mcp_servers);
+        if let Some(map) = servers.as_object_mut() {
+            for server in map.values_mut() {
+                server["default_tools_approval_mode"] = json!("approve");
+            }
+            let theirs: Vec<_> = spec
+                .sources
+                .iter()
+                .flat_map(|s| s.mcp_servers.clone())
+                .collect();
+            if let Some(user) = crate::mcp::servers(&theirs).as_object() {
+                for (name, server) in user {
+                    map.entry(name.clone()).or_insert_with(|| server.clone());
                 }
             }
-            params["config"] = json!({ "mcp_servers": servers });
+            if !map.is_empty() {
+                params["config"] = json!({ "mcp_servers": servers });
+            }
         }
         let method = match &spec.resume {
             Some(id) => {
@@ -487,6 +498,7 @@ mod tests {
             working_dir: PathBuf::from("/tmp/project"),
             resume: resume.map(str::to_owned),
             mcp_servers: Vec::new(),
+            sources: Vec::new(),
         }
     }
 

@@ -4,11 +4,12 @@
 //!   `.claude/skills/<name>/SKILL.md`, `.github/skills/<name>/SKILL.md`
 //! - commands (Claude plugin layout): `.claude/commands/<name>.md`
 //!
-//! in the user's home, then the project (a project entry hides a user entry
-//! of the same name).
+//! in the user's home, then each source folder (`skills/<name>/SKILL.md`,
+//! `commands/<name>.md`), then the project: a later entry hides an earlier
+//! one of the same name.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use leon_core::ports::SlashCommand;
 
@@ -17,22 +18,26 @@ use crate::frontmatter::split;
 const SKILL_FOLDERS: [&str; 3] = [".agents/skills", ".claude/skills", ".github/skills"];
 const COMMAND_FOLDER: &str = ".claude/commands";
 
-pub(crate) fn commands(home: &Path, project: &Path) -> Vec<SlashCommand> {
-    let mut by_name = BTreeMap::new();
-    for root in [home, project] {
+pub(crate) fn commands(home: &Path, sources: &[PathBuf], project: &Path) -> Vec<SlashCommand> {
+    let mut found = Vec::new();
+    let standard = |root: &Path, found: &mut Vec<SlashCommand>| {
         for folder in SKILL_FOLDERS {
-            for c in skills(&root.join(folder)) {
-                by_name.insert(c.name.clone(), c);
-            }
+            found.extend(skills(&root.join(folder)));
         }
-        for c in command_files(&root.join(COMMAND_FOLDER)) {
-            by_name.insert(c.name.clone(), c);
-        }
+        found.extend(command_files(&root.join(COMMAND_FOLDER)));
+    };
+    standard(home, &mut found);
+    for source in sources {
+        found.extend(skills(&source.join("skills")));
+        found.extend(command_files(&source.join("commands")));
     }
+    standard(project, &mut found);
+    let by_name: BTreeMap<String, SlashCommand> =
+        found.into_iter().map(|c| (c.name.clone(), c)).collect();
     by_name.into_values().collect()
 }
 
-fn sorted_entries(dir: &Path) -> Vec<std::path::PathBuf> {
+fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
     let mut paths: Vec<_> = std::fs::read_dir(dir)
         .map_or_default(|entries| entries.filter_map(Result::ok).map(|e| e.path()).collect());
     paths.sort();
@@ -125,11 +130,24 @@ mod tests {
             "not a command",
         );
 
-        let list = commands(home.path(), project.path());
+        let source = tempfile::tempdir().unwrap();
+        write(
+            source.path(),
+            "skills/deploy/SKILL.md",
+            "---\ndescription: Deploy\n---\n",
+        );
+        let list = commands(home.path(), &[source.path().to_path_buf()], project.path());
         let got: Vec<(&str, &str)> = list
             .iter()
             .map(|c| (c.name.as_str(), c.description.as_str()))
             .collect();
-        assert_eq!(got, [("pdf", "Read PDFs"), ("review", "Project review")]);
+        assert_eq!(
+            got,
+            [
+                ("deploy", "Deploy"),
+                ("pdf", "Read PDFs"),
+                ("review", "Project review")
+            ]
+        );
     }
 }

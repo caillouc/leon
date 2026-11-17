@@ -257,6 +257,8 @@ impl Core {
         });
         self.state.agents = Arc::new(agents);
         self.state.commands = Arc::new(commands);
+        let catalog = Arc::clone(&self.ports.catalog);
+        self.state.sources = Arc::new(blocking(|| catalog.sources()));
     }
 
     fn apply(&mut self, intent: Intent) {
@@ -497,6 +499,7 @@ impl Core {
                 .app_tools
                 .as_ref()
                 .map_or_default(|tools| vec![tools.server(id)]),
+            sources: self.state.sources.to_vec(),
         };
         match self.ports.backends.start(spec) {
             Ok(channel) => {

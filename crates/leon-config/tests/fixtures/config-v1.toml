@@ -9,3 +9,6 @@ permission = "on-request"
 
 [diff]
 fold = ["glob:**/*.lock", "re:^generated/"]
+
+[sources]
+folders = ["~/agent-kit"]

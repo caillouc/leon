@@ -3650,7 +3650,9 @@ version = "0.1.0"
 dependencies = [
  "leon-core",
  "leon-domain",
+ "serde_json",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]

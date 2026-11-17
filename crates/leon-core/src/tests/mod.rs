@@ -168,6 +168,9 @@ impl Catalog for FakeCatalog {
     fn commands(&self, _project: &Path) -> Vec<crate::ports::SlashCommand> {
         Vec::new()
     }
+    fn sources(&self) -> Vec<crate::ports::Source> {
+        Vec::new()
+    }
     fn agents(&self, _project: &Path) -> Vec<AgentDefinition> {
         vec![
             AgentDefinition {

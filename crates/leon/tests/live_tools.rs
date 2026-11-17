@@ -42,6 +42,7 @@ async fn codex_calls_a_leon_tool() {
         working_dir: dir.path().to_path_buf(),
         resume: None,
         mcp_servers: vec![tools.server(AgentSessionId(7))],
+        sources: Vec::new(),
     };
     let mut channel = clis.start(spec).unwrap();
     channel

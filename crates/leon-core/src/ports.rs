@@ -102,6 +102,16 @@ pub struct SlashCommand {
     pub description: String,
 }
 
+/// A folder the user registered in the plugin layout (P3, EXT-2): `agents/`,
+/// `skills/`, `commands/`, `.mcp.json`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Source {
+    /// The folder.
+    pub dir: PathBuf,
+    /// Its `.mcp.json` servers that run over stdio.
+    pub mcp_servers: Vec<McpServer>,
+}
+
 /// Where agent definitions come from (EXT-1, P3).
 pub trait Catalog: Send + Sync + 'static {
     /// Agents available in `project`, user-level and project-level, sorted by
@@ -109,6 +119,8 @@ pub trait Catalog: Send + Sync + 'static {
     fn agents(&self, project: &Path) -> Vec<AgentDefinition>;
     /// Skills and commands for the `/` list of a project (CONV-11).
     fn commands(&self, project: &Path) -> Vec<SlashCommand>;
+    /// The user's source folders, with their MCP servers (EXT-2).
+    fn sources(&self) -> Vec<Source>;
 }
 
 /// What a backend needs to start a CLI session.
@@ -124,6 +136,8 @@ pub struct SessionSpec {
     pub resume: Option<String>,
     /// MCP servers to add to the session: the app's own tools (P10).
     pub mcp_servers: Vec<McpServer>,
+    /// The user's source folders (EXT-2): each CLI loads what it can.
+    pub sources: Vec<Source>,
 }
 
 /// Something the CLI did, normalized across backends.

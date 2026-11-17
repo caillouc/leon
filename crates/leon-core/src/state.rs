@@ -79,6 +79,8 @@ pub(crate) struct State {
     pub sessions: BTreeMap<AgentSessionId, SessionState>,
     pub agents: Arc<HashMap<ProjectId, Vec<AgentDefinition>>>,
     pub commands: Arc<HashMap<ProjectId, Vec<crate::ports::SlashCommand>>>,
+    /// The user's source folders (EXT-2), given to every session.
+    pub sources: Arc<Vec<crate::ports::Source>>,
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     pub notifications: Arc<Vec<Notification>>,
     pub next_notification: u64,

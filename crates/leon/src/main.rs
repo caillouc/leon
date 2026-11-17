@@ -27,10 +27,15 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("starting the core runtime")?;
     let home = dirs::home_dir().context("no home folder for this user")?;
+    let sources = settings
+        .sources
+        .iter()
+        .map(|folder| leon_config::expand_home(folder, &home))
+        .collect();
     let ports = leon_core::Ports {
         storage: Arc::new(store),
         backends: Arc::new(leon_backends::Clis::new(login_path)),
-        catalog: Arc::new(leon_catalog::AgentFiles::new(home)),
+        catalog: Arc::new(leon_catalog::AgentFiles::new(home, sources)),
         git: Arc::new(leon_git::GitCli::new(login_path)),
         github: Arc::new(leon_github::GhCli::new(login_path)),
         app_tools: Some(Arc::new(leon_app_tools::LocalTools::new(
