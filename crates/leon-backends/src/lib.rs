@@ -18,6 +18,7 @@ mod process;
 mod rpc;
 mod summary;
 mod title;
+mod tools;
 
 use leon_core::ports::{
     BackendChannel, BackendOptions, Backends, PortError, SearchPath, SessionSpec, inherited_path,
@@ -59,6 +60,13 @@ impl Backends for Clis {
 
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError> {
         title::title((self.path)(), backend, message)
+    }
+
+    fn tools(&self) -> Vec<DoctorSection> {
+        BackendKind::ALL
+            .into_iter()
+            .map(|b| tools::section((self.path)(), b))
+            .collect()
     }
 
     fn doctor(&self) -> Vec<DoctorSection> {

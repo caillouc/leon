@@ -128,6 +128,12 @@ conversation**: one item in the left pane (D5).
 
 - **NOTIF-1** Desktop notification when an agent's answer is ready.
 
+### Tools
+
+- **TOOLS-1** A Tools view: Leon's shared MCP list, which every CLI's
+  sessions get (add and remove servers there, I14), and, read-only, each
+  CLI's own MCP servers with their state and its plugins.
+
 ### Doctor
 
 - **DOCTOR-1** A doctor view, like `flutter doctor`: Leon's version and setup

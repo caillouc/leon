@@ -36,6 +36,7 @@ fn server(name: &str, command: &str) -> McpServer {
         command: PathBuf::from(command),
         args: vec!["mcp".into()],
         env: vec![("LEON_SESSION".into(), "7".into())],
+        trusted: name == "leon",
     }
 }
 

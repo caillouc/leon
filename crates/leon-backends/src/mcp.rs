@@ -3,21 +3,10 @@
 //! `{ name: { command, args, env } }`.
 
 use leon_domain::McpServer;
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 
 pub(crate) fn servers(list: &[McpServer]) -> Value {
-    let servers: Map<String, Value> = list
-        .iter()
-        .map(|m| {
-            let env: Map<String, Value> =
-                m.env.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
-            (
-                m.name.clone(),
-                json!({ "command": m.command.to_string_lossy(), "args": m.args, "env": env }),
-            )
-        })
-        .collect();
-    Value::Object(servers)
+    leon_domain::mcp_servers_map(list)
 }
 
 #[cfg(test)]
@@ -36,6 +25,7 @@ mod tests {
             command: PathBuf::from("/bin/leon"),
             args: vec!["mcp".into()],
             env: vec![("LEON_SESSION".into(), "7".into())],
+            trusted: true,
         }];
         assert_eq!(
             servers(&list),

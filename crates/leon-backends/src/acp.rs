@@ -47,11 +47,16 @@ pub(crate) fn copilot(spec: &SessionSpec) -> Cli {
         args.push(format!("--effort={effort}"));
     }
     args.extend(copilot_flags(&s.permission).iter().map(|f| (*f).to_owned()));
-    if !spec.mcp_servers.is_empty() {
-        // The app's own tools (P10) run without asking: `SERVER-NAME` allows
-        // every tool of that MCP server.
-        let names: Vec<&str> = spec.mcp_servers.iter().map(|m| m.name.as_str()).collect();
-        args.push(format!("--allow-tool={}", names.join(",")));
+    // Leon's own tools (P10) run without asking (I6): `SERVER-NAME` allows
+    // every tool of that MCP server.
+    let trusted: Vec<&str> = spec
+        .mcp_servers
+        .iter()
+        .filter(|m| m.trusted)
+        .map(|m| m.name.as_str())
+        .collect();
+    if !trusted.is_empty() {
+        args.push(format!("--allow-tool={}", trusted.join(",")));
     }
     Cli {
         label: "Copilot CLI",

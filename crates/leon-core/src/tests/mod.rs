@@ -3,6 +3,7 @@
 mod agents;
 mod repo;
 mod rewind;
+mod tools;
 mod turns;
 
 use std::collections::HashMap;
@@ -182,6 +183,16 @@ impl Backends for FakeBackends {
             .clone()
             .ok_or_else(|| PortError::new("writing a title", "no title in this test"))
     }
+    fn tools(&self) -> Vec<leon_domain::DoctorSection> {
+        vec![leon_domain::DoctorSection {
+            title: "Codex".into(),
+            checks: vec![leon_domain::DoctorCheck::new(
+                leon_domain::Health::Ok,
+                "node_repl",
+                "enabled",
+            )],
+        }]
+    }
     fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
         vec![leon_domain::DoctorSection {
             title: "Codex".into(),
@@ -231,6 +242,7 @@ fn ports(storage: Arc<dyn Storage>, backends: Arc<dyn Backends>) -> Ports {
         git: Arc::new(repo::FakeGit),
         github: Arc::new(repo::FakeGitHub::default()),
         app_tools: Some(Arc::new(agents::FakeTools)),
+        shared_tools: Arc::new(tools::FakeShared::default()),
         clock: || 1_000,
         about: Arc::new(|| {
             vec![leon_domain::DoctorCheck::new(

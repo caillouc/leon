@@ -1,0 +1,6 @@
+Installed plugins:
+
+  ❯ team-kit@team-marketplace
+    Version: 547818e96a04
+    Scope: user
+    Status: ✔ enabled

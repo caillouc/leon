@@ -13,6 +13,7 @@
 
 mod commands;
 mod frontmatter;
+mod shared;
 mod sources;
 
 use std::collections::BTreeMap;
@@ -20,6 +21,8 @@ use std::path::{Path, PathBuf};
 
 use leon_core::ports::{AgentDefinition, Catalog, SlashCommand, Source};
 use leon_domain::{DoctorCheck, Health};
+
+pub use shared::SharedFile;
 
 use crate::frontmatter::split;
 

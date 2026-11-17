@@ -257,6 +257,9 @@ fn sample() -> Snapshot {
         my_prs: repo::my_prs(),
         fold: repo::fold(),
         doctor: Some(repo::doctor()),
+        shared_tools: repo::shared_tools(),
+        shared_tools_path: "~/.config/leon/mcp.json".into(),
+        tools: Some(repo::tools()),
         notifications: Arc::new(Vec::new()),
         ..Snapshot::default()
     }
@@ -299,6 +302,7 @@ fn main() {
         ("my-prs".to_owned(), Shot::MyPullRequests),
         ("doctor".to_owned(), Shot::Doctor),
         ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
+        ("tools".to_owned(), Shot::Tools),
     ];
     gpui_platform::application().run(move |cx| capture(&core, shots, out, cx));
 }

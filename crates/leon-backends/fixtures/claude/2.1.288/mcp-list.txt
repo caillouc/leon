@@ -1,0 +1,4 @@
+Checking MCP server health…
+
+claude.ai Slack: https://example.invalid/slack/mcp - ✔ Connected
+claude.ai Mixpanel: https://example.invalid/mixpanel/mcp - ! Needs authentication

@@ -193,3 +193,10 @@ window only; they are lost when the app quits.
 
 **I13 — Codex app-server.** Kept although Codex marks it experimental (P2).
 
+**I14 — Leon's shared MCP list (TOOLS-1, EXT-2).** Servers added in the Tools
+view go to `mcp.json` (the `.mcp.json` shape) in Leon's config folder, owned by
+Leon, and reach every CLI's sessions: Claude Code through `--mcp-config`,
+Codex through its thread config, Copilot CLI through ACP. Local (stdio)
+servers only. Each CLI's own servers are shown read-only and changed in the
+CLI. Chosen by the maintainer on 2026-11-17 (P3 unchanged).
+

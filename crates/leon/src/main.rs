@@ -19,6 +19,11 @@ fn main() -> anyhow::Result<()> {
         return leon_app_tools::bridge().context("running the MCP bridge for Leon's tools");
     }
     let (settings, config, config_warnings) = load_settings();
+    // Leon's shared MCP list (I14) sits next to the config file.
+    let shared_tools = config
+        .as_ref()
+        .and_then(|c| c.parent())
+        .map(|dir| dir.join("mcp.json"));
     let data = data_dir()?;
     let store = open_store(&data)?;
     let socket = data.join("tools.sock");
@@ -51,6 +56,9 @@ fn main() -> anyhow::Result<()> {
             exe,
             socket.clone(),
         ))),
+        shared_tools: Arc::new(leon_catalog::SharedFile::new(
+            shared_tools.unwrap_or_else(|| data.join("mcp.json")),
+        )),
         clock: now_ms,
         about,
     };

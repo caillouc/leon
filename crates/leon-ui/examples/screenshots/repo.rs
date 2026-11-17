@@ -245,3 +245,44 @@ pub fn doctor() -> (i64, Arc<Vec<leon_domain::DoctorSection>>) {
     ];
     (0, Arc::new(sections))
 }
+
+pub fn shared_tools() -> Arc<Vec<leon_domain::McpServer>> {
+    Arc::new(vec![leon_domain::McpServer {
+        name: "metabase".into(),
+        command: "npx".into(),
+        args: vec!["-y".into(), "@org/metabase-mcp".into()],
+        env: vec![
+            ("METABASE_URL".into(), "https://example.invalid".into()),
+            ("API_KEY".into(), "x".into()),
+        ],
+        trusted: false,
+    }])
+}
+
+pub fn tools() -> (i64, Arc<Vec<leon_domain::DoctorSection>>) {
+    use leon_domain::{DoctorCheck as C, DoctorSection as S, Health as H};
+    let sections = vec![
+        S {
+            title: "Claude Code".into(),
+            checks: vec![
+                C::new(H::Ok, "claude.ai Slack", "Connected"),
+                C::new(H::Ok, "claude.ai Metabase", "Connected"),
+                C::new(H::Warning, "claude.ai Mixpanel", "Needs authentication")
+                    .fix("Log in once from Claude Code: run `claude`, then /mcp"),
+                C::new(H::Ok, "Plugin team-kit@team-marketplace", "enabled"),
+            ],
+        },
+        S {
+            title: "Codex".into(),
+            checks: vec![
+                C::new(H::Info, "codex_app", "disabled"),
+                C::new(H::Ok, "node_repl", "enabled"),
+            ],
+        },
+        S {
+            title: "Copilot CLI".into(),
+            checks: vec![C::new(H::Info, "Installed", "`copilot` not found")],
+        },
+    ];
+    (0, Arc::new(sections))
+}

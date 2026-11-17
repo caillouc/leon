@@ -51,6 +51,16 @@ pub struct Snapshot {
     pub doctor: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
     /// The doctor's checks are running.
     pub doctor_running: bool,
+    /// Leon's shared MCP list (TOOLS-1).
+    pub shared_tools: Arc<Vec<leon_domain::McpServer>>,
+    /// Where that list is saved.
+    pub shared_tools_path: std::path::PathBuf,
+    /// Why that list could not be read, if it could not.
+    pub shared_tools_error: Option<String>,
+    /// What each CLI has as MCP servers and plugins, and when it was read.
+    pub tools: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
+    /// The CLIs are being asked.
+    pub tools_running: bool,
     /// Desktop notifications to show (NOTIF-1), oldest first. Each has a
     /// unique id so the UI shows it once.
     pub notifications: Arc<Vec<Notification>>,

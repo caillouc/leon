@@ -222,6 +222,9 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
             Vec::new()
         }
+        fn tools(&self) -> Vec<leon_domain::DoctorSection> {
+            Vec::new()
+        }
     }
     let storage = Arc::new(FakeStorage::default());
     storage

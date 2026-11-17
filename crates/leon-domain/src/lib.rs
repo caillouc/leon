@@ -21,7 +21,7 @@ pub use conversation::{
 pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason};
 pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
 pub use github::{Check, CheckState, Comment, Issue, PrState, PullRequest};
-pub use mcp::McpServer;
+pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
 pub use settings::{SessionDefaults, Settings};

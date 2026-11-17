@@ -37,6 +37,8 @@ pub struct Ports {
     /// The app's MCP server given to every agent session (P10); `None`: no
     /// app tools.
     pub app_tools: Option<Arc<dyn AppTools>>,
+    /// Leon's shared MCP list (I14).
+    pub shared_tools: Arc<dyn crate::ports::SharedTools>,
     /// Current time, Unix milliseconds.
     pub clock: fn() -> i64,
     /// Leon's own facts for the doctor.
@@ -269,6 +271,7 @@ impl Core {
         self.state.commands = Arc::new(commands);
         let catalog = Arc::clone(&self.ports.catalog);
         self.state.sources = Arc::new(blocking(|| catalog.sources()));
+        self.load_shared();
     }
 
     fn apply(&mut self, intent: Intent) {
@@ -308,6 +311,9 @@ impl Core {
             Intent::RefreshGit(id) => self.refresh_git(id),
             Intent::RefreshGitHub => self.refresh_lists(),
             Intent::RunDoctor => self.run_doctor(),
+            Intent::RefreshTools => self.refresh_tools(),
+            Intent::AddTool(server) => self.add_tool(server),
+            Intent::RemoveTool(name) => self.remove_tool(&name),
             Intent::RequestCopilotReview(id) => self.request_review(id),
             Intent::CommentOnPr(id, body) => self.comment(id, body),
         }
@@ -535,11 +541,7 @@ impl Core {
             agent,
             working_dir: session.working_dir.clone(),
             resume: session.cli_session.clone(),
-            mcp_servers: self
-                .ports
-                .app_tools
-                .as_ref()
-                .map_or_default(|tools| vec![tools.server(id)]),
+            mcp_servers: self.session_servers(self.ports.app_tools.as_ref().map(|t| t.server(id))),
             sources: self.state.sources.to_vec(),
         };
         match self.ports.backends.start(spec) {

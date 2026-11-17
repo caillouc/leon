@@ -17,6 +17,7 @@ pub mod ports;
 mod repo;
 mod snapshot;
 mod state;
+mod tools;
 
 pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use doctor::About;

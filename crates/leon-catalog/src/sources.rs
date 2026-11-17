@@ -30,25 +30,12 @@ fn mcp_servers(dir: &Path) -> Vec<McpServer> {
     };
     servers
         .iter()
-        .filter_map(|(name, server)| {
-            let Some(command) = server["command"].as_str() else {
+        .filter_map(|(name, entry)| {
+            let server = McpServer::from_entry(name, entry);
+            if server.is_none() {
                 tracing::warn!(file = %file.display(), server = name, "not a stdio server, ignored");
-                return None;
-            };
-            let strings = |v: &Value| -> Vec<String> {
-                v.as_array().map_or_default(|a| a.iter().filter_map(|s| s.as_str().map(str::to_owned)).collect())
-            };
-            let env = server["env"].as_object().map_or_default(|e| {
-                e.iter()
-                    .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned())))
-                    .collect()
-            });
-            Some(McpServer {
-                name: name.clone(),
-                command: command.into(),
-                args: strings(&server["args"]),
-                env,
-            })
+            }
+            server
         })
         .collect()
 }
@@ -80,6 +67,7 @@ mod tests {
                 command: PathBuf::from("npx"),
                 args: vec!["-y".into(), "files-mcp".into()],
                 env: vec![("ROOT".into(), "/tmp".into())],
+                trusted: false,
             }]
         );
         let empty = tempfile::tempdir().unwrap();

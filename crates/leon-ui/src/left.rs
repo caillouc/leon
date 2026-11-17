@@ -144,6 +144,7 @@ impl Workspace {
                     .border_t_1()
                     .border_color(theme::border())
                     .pt_1()
+                    .child(self.render_tools_row(cx))
                     .child(self.render_doctor_row(cx)),
             )
             .into_any_element()

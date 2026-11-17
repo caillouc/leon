@@ -50,18 +50,20 @@ pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
         ]);
     }
     if !spec.mcp_servers.is_empty() {
-        // The app's own tools (P10) are allowed without asking.
-        let allowed: Vec<String> = spec
-            .mcp_servers
-            .iter()
-            .map(|m| format!("mcp__{}", m.name))
-            .collect();
         args.extend([
             "--mcp-config".to_owned(),
             json!({ "mcpServers": crate::mcp::servers(&spec.mcp_servers) }).to_string(),
-            "--allowedTools".to_owned(),
-            allowed.join(","),
         ]);
+        // Leon's own tools (P10) are allowed without asking (I6).
+        let allowed: Vec<String> = spec
+            .mcp_servers
+            .iter()
+            .filter(|m| m.trusted)
+            .map(|m| format!("mcp__{}", m.name))
+            .collect();
+        if !allowed.is_empty() {
+            args.extend(["--allowedTools".to_owned(), allowed.join(",")]);
+        }
     }
     // Source folders in the plugin layout load natively (EXT-2, P3).
     for source in &spec.sources {
@@ -416,6 +418,7 @@ mod tests {
                 command: PathBuf::from("/bin/leon"),
                 args: vec!["mcp".into()],
                 env: vec![],
+                trusted: true,
             }],
             sources: vec![leon_core::ports::Source {
                 dir: PathBuf::from("/kit"),

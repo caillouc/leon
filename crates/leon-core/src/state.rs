@@ -94,6 +94,13 @@ pub(crate) struct State {
     /// The last doctor report and when it was made.
     pub doctor: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
     pub doctor_running: bool,
+    /// Leon's shared MCP list (I14), and why it could not be read.
+    pub shared: Arc<Vec<leon_domain::McpServer>>,
+    pub shared_path: std::path::PathBuf,
+    pub shared_error: Option<String>,
+    /// What each CLI has as MCP servers and plugins, and when it was read.
+    pub tools: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
+    pub tools_running: bool,
 }
 
 impl State {
@@ -190,6 +197,11 @@ impl State {
             flash: self.flash.clone(),
             doctor: self.doctor.clone(),
             doctor_running: self.doctor_running,
+            shared_tools: Arc::clone(&self.shared),
+            shared_tools_path: self.shared_path.clone(),
+            shared_tools_error: self.shared_error.clone(),
+            tools: self.tools.clone(),
+            tools_running: self.tools_running,
         }
     }
 }

@@ -228,7 +228,9 @@ impl Workspace {
             }))
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(move |this, _, _, cx| this.flow_release(id, cx)),
+                cx.listener(move |this, e: &gpui::MouseUpEvent, _, cx| {
+                    this.flow_release(id, pt(e.position), cx);
+                }),
             )
             .on_scroll(cx.listener(move |this, e: &ScrollEvent, _, cx| {
                 let dy = f32::from(e.delta.pixel_delta(px(16.)).y);
@@ -460,8 +462,14 @@ impl Workspace {
         cx.notify();
     }
 
-    /// End of a drag; a box that did not move was clicked: open its session.
-    fn flow_release(&mut self, id: ConversationId, cx: &mut Context<Self>) {
+    /// End of a drag. A box that did not move was clicked: open its session.
+    /// A click on the background (no pan) closes the message panel.
+    fn flow_release(&mut self, id: ConversationId, at: Pt, cx: &mut Context<Self>) {
+        if let Some(Drag::Pan { from, .. }) = self.flow.drag
+            && (at.x - from.x).abs() + (at.y - from.y).abs() <= 3.
+        {
+            self.flow.selected = None;
+        }
         if let Some(Drag::Box {
             node: Node::Session(session),
             moved: false,

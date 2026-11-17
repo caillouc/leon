@@ -18,6 +18,7 @@ impl AppTools for FakeTools {
             command: PathBuf::from("/bin/leon"),
             args: vec!["mcp".into()],
             env: vec![("LEON_SESSION".into(), session.0.to_string())],
+            trusted: true,
         }
     }
 }

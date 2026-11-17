@@ -29,6 +29,8 @@ pub(crate) enum Internal {
     Title(ConversationId, String, String),
     /// The doctor's report.
     Doctor(Vec<leon_domain::DoctorSection>),
+    /// What each CLI has as MCP servers and plugins.
+    Tools(Vec<leon_domain::DoctorSection>),
 }
 
 impl Core {
@@ -167,6 +169,7 @@ impl Core {
                 });
             }
             Internal::Doctor(sections) => self.doctor_done(sections),
+            Internal::Tools(sections) => self.tools_done(sections),
             Internal::Tick => {
                 self.stop_idle_clis();
                 let ids: Vec<ConversationId> = self

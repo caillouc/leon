@@ -129,7 +129,32 @@ impl Workspace {
                 .child(empty("Checking what Leon needs…"))
                 .into_any_element();
         };
-        let body = sections.iter().map(|section| {
+        let body = report(sections);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(
+                div()
+                    .id("doctor-body")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .px_6()
+                    .py_4()
+                    .text_size(px(13.))
+                    .child(div().max_w(px(820.)).children(body)),
+            )
+            .into_any_element()
+    }
+}
+
+/// A report's sections: a title with its worst mark, then one row per check
+/// with its mark, name, detail and fix. Used by the Doctor and the Tools view.
+pub(crate) fn report(sections: &[DoctorSection]) -> Vec<AnyElement> {
+    sections
+        .iter()
+        .map(|section| {
             let (glyph, color) = mark(section.health());
             let rows = section.checks.iter().map(|check| {
                 let (glyph, color) = mark(check.health);
@@ -140,7 +165,7 @@ impl Workspace {
                     .child(div().w(px(14.)).flex_none().text_color(color).child(glyph))
                     .child(
                         div()
-                            .w(px(130.))
+                            .w(px(180.))
                             .flex_none()
                             .text_color(theme::fg_muted())
                             .child(check.name.clone()),
@@ -173,24 +198,9 @@ impl Workspace {
                         .child(section.title.clone()),
                 )
                 .child(div().pl_6().children(rows))
-        });
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(header)
-            .child(
-                div()
-                    .id("doctor-body")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .px_6()
-                    .py_4()
-                    .text_size(px(13.))
-                    .child(div().max_w(px(820.)).children(body)),
-            )
-            .into_any_element()
-    }
+                .into_any_element()
+        })
+        .collect()
 }
 
 #[cfg(test)]

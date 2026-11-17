@@ -115,6 +115,18 @@ pub struct Source {
     pub mcp_servers: Vec<McpServer>,
 }
 
+/// Leon's shared MCP list (EXT-2, I14): servers given to every CLI.
+pub trait SharedTools: Send + Sync + 'static {
+    /// Where the list lives.
+    fn path(&self) -> &Path;
+    /// The servers, by name.
+    fn list(&self) -> Result<Vec<McpServer>, PortError>;
+    /// Adds a server, or replaces one of the same name.
+    fn add(&self, server: &McpServer) -> Result<(), PortError>;
+    /// Removes a server.
+    fn remove(&self, name: &str) -> Result<(), PortError>;
+}
+
 /// Where agent definitions come from (EXT-1, P3).
 pub trait Catalog: Send + Sync + 'static {
     /// Agents available in `project`, user-level and project-level, sorted by
@@ -289,6 +301,9 @@ pub trait Backends: Send + Sync + 'static {
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError>;
     /// Doctor: one section per CLI (installed, version, logged in). Blocks.
     fn doctor(&self) -> Vec<DoctorSection>;
+    /// Tools view: one section per CLI listing its own MCP servers (with
+    /// their state) and plugins. Blocks; can take seconds.
+    fn tools(&self) -> Vec<DoctorSection>;
 }
 
 /// The `PATH` adapters start programs with: the user's login-shell `PATH`,

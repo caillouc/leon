@@ -75,6 +75,12 @@ pub enum Intent {
     RefreshGitHub,
     /// Run the doctor's checks again.
     RunDoctor,
+    /// Ask each CLI for its own MCP servers and plugins (TOOLS-1).
+    RefreshTools,
+    /// Add a server to Leon's shared MCP list, or replace one (TOOLS-1).
+    AddTool(leon_domain::McpServer),
+    /// Remove a server from Leon's shared MCP list (TOOLS-1).
+    RemoveTool(String),
     /// Ask Copilot to review the conversation's pull request (GH-5).
     RequestCopilotReview(ConversationId),
     /// Comment on the conversation's pull request (GH-6).

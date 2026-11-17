@@ -41,6 +41,8 @@ pub enum Shot {
     Doctor,
     /// A left-pane row's right-click menu.
     RowMenu(ConversationId),
+    /// The Tools view.
+    Tools,
 }
 
 impl Workspace {
@@ -115,6 +117,7 @@ impl Workspace {
             }
             Shot::MyPullRequests => self.screen = Screen::GitHub(GhList::PullRequests),
             Shot::Doctor => self.screen = Screen::Doctor,
+            Shot::Tools => self.screen = Screen::Tools,
             Shot::RowMenu(id) => {
                 self.select(*id, cx);
                 self.row_menu = Some((*id, gpui::point(gpui::px(200.), gpui::px(520.))));

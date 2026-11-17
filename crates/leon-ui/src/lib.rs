@@ -28,6 +28,7 @@ mod right;
 mod row_menu;
 mod settings_pickers;
 mod theme;
+mod tools_view;
 mod transcript;
 mod widgets;
 mod workspace;

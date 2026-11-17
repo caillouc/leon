@@ -87,6 +87,7 @@ impl AppTools for LocalTools {
                 ),
                 (SESSION_VAR.to_owned(), session.0.to_string()),
             ],
+            trusted: true,
         }
     }
 }
@@ -172,6 +173,7 @@ mod tests {
                     ("LEON_SOCKET".to_owned(), "/run/leon.sock".to_owned()),
                     ("LEON_SESSION".to_owned(), "42".to_owned()),
                 ],
+                trusted: true,
             }
         );
     }

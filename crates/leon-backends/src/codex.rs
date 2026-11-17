@@ -61,8 +61,10 @@ impl Session {
         // from their source folders (EXT-2) follow their usual approvals.
         let mut servers = crate::mcp::servers(&spec.mcp_servers);
         if let Some(map) = servers.as_object_mut() {
-            for server in map.values_mut() {
-                server["default_tools_approval_mode"] = json!("approve");
+            for trusted in spec.mcp_servers.iter().filter(|m| m.trusted) {
+                if let Some(server) = map.get_mut(&trusted.name) {
+                    server["default_tools_approval_mode"] = json!("approve");
+                }
             }
             let theirs: Vec<_> = spec
                 .sources
@@ -464,6 +466,7 @@ mod tests {
             command: PathBuf::from("/bin/leon"),
             args: vec!["mcp".into()],
             env: vec![],
+            trusted: true,
         }];
         let (session, _) = Session::new(&with_tools);
         assert_eq!(

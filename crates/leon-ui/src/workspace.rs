@@ -28,6 +28,8 @@ pub(crate) enum Screen {
     GitHub(GhList),
     /// What works and what needs setting up.
     Doctor,
+    /// MCP servers: Leon's shared list and each CLI's own (TOOLS-1).
+    Tools,
 }
 
 /// The tab shown for a conversation (FLOW-3): the flow, or one agent session.
@@ -71,6 +73,7 @@ pub struct Workspace {
     pub(crate) lists: HashMap<AgentSessionId, (ListState, usize)>,
     pub(crate) right: RightState,
     pub(crate) flow: FlowState,
+    pub(crate) tools_form: crate::tools_view::ToolsForm,
     /// The flash message shown, by id (an action's result).
     flash: Option<(u64, String)>,
     /// Open the next new conversation when it shows up.
@@ -115,6 +118,7 @@ impl Workspace {
         });
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search conversations"));
         let (right, right_subscriptions) = RightState::new(window, cx);
+        let tools_form = crate::tools_view::ToolsForm::new(window, cx);
         let mut subscriptions = vec![
             cx.subscribe_in(
                 &composer,
@@ -171,6 +175,7 @@ impl Workspace {
             lists: HashMap::new(),
             right,
             flow: FlowState::default(),
+            tools_form,
             flash: None,
             pending_open: false,
             shown_notifications: 0,
@@ -344,6 +349,7 @@ impl Render for Workspace {
             Screen::NewConversation => self.render_new_conversation(window, cx),
             Screen::GitHub(list) => self.render_github_list(list, cx),
             Screen::Doctor => self.render_doctor(cx),
+            Screen::Tools => self.render_tools(cx),
         };
         let flash = self.flash.as_ref().map(|(_, text)| {
             div()
