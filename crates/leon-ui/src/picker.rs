@@ -15,10 +15,32 @@ pub(crate) type Choice = (String, String);
 
 type OnPick = dyn Fn(&mut Workspace, String, &mut Window, &mut Context<Workspace>);
 
+/// How a picker's button looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Look {
+    /// Plain text with a caret, for a row of settings (message box).
+    Inline,
+    /// A full-width boxed field, for forms.
+    Field,
+}
+
 impl Workspace {
-    /// Renders a picker. `id` must be unique in the window.
+    /// Renders an inline picker. `id` must be unique in the window.
     pub(crate) fn picker(
         &self,
+        id: &str,
+        current: &str,
+        choices: Vec<Choice>,
+        cx: &mut Context<Self>,
+        on_pick: impl Fn(&mut Self, String, &mut Window, &mut Context<Self>) + 'static,
+    ) -> AnyElement {
+        self.picker_look(Look::Inline, id, current, choices, cx, on_pick)
+    }
+
+    /// Renders a picker with the given look. `id` must be unique.
+    pub(crate) fn picker_look(
+        &self,
+        look: Look,
         id: &str,
         current: &str,
         choices: Vec<Choice>,
@@ -30,24 +52,57 @@ impl Workspace {
         let toggle_id = id.clone();
         let trigger = div()
             .id(SharedString::from(format!("{id}-trigger")))
-            .px_2()
-            .py(px(2.))
-            .rounded_md()
-            .text_size(px(12.))
-            .text_color(theme::fg_muted())
-            .cursor_pointer()
-            .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
-            .when(open, |s| s.bg(theme::surface_2()))
-            .child(format!("{current} ▾"))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.open_picker = if this.open_picker.as_ref() == Some(&toggle_id) {
-                    None
+            .cursor_pointer();
+        let trigger = match look {
+            Look::Inline => trigger
+                .px_2()
+                .py(px(2.))
+                .rounded_md()
+                .text_size(px(12.))
+                .text_color(theme::fg_muted())
+                .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
+                .when(open, |s| s.bg(theme::surface_2()))
+                .child(format!("{current} ▾")),
+            Look::Field => trigger
+                .w_full()
+                .h(px(32.))
+                .px_3()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .rounded_md()
+                .border_1()
+                .border_color(if open {
+                    theme::accent()
                 } else {
-                    Some(toggle_id.clone())
-                };
-                cx.notify();
-            }));
-        let mut container = div().relative().child(trigger);
+                    theme::border_strong()
+                })
+                .bg(theme::surface())
+                .text_size(px(13.))
+                .hover(|s| s.bg(theme::surface_2()))
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .child(current.to_owned()),
+                )
+                .child(div().text_color(theme::fg_faint()).child("▾")),
+        };
+        let trigger = trigger.on_click(cx.listener(move |this, _, _, cx| {
+            this.open_picker = if this.open_picker.as_ref() == Some(&toggle_id) {
+                None
+            } else {
+                Some(toggle_id.clone())
+            };
+            cx.notify();
+        }));
+        let mut container = div()
+            .relative()
+            .when(look == Look::Field, Styled::w_full)
+            .child(trigger);
         if open {
             let on_pick: Rc<OnPick> = Rc::new(on_pick);
             let items = choices.into_iter().enumerate().map(|(ix, (value, text))| {

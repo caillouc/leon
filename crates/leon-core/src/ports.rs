@@ -233,15 +233,47 @@ pub struct BackendChannel {
     pub events: UnboundedReceiver<BackendEvent>,
 }
 
+/// A model a backend offers: the id given to the CLI, the name shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelOption {
+    /// Passed to the CLI, e.g. `claude-opus-5-5`.
+    pub id: String,
+    /// Shown in the pickers, e.g. `Opus 5.5`.
+    pub label: String,
+}
+
 /// Models, efforts and permission modes a backend offers (pickers, CONV-4).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BackendOptions {
-    /// Model ids; the first is the default.
-    pub models: Vec<String>,
+    /// Models; the first is used when none is chosen.
+    pub models: Vec<ModelOption>,
     /// Effort levels.
     pub efforts: Vec<String>,
+    /// Effort used when none is chosen.
+    pub default_effort: Option<String>,
     /// Permission modes; the first is "auto".
     pub permissions: Vec<String>,
+}
+
+impl BackendOptions {
+    /// Fills the model and effort left unchosen with the defaults, so every
+    /// session runs with explicit settings and shows what it uses.
+    pub fn complete(&self, settings: &mut SessionSettings) {
+        if settings.model.is_none() {
+            settings.model = self.models.first().map(|m| m.id.clone());
+        }
+        if settings.effort.is_none() {
+            settings.effort.clone_from(&self.default_effort);
+        }
+    }
+
+    /// The name shown for a model id (the id itself when unknown).
+    pub fn model_label(&self, id: &str) -> String {
+        self.models
+            .iter()
+            .find(|m| m.id == id)
+            .map_or_else(|| id.to_owned(), |m| m.label.clone())
+    }
 }
 
 /// Starts CLI sessions. Must be called inside the core's tokio runtime.

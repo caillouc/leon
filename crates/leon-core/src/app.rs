@@ -395,6 +395,7 @@ impl Core {
         let Some(dir) = self.state.project(project).map(|p| p.path.clone()) else {
             return;
         };
+        let settings = self.explicit(settings);
         let storage = Arc::clone(&self.ports.storage);
         let now = self.now();
         let title = title_from(text);
@@ -617,7 +618,16 @@ impl Core {
         }
     }
 
+    /// Settings with the backend's default model and effort filled in.
+    fn explicit(&self, mut settings: SessionSettings) -> SessionSettings {
+        if let Some(options) = self.state.options.get(&settings.backend) {
+            options.complete(&mut settings);
+        }
+        settings
+    }
+
     fn change_settings(&mut self, id: AgentSessionId, settings: &SessionSettings) {
+        let settings = &self.explicit(settings.clone());
         let Some(s) = self.state.sessions.get_mut(&id) else {
             return;
         };

@@ -347,11 +347,8 @@ impl Workspace {
                 _ => (m, k),
             })
         });
-        let model = format!(
-            "{} · effort {}",
-            settings.model.as_deref().unwrap_or("default model"),
-            settings.effort.as_deref().unwrap_or("default")
-        );
+        let (model, effort) = self.model_and_effort(settings);
+        let model = format!("{model} · effort {effort}");
         shell
             .rounded(px(10. * s))
             .line_height(gpui::relative(1.25))

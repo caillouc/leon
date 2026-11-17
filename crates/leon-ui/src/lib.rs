@@ -25,6 +25,8 @@ mod pr_view;
 #[cfg(feature = "preview")]
 pub mod preview;
 mod right;
+mod row_menu;
+mod settings_pickers;
 mod theme;
 mod transcript;
 mod widgets;

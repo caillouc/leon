@@ -1,7 +1,9 @@
 //! Left pane (NAV-*): new conversation, search, pinned conversations, one
 //! group per project, the archive.
 
-use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, Context, Focusable, IntoElement, SharedString, Window, div, prelude::*, px,
+};
 use gpui_component::input::Input;
 use leon_core::ConversationView;
 use leon_domain::Status;
@@ -57,7 +59,7 @@ impl Workspace {
                 })
                 .filter(matches)
                 .collect();
-            body = body.child(label(project.name.clone()));
+            body = body.child(Self::project_header(project.id, &project.name, cx));
             if rows.is_empty() {
                 body = body.child(empty(if query.is_empty() {
                     "No conversations"
@@ -131,6 +133,7 @@ impl Workspace {
                     )),
             )
             .child(body)
+            .children(self.render_row_menu(cx))
             .child(
                 div()
                     .border_t_1()
@@ -164,16 +167,22 @@ impl Workspace {
                     .items_center()
                     .gap_2()
                     .child(status_dot(c.status))
-                    .child(
-                        div()
+                    .child(match &self.rename {
+                        Some((rid, input, _)) if *rid == id => div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(Input::new(input))
+                            .into_any_element(),
+                        _ => div()
                             .flex_1()
                             .min_w_0()
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
                             .when(unread, |s| s.font_weight(gpui::FontWeight::SEMIBOLD))
-                            .child(c.conversation.title.clone()),
-                    )
+                            .child(c.conversation.title.clone())
+                            .into_any_element(),
+                    })
                     .children(self.snapshot.prs.get(&id).map(pr_badge))
                     .when(unread, |s| {
                         s.child(div().size(px(7.)).rounded_full().bg(theme::accent()))
@@ -194,6 +203,46 @@ impl Workspace {
                     .child(meta),
             )
             .on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
+            .on_mouse_down(
+                gpui::MouseButton::Right,
+                cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                    this.row_menu = Some((id, e.position));
+                    cx.notify();
+                }),
+            )
+            .into_any_element()
+    }
+
+    /// A project's group label, with a + that starts a conversation in it.
+    fn project_header(
+        project: leon_domain::ProjectId,
+        name: &str,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let group: SharedString = format!("project-{}", project.0).into();
+        div()
+            .group(group.clone())
+            .flex()
+            .items_center()
+            .pr_2()
+            .child(div().flex_1().child(label(name.to_owned())))
+            .child(
+                div()
+                    .id(SharedString::from(format!("new-in-{}", project.0)))
+                    .mt_2()
+                    .px(px(6.))
+                    .rounded_md()
+                    .text_color(theme::fg_faint())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
+                    .child("+")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.form.project = Some(project);
+                        this.form.settings.agent = None;
+                        this.show_new_conversation(cx);
+                        this.form_text.focus_handle(cx).focus(window, cx);
+                    })),
+            )
             .into_any_element()
     }
 

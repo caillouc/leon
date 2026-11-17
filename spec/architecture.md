@@ -101,7 +101,7 @@ ships.
 | Checked on | 2.1.288 local | 0.160.0 local | docs + ACP schema v1.32.0, 2026-11-17; not run |
 | Transport | `-p --input-format stream-json --output-format stream-json --include-partial-messages` (local) | `codex app-server` JSON-RPC, marked experimental; schema from `generate-json-schema` (local) | `copilot --acp --stdio` (preview) |
 | Agent | `--agent`, `--agents <json>` (local) | No `--agent` flag (local) → agent's instructions in `thread/start.developerInstructions` (local schema) | instructions in ACP `systemPrompt` when advertised, else before the first prompt |
-| Model / effort | `--model`, `--effort` (local) | `turn/start.model`, `turn/start.effort` — per turn, so switchable mid-conversation (local schema) | `--model=`, `--effort=` flags ⚠️ with `--acp` |
+| Model / effort | `--model <full id>`, `--effort`; Leon always passes both. Ids and defaults checked 2026-11-17: `opus` and the default run `claude-opus-5-5`, `sonnet` `claude-sonnet-5-5`, `haiku` `claude-haiku-4-5`; Claude Code reports no default effort, Leon uses `high` | `turn/start.model`, `turn/start.effort`; `model/list` default `gpt-6-luna`, effort `medium` | `--model=`, `--effort=` flags ⚠️ with `--acp`; Leon uses `medium` |
 | Stop (CONV-6) | end the process; the next message resumes by session id (I2; run 2026-11-17: context kept) | `turn/interrupt` (local schema) | ACP `session/cancel` |
 | Go back (CONV-7) | no flag in `--help` (local) ⚠️ — fallback: new session carrying the messages up to that point | `thread/revert { beforeTurnId }` (local schema) | ⚠️ |
 | Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ |

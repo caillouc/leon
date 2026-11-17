@@ -215,7 +215,6 @@ impl Workspace {
             .filter_map(|s| self.snapshot.sessions.get(s))
             .collect();
         let git = self.snapshot.git.get(&id);
-        let unset = || "CLI default".to_owned();
         let where_rows = [
             (
                 "Project",
@@ -240,11 +239,12 @@ impl Workspace {
         ];
         let session_rows = sessions.iter().map(|s| {
             let settings = &s.session.settings;
+            let (model, effort) = self.model_and_effort(settings);
             key_values(vec![
                 ("Agent", self.session_name(s)),
                 ("CLI", settings.backend.display_name().to_owned()),
-                ("Model", settings.model.clone().unwrap_or_else(unset)),
-                ("Effort", settings.effort.clone().unwrap_or_else(unset)),
+                ("Model", model),
+                ("Effort", effort),
                 ("Permission", settings.permission.clone()),
                 (
                     "CLI session",

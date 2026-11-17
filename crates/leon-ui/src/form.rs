@@ -5,9 +5,9 @@ use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*, px};
 use gpui_component::input::Textarea;
 use leon_core::Intent;
 
-use crate::picker::Choice;
+use crate::picker::{Choice, Look};
 use crate::theme;
-use crate::widgets::{button, empty, label, primary};
+use crate::widgets::{button, empty, primary};
 use crate::workspace::{Screen, Workspace, text_of};
 
 impl Workspace {
@@ -50,7 +50,8 @@ impl Workspace {
             .iter()
             .map(|p| (p.id.0.to_string(), p.name.clone()))
             .collect();
-        let project_picker = self.picker(
+        let project_picker = self.picker_look(
+            Look::Field,
             "form-project",
             &project.name,
             projects,
@@ -67,7 +68,7 @@ impl Workspace {
             .cloned()
             .unwrap_or_default();
         let agent_choices: Vec<Choice> =
-            std::iter::once((String::new(), "CLI's own agent".to_owned()))
+            std::iter::once((String::new(), "The CLI's own agent".to_owned()))
                 .chain(agents.iter().map(|a| (a.name.clone(), a.name.clone())))
                 .collect();
         let agent_label = self
@@ -75,15 +76,19 @@ impl Workspace {
             .settings
             .agent
             .clone()
-            .unwrap_or_else(|| "CLI's own agent".to_owned());
+            .unwrap_or_else(|| "The CLI's own agent".to_owned());
         let description = self
             .form
             .settings
             .agent
             .as_ref()
             .and_then(|name| agents.iter().find(|a| &a.name == name))
-            .map_or_default(|a| a.description.clone());
-        let agent_picker = self.picker(
+            .map_or_else(
+                || "No agent file: the CLI as it comes.".to_owned(),
+                |a| a.description.clone(),
+            );
+        let agent_picker = self.picker_look(
+            Look::Field,
             "form-agent",
             &agent_label,
             agent_choices,
@@ -93,82 +98,98 @@ impl Workspace {
             },
         );
         let settings = self.form.settings.clone();
-        let pickers = self.setting_pickers("form", &settings, cx, |this, next, _, _| {
-            this.form.settings = next;
-        });
+        let [backend, model, effort, permission] =
+            self.setting_pickers(Look::Field, "form", &settings, cx, |this, next, _, _| {
+                this.form.settings = next;
+            });
         let _ = window;
+        let card = div()
+            .w_full()
+            .max_w(px(560.))
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .rounded_xl()
+            .border_1()
+            .border_color(theme::border_strong())
+            .bg(theme::panel())
+            .shadow_lg()
+            .child(
+                div()
+                    .text_size(px(15.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child("New conversation"),
+            )
+            .child(pair(
+                field("Project", project_picker, None),
+                field("Agent", agent_picker, Some(description)),
+            ))
+            .child(pair(field("CLI", backend, None), field("Model", model, None)))
+            .child(pair(field("Effort", effort, None), field("Permission", permission, None)))
+            .child(
+                field(
+                    "First message",
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .children(slash)
+                        .child(
+                            input_box
+                                .p_2()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme::border_strong())
+                                .bg(theme::surface())
+                                .flex()
+                                .flex_col()
+                                .gap_2()
+                                .children(chips)
+                                .child(Textarea::new(&self.form_text)),
+                        )
+                        .into_any_element(),
+                    None,
+                ),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme::fg_faint())
+                    .child("Agents come from your agent files. No worktree is created here: the agent creates one when it needs it."),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(button(
+                        "form-cancel",
+                        "Cancel",
+                        cx.listener(|this, _, _, cx| {
+                            this.screen = Screen::Nothing;
+                            cx.notify();
+                        }),
+                    ))
+                    .child(primary(
+                        "form-start",
+                        "Start",
+                        cx.listener(|this, _, window, cx| {
+                            this.start_conversation(window, cx);
+                        }),
+                    )),
+            );
         div()
             .id("new-conversation")
             .size_full()
             .overflow_y_scroll()
-            .child(
-                div()
-                    .max_w(px(720.))
-                    .mx_auto()
-                    .p_6()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .child(
-                        div()
-                            .text_size(px(16.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("New conversation"),
-                    )
-                    .child(label("Project").px_0())
-                    .child(div().flex().child(project_picker))
-                    .child(label("Agent").px_0())
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .child(agent_picker)
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(theme::fg_faint())
-                                    .child(description),
-                            ),
-                    )
-                    .child(label("CLI and settings").px_0())
-                    .child(pickers)
-                    .child(label("First message").px_0())
-                    .children(slash)
-                    .child(
-                        input_box
-                            .p_2()
-                            .rounded_lg()
-                            .border_1()
-                            .border_color(theme::border_strong())
-                            .bg(theme::surface())
-                            .flex()
-                            .flex_col()
-                            .gap_2()
-                            .children(chips)
-                            .child(Textarea::new(&self.form_text)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(primary(
-                                "form-start",
-                                "Start",
-                                cx.listener(|this, _, window, cx| {
-                                    this.start_conversation(window, cx);
-                                }),
-                            ))
-                            .child(button(
-                                "form-cancel",
-                                "Cancel",
-                                cx.listener(|this, _, _, cx| {
-                                    this.screen = Screen::Nothing;
-                                    cx.notify();
-                                }),
-                            )),
-                    ),
-            )
+            .flex()
+            .justify_center()
+            .items_start()
+            .px_4()
+            .pt(px(56.))
+            .pb_6()
+            .child(card)
             .into_any_element()
     }
 
@@ -194,4 +215,38 @@ impl Workspace {
         self.pending_open = true;
         cx.notify();
     }
+}
+
+/// A labelled form field, with an optional hint under it.
+fn field(name: &str, control: AnyElement, hint: Option<String>) -> AnyElement {
+    div()
+        .flex_1()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .gap(px(5.))
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(theme::fg_muted())
+                .child(name.to_owned()),
+        )
+        .child(control)
+        .children(hint.map(|h| {
+            div()
+                .text_size(px(11.5))
+                .text_color(theme::fg_faint())
+                .child(h)
+        }))
+        .into_any_element()
+}
+
+/// Two fields side by side.
+fn pair(left: AnyElement, right: AnyElement) -> AnyElement {
+    div()
+        .flex()
+        .gap_3()
+        .child(left)
+        .child(right)
+        .into_any_element()
 }

@@ -1,15 +1,14 @@
-//! Main pane for a conversation: header with actions, agent tabs, transcript
-//! and composer.
+//! Main pane for a conversation: header (title, branch), tabs (the flow and
+//! each agent session), transcript and composer.
 
 use gpui::{
     AnyElement, ClipboardItem, Context, IntoElement, SharedString, Window, div, prelude::*, px,
 };
-use gpui_component::input::{Input, InputState};
-use leon_core::{Intent, SessionView};
+use leon_core::SessionView;
 use leon_domain::{ConversationId, Status};
 
 use crate::theme;
-use crate::widgets::{button, empty, status_dot};
+use crate::widgets::{empty, status_dot};
 use crate::workspace::{Tab, Workspace};
 
 impl Workspace {
@@ -23,9 +22,10 @@ impl Workspace {
             return empty("This conversation no longer exists.");
         };
         let session = self.current_session();
-        let body = match (self.tabs.get(&id), session) {
-            (Some(Tab::Flow), _) => self.render_flow(id, window, cx),
-            (_, Some(session)) => {
+        let body = match session {
+            None if view.sessions.is_empty() => empty("No agent session yet."),
+            None => self.render_flow(id, window, cx),
+            Some(session) => {
                 let transcript = self.render_transcript(session, cx);
                 div()
                     .flex_1()
@@ -36,7 +36,6 @@ impl Workspace {
                     .child(self.render_composer(session, window, cx))
                     .into_any_element()
             }
-            (_, None) => empty("No agent session yet."),
         };
         div()
             .size_full()
@@ -55,20 +54,13 @@ impl Workspace {
     ) -> AnyElement {
         let id = view.conversation.id;
         let c = &view.conversation;
-        let title: AnyElement = match &self.rename {
-            Some((rid, input)) if *rid == id => div()
-                .w(px(320.))
-                .child(Input::new(input))
-                .into_any_element(),
-            _ => div()
-                .text_size(px(15.))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(c.title.clone())
-                .into_any_element(),
-        };
+        let title = div()
+            .text_size(px(15.))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .child(c.title.clone());
         let folder = view
             .sessions
             .first()
@@ -103,91 +95,19 @@ impl Workspace {
                 cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
             });
 
-        let renaming = self.rename.as_ref().is_some_and(|(rid, _)| *rid == id);
-        let confirming = self.confirm_delete == Some(id);
-        let (pinned, archived) = (c.pinned, c.archived);
-        let menu_choices = vec![
-            ("rename".to_owned(), "Rename".to_owned()),
-            (
-                "pin".to_owned(),
-                if pinned { "Unpin" } else { "Pin to top" }.to_owned(),
-            ),
-            ("unread".to_owned(), "Mark as unread".to_owned()),
-            (
-                "archive".to_owned(),
-                if archived { "Unarchive" } else { "Archive" }.to_owned(),
-            ),
-            ("delete".to_owned(), "Delete…".to_owned()),
-        ];
-        let menu = self.picker(
-            "conversation-menu",
-            "Actions",
-            menu_choices,
-            cx,
-            move |this, value, window, cx| match value.as_str() {
-                "rename" => this.start_rename(id, window, cx),
-                "pin" => this.core.send(Intent::Pin(id, !pinned)),
-                "unread" => this.core.send(Intent::MarkUnread(id)),
-                "archive" => this.core.send(Intent::Archive(id, !archived)),
-                "delete" => this.confirm_delete = Some(id),
-                _ => {}
-            },
-        );
-        let actions = div().flex().items_center().gap_1().when(renaming, |d| {
-            d.child(button(
-                "rename-save",
-                "Save",
-                cx.listener(move |this, _, window, cx| this.finish_rename(window, cx)),
-            ))
-        });
-        let actions = actions.child(menu);
-        let confirm_bar =
-            confirming.then(|| {
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_size(px(12.))
-                    .child(div().text_color(theme::err()).child(
-                        "Delete this conversation and its transcripts? This can't be undone.",
-                    ))
-                    .child(
-                        button(
-                            "delete-yes",
-                            "Delete",
-                            cx.listener(move |this, _, _, cx| {
-                                this.core.send(Intent::Delete(id));
-                                this.confirm_delete = None;
-                                cx.notify();
-                            }),
-                        )
-                        .text_color(theme::err())
-                        .border_color(theme::err()),
-                    )
-                    .child(button(
-                        "delete-no",
-                        "Cancel",
-                        cx.listener(|this, _, _, cx| {
-                            this.confirm_delete = None;
-                            cx.notify();
-                        }),
-                    ))
-            });
-
-        let tab = self.tabs.get(&id).copied();
         let current = self.current_session();
         let mut tabs = div().flex().gap_1().child(Self::tab_button(
             "tab-flow",
             "Flow".into(),
             None,
-            tab == Some(Tab::Flow),
+            current.is_none(),
             id,
             Tab::Flow,
             cx,
         ));
         for sid in &view.sessions {
             if let Some(s) = self.snapshot.sessions.get(sid).cloned() {
-                let selected = tab != Some(Tab::Flow) && current == Some(*sid);
+                let selected = current == Some(*sid);
                 let name = self.session_name(&s);
                 let text: SharedString =
                     format!("{name} · {}", s.session.settings.backend.display_name()).into();
@@ -218,10 +138,8 @@ impl Workspace {
                     .items_center()
                     .gap_3()
                     .child(div().flex_1().min_w_0().child(title))
-                    .child(chip)
-                    .child(actions),
+                    .child(chip),
             )
-            .children(confirm_bar)
             .child(tabs)
             .into_any_element()
     }
@@ -286,30 +204,6 @@ impl Workspace {
             Some(ix) if same.len() > 1 => format!("{name} {}", ix + 1),
             _ => name,
         }
-    }
-
-    fn start_rename(&mut self, id: ConversationId, window: &mut Window, cx: &mut Context<Self>) {
-        let title = self
-            .snapshot
-            .conversation(id)
-            .map_or_default(|c| c.conversation.title.clone());
-        let input = cx.new(|cx| {
-            let mut state = InputState::new(window, cx);
-            state.set_value(title, window, cx);
-            state
-        });
-        self.rename = Some((id, input));
-        cx.notify();
-    }
-
-    fn finish_rename(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if let Some((id, input)) = self.rename.take() {
-            let title = crate::workspace::value_of(&input, cx);
-            if !title.trim().is_empty() {
-                self.core.send(Intent::Rename(id, title));
-            }
-        }
-        cx.notify();
     }
 
     pub(crate) fn status_line(s: &SessionView) -> Option<String> {

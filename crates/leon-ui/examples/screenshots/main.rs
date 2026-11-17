@@ -16,6 +16,16 @@ use leon_ui::preview::{Shot, capture};
 
 mod repo;
 
+fn models(items: &[(&str, &str)]) -> Vec<leon_core::ports::ModelOption> {
+    items
+        .iter()
+        .map(|(id, label)| leon_core::ports::ModelOption {
+            id: (*id).into(),
+            label: (*label).into(),
+        })
+        .collect()
+}
+
 fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| (*s).to_owned()).collect()
 }
@@ -35,7 +45,7 @@ fn session(
             settings: SessionSettings {
                 backend,
                 agent: Some(agent.to_owned()),
-                model: Some("opus".to_owned()),
+                model: Some("claude-opus-5-5".to_owned()),
                 effort: Some("high".to_owned()),
                 permission: "auto".to_owned(),
             },
@@ -137,6 +147,43 @@ fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
     transcripts
 }
 
+/// What the sample CLIs offer.
+fn options() -> HashMap<BackendKind, BackendOptions> {
+    HashMap::from([
+        (
+            BackendKind::ClaudeCode,
+            BackendOptions {
+                models: models(&[
+                    ("claude-opus-5-5", "Opus 5.5"),
+                    ("claude-sonnet-5-5", "Sonnet 5.5"),
+                    ("claude-haiku-4-5", "Haiku 4.5"),
+                ]),
+                efforts: strings(&["low", "medium", "high", "xhigh", "max"]),
+                default_effort: Some("high".into()),
+                permissions: strings(&[
+                    "auto",
+                    "bypassPermissions",
+                    "acceptEdits",
+                    "plan",
+                    "manual",
+                ]),
+            },
+        ),
+        (
+            BackendKind::Codex,
+            BackendOptions {
+                models: models(&[
+                    ("gpt-6-luna", "GPT-6-Luna"),
+                    ("gpt-5.6-terra", "GPT-5.6-Terra"),
+                ]),
+                efforts: strings(&["low", "medium", "high"]),
+                default_effort: Some("medium".into()),
+                permissions: strings(&["auto", "full access", "on request", "read only"]),
+            },
+        ),
+    ])
+}
+
 fn sample() -> Snapshot {
     let conversations = vec![
         ConversationView {
@@ -166,30 +213,7 @@ fn sample() -> Snapshot {
         session(3, 2, "coder", BackendKind::Codex, Status::NeedsInput),
     ];
     let transcripts = transcripts();
-    let options = HashMap::from([
-        (
-            BackendKind::ClaudeCode,
-            BackendOptions {
-                models: strings(&["opus", "sonnet", "haiku"]),
-                efforts: strings(&["low", "medium", "high", "xhigh", "max"]),
-                permissions: strings(&[
-                    "auto",
-                    "bypassPermissions",
-                    "acceptEdits",
-                    "plan",
-                    "manual",
-                ]),
-            },
-        ),
-        (
-            BackendKind::Codex,
-            BackendOptions {
-                models: strings(&["gpt-6-luna", "gpt-5.6-terra"]),
-                efforts: strings(&["low", "medium", "high"]),
-                permissions: strings(&["auto", "full access", "on request", "read only"]),
-            },
-        ),
-    ]);
+    let options = options();
     let agents = HashMap::from([(
         ProjectId(1),
         vec![
@@ -272,6 +296,7 @@ fn main() {
         ("review".to_owned(), Shot::Review(ConversationId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),
         ("doctor".to_owned(), Shot::Doctor),
+        ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
     ];
     gpui_platform::application().run(move |cx| capture(&core, shots, out, cx));
 }

@@ -70,10 +70,13 @@ message other agents through a small tool server of its own.
    answer back to the agent that asked (if any), else marks the
    conversation unread and sends a desktop notification.
 
-Example: you type "Fix the retry bug" to a planner on Claude Code → Leon starts
-`claude -p … --agent planner` in the project folder → the text streams into
-the transcript → the turn ends → the Changes tab re-reads `git` → the left
-pane shows the conversation as done.
+Example: you click + next to a project, pick the planner on Claude Code and
+type "Fix the retry bug" → the conversation opens on its Flow tab (You →
+planner) → Leon starts `claude -p … --model claude-opus-5-5 --effort high
+--agent planner` in the project folder → click the planner's box or tab to
+read the answer as it streams → the turn ends → the Changes tab re-reads
+`git` → the left pane shows the conversation as done. Right-click it there to
+rename, pin, archive or delete it.
 
 ## Agents starting other agents
 

@@ -42,16 +42,21 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **NAV-5** Progress indicator per conversation.
 - **NAV-6** PR status per conversation.
 - **NAV-7** Selecting a conversation opens it in the main pane.
-- **NAV-8** Rename, archive, delete and search conversations.
+- **NAV-8** Rename, pin, mark as unread, archive and delete a conversation
+  from its right-click menu in the left pane; search conversations.
 - **NAV-9** Titles are generated automatically, as in Claude Code.
+- **NAV-10** A + next to each project starts a conversation in it.
 
 ### Main pane
 
 - **CONV-1** Send messages; see the agent's answer stream live.
-- **CONV-2** Start a conversation directly with a chosen agent.
+- **CONV-2** Start a conversation directly with a chosen agent. The
+  new-conversation form is a card like the mock's (labelled fields in two
+  columns). A conversation opens on its Flow tab (FLOW-4).
 - **CONV-3** Choose the CLI per conversation: Claude Code, Codex, Copilot CLI.
 - **CONV-4** Choose the model, the effort and the permission mode (default:
-  auto).
+  auto). Models show their version (e.g. "Opus 5.5"); a picker never shows
+  "default" but the value actually used.
 - **CONV-5** Change CLI, model, effort or permission mid-conversation. When the
   CLI can't switch live, a new CLI session starts with the previous context.
 - **CONV-6** Stop a running answer.

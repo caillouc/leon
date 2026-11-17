@@ -53,11 +53,14 @@ pub struct Workspace {
     pub(crate) composer: Entity<TextareaState>,
     pub(crate) form_text: Entity<TextareaState>,
     pub(crate) search: Entity<InputState>,
-    pub(crate) rename: Option<(ConversationId, Entity<InputState>)>,
+    /// The conversation being renamed in the left pane, its input, and the
+    /// subscription that saves on Enter.
+    pub(crate) rename: Option<(ConversationId, Entity<InputState>, Subscription)>,
+    /// The left-pane row whose right-click menu is open, and where.
+    pub(crate) row_menu: Option<(ConversationId, gpui::Point<gpui::Pixels>)>,
     pub(crate) form: NewForm,
     pub(crate) open_picker: Option<SharedString>,
     pub(crate) show_archived: bool,
-    pub(crate) confirm_delete: Option<ConversationId>,
     /// Tool calls and long messages the user unfolded.
     pub(crate) expanded: HashSet<(AgentSessionId, usize)>,
     /// Long pastes waiting in the message box (CONV-12).
@@ -149,6 +152,7 @@ impl Workspace {
             form_text,
             search,
             rename: None,
+            row_menu: None,
             form: NewForm {
                 project: None,
                 settings: SessionSettings {
@@ -161,7 +165,6 @@ impl Workspace {
             },
             open_picker: None,
             show_archived: false,
-            confirm_delete: None,
             expanded: HashSet::new(),
             pasted: Vec::new(),
             rewind: None,
@@ -246,13 +249,14 @@ impl Workspace {
     pub(crate) fn select(&mut self, id: ConversationId, cx: &mut Context<Self>) {
         self.screen = Screen::Conversation(id);
         self.open_picker = None;
-        self.confirm_delete = None;
         self.rename = None;
+        self.row_menu = None;
         self.core.send(Intent::View(Some(id)));
         cx.notify();
     }
 
-    /// The agent session shown for the selected conversation, if any.
+    /// The agent session shown for the selected conversation; `None` when
+    /// the Flow tab shows, which is where a conversation opens (FLOW-4).
     pub(crate) fn current_session(&self) -> Option<AgentSessionId> {
         let Screen::Conversation(id) = self.screen else {
             return None;
@@ -260,8 +264,7 @@ impl Workspace {
         let conversation = self.snapshot.conversation(id)?;
         match self.tabs.get(&id) {
             Some(Tab::Session(s)) if conversation.sessions.contains(s) => Some(*s),
-            Some(Tab::Flow) => None,
-            _ => conversation.sessions.first().copied(),
+            _ => None,
         }
     }
 

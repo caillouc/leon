@@ -39,31 +39,46 @@ pub enum Shot {
     MyPullRequests,
     /// The doctor's report.
     Doctor,
+    /// A left-pane row's right-click menu.
+    RowMenu(ConversationId),
 }
 
 impl Workspace {
+    fn open_first_session(&mut self, id: ConversationId) {
+        if let Some(first) = self
+            .snapshot
+            .conversation(id)
+            .and_then(|c| c.sessions.first())
+        {
+            self.tabs.insert(id, Tab::Session(*first));
+        }
+    }
+
     fn preview(&mut self, shot: &Shot, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         self.open_picker = None;
+        self.row_menu = None;
+        self.right.draft = None;
+        self.right.review.clear();
         self.right.tab = RightTab::Changes;
         match shot {
             Shot::Empty => self.screen = Screen::Nothing,
             Shot::Conversation(id) => {
                 self.select(*id, cx);
-                self.tabs.remove(id);
+                self.open_first_session(*id);
             }
             Shot::PickerOpen(id, picker) => {
                 self.select(*id, cx);
-                self.tabs.remove(id);
+                self.open_first_session(*id);
                 self.open_picker = Some((*picker).into());
             }
             Shot::Flow(id) => {
                 self.select(*id, cx);
-                self.tabs.insert(*id, Tab::Flow);
+                self.tabs.remove(id);
             }
             Shot::NewConversation => self.show_new_conversation(cx),
             Shot::Right(id, tab) => {
                 self.select(*id, cx);
-                self.tabs.remove(id);
+                self.open_first_session(*id);
                 self.right.tab = match *tab {
                     "branch" => RightTab::Branch,
                     "pr" => RightTab::Pr,
@@ -73,7 +88,7 @@ impl Workspace {
             }
             Shot::Review(id) => {
                 self.select(*id, cx);
-                self.tabs.remove(id);
+                self.open_first_session(*id);
                 let at = |line: u32| DraftAt {
                     conversation: *id,
                     source: DiffSource::Changes,
@@ -100,6 +115,10 @@ impl Workspace {
             }
             Shot::MyPullRequests => self.screen = Screen::GitHub(GhList::PullRequests),
             Shot::Doctor => self.screen = Screen::Doctor,
+            Shot::RowMenu(id) => {
+                self.select(*id, cx);
+                self.row_menu = Some((*id, gpui::point(gpui::px(200.), gpui::px(520.))));
+            }
         }
         self.core.send(Intent::View(None));
         cx.notify();

@@ -264,3 +264,34 @@ async fn the_cli_writes_the_title() {
         "Webhook retry fix"
     );
 }
+
+#[test]
+fn unchosen_model_and_effort_get_the_defaults() {
+    use crate::ports::ModelOption;
+    let model = |id: &str, label: &str| ModelOption {
+        id: id.into(),
+        label: label.into(),
+    };
+    let options = BackendOptions {
+        models: vec![model("m1", "Model 1"), model("m2", "Model 2")],
+        efforts: vec!["medium".into(), "high".into()],
+        default_effort: Some("high".into()),
+        permissions: vec!["auto".into()],
+    };
+    let mut s = settings(BackendKind::Codex);
+    options.complete(&mut s);
+    assert_eq!(
+        (s.model.as_deref(), s.effort.as_deref()),
+        (Some("m1"), Some("high"))
+    );
+    let mut chosen = settings(BackendKind::Codex);
+    chosen.model = Some("m2".into());
+    chosen.effort = Some("medium".into());
+    options.complete(&mut chosen);
+    assert_eq!(
+        (chosen.model.as_deref(), chosen.effort.as_deref()),
+        (Some("m2"), Some("medium"))
+    );
+    assert_eq!(options.model_label("m2"), "Model 2");
+    assert_eq!(options.model_label("other"), "other");
+}
