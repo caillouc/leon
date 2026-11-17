@@ -83,12 +83,6 @@ async fn copilot_answers() {
     assert_pong(&pong(BackendKind::CopilotCli, Some("claude-haiku-4.5")).await);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs a logged-in Antigravity CLI (`agy acp --login`)"]
-async fn antigravity_answers() {
-    assert_pong(&pong(BackendKind::Antigravity, None).await);
-}
-
 #[test]
 #[ignore = "runs the real Codex CLI with the user's login"]
 fn codex_writes_a_title() {

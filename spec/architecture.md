@@ -27,14 +27,14 @@ How the code is organised. Owned by agents; must follow
 Ports and adapters: dependencies point inward, to the core and the domain.
 `cargo xtask layers` checks it in CI (table in `xtask/src/layers.rs`).
 
-| Ring | Crate | Does | May depend on | Status |
-|---|---|---|---|---|
-| 1 | `leon-domain` | Pure types and rules: ids, projects, settings; later conversation state, events, status/unread rules, PR badge, fold matching | nothing internal | M0 |
-| 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain | M0 |
-| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json; Codex app-server and ACP for Copilot CLI and Antigravity through one JSON-RPC runner: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter | M0–M4 |
-| 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core | M0 |
-| 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any | M0 |
-| — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate | M0 |
+| Ring | Crate | Does | May depend on |
+|---|---|---|---|
+| 1 | `leon-domain` | Pure types and rules: ids, projects, settings; later conversation state, events, status/unread rules, PR badge, fold matching | nothing internal |
+| 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain |
+| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json; Codex app-server and ACP for Copilot CLI through one JSON-RPC runner: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter |
+| 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core |
+| 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any |
+| — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate |
 
 A new crate goes into both this table and `xtask/src/layers.rs`, or CI fails.
 
@@ -96,21 +96,21 @@ Persisted (P5), so versioned with migration tests.
 official docs the same day, re-checked by contract tests before each adapter
 ships.
 
-| | Claude Code | Codex | Copilot CLI | Antigravity (`agy`) |
-|---|---|---|---|---|
-| Checked on | 2.1.288 local | 0.160.0 local | docs + ACP schema v1.32.0, 2026-11-17; not run | docs + ACP schema v1.32.0, 2026-11-17; not run |
-| Transport | `-p --input-format stream-json --output-format stream-json --include-partial-messages` (local) | `codex app-server` JSON-RPC, marked experimental; schema from `generate-json-schema` (local) | `copilot --acp --stdio` (preview) | `agy acp` |
-| Agent | `--agent`, `--agents <json>` (local) | No `--agent` flag (local) → agent's instructions in `thread/start.developerInstructions` (local schema) | instructions in ACP `systemPrompt` when advertised, else before the first prompt | same as Copilot |
-| Model / effort | `--model`, `--effort` (local) | `turn/start.model`, `turn/start.effort` — per turn, so switchable mid-conversation (local schema) | `--model=`, `--effort=` flags ⚠️ with `--acp` | ACP `session/set_config_option` (`model`, `thought_level`), else none |
-| Stop (CONV-6) | interrupt over stream-json ⚠️ not verified | `turn/interrupt` (local schema) | ACP `session/cancel` | ACP `session/cancel` |
-| Go back (CONV-7) | no flag in `--help` (local) ⚠️ — fallback: new session carrying the messages up to that point | `thread/revert { beforeTurnId }` (local schema) | ⚠️ | ⚠️ |
-| Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ | `subagent_info` ⚠️ |
-| Suggested replies (CONV-10) | `--prompt-suggestions` → `prompt_suggestion` message (local) | ⚠️ | ⚠️ | ⚠️ |
-| Title (NAV-9) | one-off `claude -p --model haiku --output-format text` ⚠️ not run | one-off `codex exec --skip-git-repo-check --ephemeral -s read-only` (run 2026-11-17) | none: the first line stays | none: the first line stays |
+| | Claude Code | Codex | Copilot CLI |
+|---|---|---|---|
+| Checked on | 2.1.288 local | 0.160.0 local | docs + ACP schema v1.32.0, 2026-11-17; not run |
+| Transport | `-p --input-format stream-json --output-format stream-json --include-partial-messages` (local) | `codex app-server` JSON-RPC, marked experimental; schema from `generate-json-schema` (local) | `copilot --acp --stdio` (preview) |
+| Agent | `--agent`, `--agents <json>` (local) | No `--agent` flag (local) → agent's instructions in `thread/start.developerInstructions` (local schema) | instructions in ACP `systemPrompt` when advertised, else before the first prompt |
+| Model / effort | `--model`, `--effort` (local) | `turn/start.model`, `turn/start.effort` — per turn, so switchable mid-conversation (local schema) | `--model=`, `--effort=` flags ⚠️ with `--acp` |
+| Stop (CONV-6) | interrupt over stream-json ⚠️ not verified | `turn/interrupt` (local schema) | ACP `session/cancel` |
+| Go back (CONV-7) | no flag in `--help` (local) ⚠️ — fallback: new session carrying the messages up to that point | `thread/revert { beforeTurnId }` (local schema) | ⚠️ |
+| Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ |
+| Suggested replies (CONV-10) | `--prompt-suggestions` → `prompt_suggestion` message (local) | ⚠️ | ⚠️ |
+| Title (NAV-9) | one-off `claude -p --model haiku --output-format text` ⚠️ not run | one-off `codex exec --skip-git-repo-check --ephemeral -s read-only` (run 2026-11-17) | none: the first line stays |
 | Permission | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` (local) | `-a`, `-s`, `--dangerously-bypass-approvals-and-sandbox` (local) | ACP modes | ACP modes |
-| MCP list | `--mcp-config` + `--allowedTools mcp__leon` (local) | `thread/start.config.mcp_servers`, Leon's with `default_tools_approval_mode = "approve"` (live, 0.160.0) | ACP `mcpServers`; `--allow-tool=leon` ⚠️ | ACP `mcpServers`; Leon's tools ask outside agy's auto mode |
-| Resume | `--resume`, `--fork-session` (local) | `thread/resume`, `thread/fork` | ACP `session/resume`, else `session/load`, else a new session with a notice | same as Copilot |
-| Usage | `result.total_cost_usd`, `rate_limit_event` | `thread/tokenUsage/updated`, `account/rateLimits/read` | `/usage` | `usage` object |
+| MCP list | `--mcp-config` + `--allowedTools mcp__leon` (local) | `thread/start.config.mcp_servers`, Leon's with `default_tools_approval_mode = "approve"` (live, 0.160.0) | ACP `mcpServers`; `--allow-tool=leon` ⚠️ |
+| Resume | `--resume`, `--fork-session` (local) | `thread/resume`, `thread/fork` | ACP `session/resume`, else `session/load`, else a new session with a notice |
+| Usage | `result.total_cost_usd`, `rate_limit_event` | `thread/tokenUsage/updated`, `account/rateLimits/read` | `/usage` |
 
 Rules for every adapter:
 
@@ -124,12 +124,12 @@ Rules for every adapter:
 
 Where each CLI looks (docs, 2026-11-17):
 
-| | Claude Code | Codex | Copilot CLI | Gemini / agy |
-|---|---|---|---|---|
-| Instructions | `CLAUDE.md` (`AGENTS.md` only if no CLAUDE.md) | `AGENTS.md` | `AGENTS.md`, `CLAUDE.md` | `GEMINI.md`, `AGENTS.md` via setting |
-| Skills | `~/.claude/skills`, plugins | `~/.agents/skills` | `~/.agents/skills`, `.github/skills`, `.claude/skills` | `~/.agents/skills` |
-| Agents | `.claude/agents/*.md` | TOML in `.codex/agents/` | `*.agent.md` | `.gemini/agents/*.md`; agy: plugins |
-| Plugins | `.claude-plugin/` | reads Claude manifests | reads `.claude-plugin/` | agy imports Claude plugins |
+| | Claude Code | Codex | Copilot CLI |
+|---|---|---|---|
+| Instructions | `CLAUDE.md` (`AGENTS.md` only if no CLAUDE.md) | `AGENTS.md` | `AGENTS.md`, `CLAUDE.md` |
+| Skills | `~/.claude/skills`, plugins | `~/.agents/skills` | `~/.agents/skills`, `.github/skills`, `.claude/skills` |
+| Agents | `.claude/agents/*.md` | TOML in `.codex/agents/` | `*.agent.md` |
+| Plugins | `.claude-plugin/` | reads Claude manifests | reads `.claude-plugin/` |
 
 `leon-catalog` reads, in this order (a later entry hides an earlier one of the
 same name): the user's standard folders, the source folders listed in
@@ -143,7 +143,7 @@ picker and the `/` list (CONV-11). Each session gets the source folders:
 - Codex: the folders' stdio MCP servers in `thread/start.config.mcp_servers`.
   Skills from source folders do not reach Codex (no per-session option found
   in 0.160.0 `--help`).
-- ACP CLIs: the folders' MCP servers in `session/new.mcpServers`.
+- Copilot CLI: the folders' MCP servers in ACP `session/new.mcpServers`.
 
 Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 

@@ -16,7 +16,7 @@ enum Pending {
     Initialize,
     /// `session/new`, or `session/load` / `session/resume` of that id.
     Session(Option<String>),
-    /// `session/set_config_option` or `session/set_mode`.
+    /// `session/set_config_option`.
     Selector,
     Prompt,
 }
@@ -47,17 +47,10 @@ pub(crate) struct Session {
 }
 
 impl Session {
-    /// A new session and the messages to send first. `mode` is the
-    /// permission to set through the agent's mode selector, for CLIs that
-    /// take it there.
-    pub(crate) fn new(
-        spec: &SessionSpec,
-        label: &'static str,
-        mode: Option<&str>,
-    ) -> (Self, Vec<Value>) {
+    /// A new session and the messages to send first.
+    pub(crate) fn new(spec: &SessionSpec, label: &'static str) -> (Self, Vec<Value>) {
         let s = &spec.settings;
         let selectors = [
-            ("mode", mode),
             ("model", s.model.as_deref()),
             ("thought_level", s.effort.as_deref()),
         ]

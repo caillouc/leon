@@ -56,7 +56,7 @@ fn args(backend: BackendKind, message: &str) -> Option<(&'static str, Vec<String
                 "model_reasoning_effort=\"low\"",
             ]),
         )),
-        BackendKind::CopilotCli | BackendKind::Antigravity => None,
+        BackendKind::CopilotCli => None,
     }
 }
 

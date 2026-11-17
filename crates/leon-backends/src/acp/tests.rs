@@ -6,8 +6,8 @@ use leon_core::ports::{AgentDefinition, BackendCommand, BackendEvent, SessionSpe
 use leon_domain::{BackendKind, McpServer, SessionSettings};
 use serde_json::{Value, json};
 
+use super::copilot;
 use super::session::Session;
-use super::{antigravity, copilot};
 
 mod replays;
 
@@ -16,7 +16,7 @@ const SESSION: &str = "sess_abc123def456";
 fn spec(resume: Option<&str>) -> SessionSpec {
     SessionSpec {
         settings: SessionSettings {
-            backend: BackendKind::Antigravity,
+            backend: BackendKind::CopilotCli,
             agent: None,
             model: None,
             effort: None,
@@ -43,11 +43,10 @@ fn server(name: &str, command: &str) -> McpServer {
 /// read; returns the events and every message Leon sent.
 fn replay(
     spec: &SessionSpec,
-    mode: Option<&str>,
     lines: &str,
     commands: Vec<(usize, BackendCommand)>,
 ) -> (Vec<BackendEvent>, Vec<Value>) {
-    let (mut session, mut sent) = Session::new(spec, "Agent", mode);
+    let (mut session, mut sent) = Session::new(spec, "Agent");
     let mut events = Vec::new();
     let mut commands = commands.into_iter().peekable();
     for (read, line) in std::iter::once("").chain(lines.lines()).enumerate() {
@@ -102,9 +101,9 @@ fn selectors_match_by_id_or_name() {
     let mut s = spec(None);
     s.settings.model = Some("Model 2".into());
     let lines = include_str!("../../fixtures/acp/1.32.0/config.jsonl");
-    let (events, sent) = replay(&s, Some("code"), lines, vec![(0, send("hi"))]);
+    let (events, sent) = replay(&s, lines, vec![(0, send("hi"))]);
     assert_eq!(events, [ready(SESSION)]);
-    // The prompt waits for both answers.
+    // The prompt waits for the answer.
     let methods: Vec<String> = sent.iter().map(describe).collect();
     assert_eq!(
         methods,
@@ -112,16 +111,11 @@ fn selectors_match_by_id_or_name() {
             "initialize",
             "session/new",
             "session/set_config_option",
-            "session/set_config_option",
             "session/prompt"
         ]
     );
     assert_eq!(
         sent[2]["params"],
-        json!({ "sessionId": SESSION, "configId": "mode", "value": "code" })
-    );
-    assert_eq!(
-        sent[3]["params"],
         json!({ "sessionId": SESSION, "configId": "model", "value": "model-2" })
     );
 }
@@ -135,7 +129,7 @@ fn mcp_servers_go_in_the_session_request() {
         mcp_servers: vec![server("leon", "/bin/other"), server("docs", "/bin/docs")],
     }];
     let lines = include_str!("../../fixtures/acp/1.32.0/new-only.jsonl");
-    let (_, sent) = replay(&s, None, lines, Vec::new());
+    let (_, sent) = replay(&s, lines, Vec::new());
     let env = json!([{ "name": "LEON_SESSION", "value": "7" }]);
     assert_eq!(
         sent[1]["params"],
@@ -159,7 +153,7 @@ fn agent_instructions_go_in_the_system_prompt_or_the_first_prompt() {
     });
     let with_system_prompt = include_str!("../../fixtures/acp/1.32.0/system-prompt.jsonl");
     let commands = || vec![(0, send("first")), (2, send("second"))];
-    let (_, sent) = replay(&s, None, with_system_prompt, commands());
+    let (_, sent) = replay(&s, with_system_prompt, commands());
     assert_eq!(
         sent[1]["params"]["systemPrompt"],
         json!({ "mode": "append", "content": [{ "type": "text", "text": "Focus on security issues." }] })
@@ -167,7 +161,7 @@ fn agent_instructions_go_in_the_system_prompt_or_the_first_prompt() {
     assert_eq!(sent[2]["params"]["prompt"][0]["text"], "first");
 
     let without = include_str!("../../fixtures/acp/1.32.0/new-only.jsonl");
-    let (_, sent) = replay(&s, None, without, commands());
+    let (_, sent) = replay(&s, without, commands());
     assert!(sent[1]["params"].get("systemPrompt").is_none());
     assert_eq!(
         sent[2]["params"]["prompt"][0]["text"],
@@ -178,7 +172,7 @@ fn agent_instructions_go_in_the_system_prompt_or_the_first_prompt() {
 
 #[test]
 fn messages_split_on_a_new_message_id() {
-    let (mut session, _) = Session::new(&spec(None), "Agent", None);
+    let (mut session, _) = Session::new(&spec(None), "Agent");
     let chunk = |id: &str, text: &str| {
         json!({ "method": "session/update", "params": { "update": {
             "sessionUpdate": "agent_message_chunk", "messageId": id,
@@ -201,7 +195,7 @@ fn messages_split_on_a_new_message_id() {
 
 #[test]
 fn allow_once_comes_first_and_free_text_rejects() {
-    let (mut session, _) = Session::new(&spec(None), "Agent", None);
+    let (mut session, _) = Session::new(&spec(None), "Agent");
     let request = json!({ "jsonrpc": "2.0", "id": "p1", "method": "session/request_permission", "params": {
         "toolCall": { "toolCallId": "t1", "title": "rm -rf build", "kind": "execute" },
         "options": [
@@ -232,7 +226,7 @@ fn allow_once_comes_first_and_free_text_rejects() {
 }
 
 #[test]
-fn copilot_flags_and_agy_mode() {
+fn copilot_flags() {
     let mut s = spec(None);
     s.settings.model = Some("gpt-6-luna".into());
     s.settings.effort = Some("low".into());
@@ -248,7 +242,4 @@ fn copilot_flags_and_agy_mode() {
             "--allow-tool=leon",
         ]
     );
-    let agy = antigravity(&s);
-    assert_eq!(agy.args, ["acp"]);
-    assert_eq!(agy.mode.as_deref(), Some("auto"));
 }

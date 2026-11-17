@@ -2,12 +2,12 @@
 
 One native window to run and follow many coding-agent conversations across
 many repositories, on top of the coding CLIs you already use: Claude Code,
-Codex, Copilot CLI and Antigravity.
+Codex and Copilot CLI.
 
 **Status: working towards v1.** Conversations with Claude Code and Codex,
 agents starting other agents (flow view), git changes and branch diff with
-review comments, GitHub pull requests. Copilot CLI and Antigravity are being
-added. What Leon does: [spec/features.md](spec/features.md).
+review comments, GitHub pull requests, and Copilot CLI (not yet tested with
+the real CLI). What Leon does: [spec/features.md](spec/features.md).
 
 Leon drives the CLIs with your own logins and subscriptions; it never calls a
 model API itself. Install and log in to each CLI you want to use, and to `gh`
@@ -52,7 +52,7 @@ Runs formatting, clippy (warnings are errors), tests, the crate layer check and
   version = 1
 
   [defaults]            # prefilled for a new conversation
-  backend = "claude"    # claude, codex, copilot, agy
+  backend = "claude"    # claude, codex, copilot
   permission = "auto"
 
   [diff]

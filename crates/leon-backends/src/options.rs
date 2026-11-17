@@ -1,7 +1,7 @@
 //! What each CLI's pickers offer. Values checked on 2026-11-17: Claude Code
 //! 2.1.288 `--help` (efforts, permission modes, model aliases), Codex 0.160.0
-//! app-server `model/list` (models, efforts); Copilot CLI and Antigravity from
-//! their docs only (neither CLI was run).
+//! app-server `model/list` (models, efforts); Copilot CLI from its docs only
+//! (not run).
 
 use leon_core::ports::BackendOptions;
 use leon_domain::BackendKind;
@@ -68,17 +68,6 @@ pub(crate) fn for_backend(backend: BackendKind) -> BackendOptions {
             ]),
             efforts: list(&["low", "medium", "high", "xhigh", "max"]),
             permissions: list(&COPILOT_PERMISSIONS),
-        },
-        BackendKind::Antigravity => BackendOptions {
-            // No documented list (`agy models` shows the account's): the
-            // CLI's own default is used.
-            models: Vec::new(),
-            // The thinking levels its ACP picker shows, matched by name.
-            // ⚠️ Their ACP ids are not verified.
-            efforts: list(&["low", "medium", "high", "extra", "max"]),
-            // `agy --mode` values, set through the ACP mode selector.
-            // ⚠️ not verified that `agy acp` offers that selector.
-            permissions: list(&["auto", "default", "accept-edits", "plan"]),
         },
     }
 }

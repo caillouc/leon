@@ -7,18 +7,11 @@ pub enum BackendKind {
     Codex,
     /// GitHub Copilot CLI, binary `copilot`.
     CopilotCli,
-    /// Google Antigravity CLI, binary `agy` (P11).
-    Antigravity,
 }
 
 impl BackendKind {
     /// Every backend, in the order the UI lists them.
-    pub const ALL: [Self; 4] = [
-        Self::ClaudeCode,
-        Self::Codex,
-        Self::CopilotCli,
-        Self::Antigravity,
-    ];
+    pub const ALL: [Self; 3] = [Self::ClaudeCode, Self::Codex, Self::CopilotCli];
 
     /// Stable id used in config files and storage.
     pub fn id(self) -> &'static str {
@@ -26,7 +19,6 @@ impl BackendKind {
             Self::ClaudeCode => "claude",
             Self::Codex => "codex",
             Self::CopilotCli => "copilot",
-            Self::Antigravity => "agy",
         }
     }
 
@@ -41,7 +33,6 @@ impl BackendKind {
             Self::ClaudeCode => "Claude Code",
             Self::Codex => "Codex",
             Self::CopilotCli => "Copilot CLI",
-            Self::Antigravity => "Antigravity",
         }
     }
 }
@@ -60,6 +51,7 @@ mod tests {
     #[test]
     fn unknown_id_is_none() {
         assert_eq!(BackendKind::from_id("gemini"), None);
+        assert_eq!(BackendKind::from_id("agy"), None);
         assert_eq!(BackendKind::from_id(""), None);
     }
 }

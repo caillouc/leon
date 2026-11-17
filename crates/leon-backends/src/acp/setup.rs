@@ -139,10 +139,8 @@ fn mcp_servers(spec: &SessionSpec) -> Value {
 pub(super) type Request = (&'static str, Value);
 
 /// Requests that move the agent's selectors to what Leon asks for:
-/// `(category, value)` pairs, e.g. `("model", "gpt-6-luna")`. Uses the
-/// session config options, or the older session modes for `mode` when the
-/// agent has no config options (the spec's rule). A value matches on its id
-/// or its name; a selector already on it is left alone. Also returns, for
+/// `(category, value)` pairs, e.g. `("model", "gpt-6-luna")`, through the
+/// session config options. A value matches on its id or its name; a selector already on it is left alone. Also returns, for
 /// the user, each value the agent does not offer.
 pub(super) fn selector_requests(
     session: &str,
@@ -154,7 +152,6 @@ pub(super) fn selector_requests(
     for (category, value) in wanted {
         let request = match result["configOptions"].as_array() {
             Some(options) => config_request(session, options, category, value),
-            None if *category == "mode" => mode_request(session, &result["modes"], value),
             None => None,
         };
         match request {
@@ -182,19 +179,6 @@ fn config_request(
     Some((
         ("session/set_config_option", params),
         *chosen != option["currentValue"],
-    ))
-}
-
-/// Same as [`config_request`] for the older session modes.
-fn mode_request(session: &str, modes: &Value, value: &str) -> Option<(Request, bool)> {
-    let mode = modes["availableModes"]
-        .as_array()?
-        .iter()
-        .find(|m| same(&m["id"], value) || same(&m["name"], value))?;
-    let params = json!({ "sessionId": session, "modeId": mode["id"] });
-    Some((
-        ("session/set_mode", params),
-        mode["id"] != modes["currentModeId"],
     ))
 }
 

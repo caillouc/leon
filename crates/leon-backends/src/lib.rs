@@ -3,7 +3,7 @@
 //!
 //! - Claude Code: `claude -p` with stream-json in and out.
 //! - Codex: `codex app-server`, JSON-RPC over stdio.
-//! - Copilot CLI and Antigravity: ACP (`copilot --acp`, `agy acp`).
+//! - Copilot CLI: ACP (`copilot --acp`).
 //!
 //! Must not: depend on another adapter or on the UI; let a CLI-specific
 //! field leave this crate.
@@ -49,7 +49,6 @@ impl Backends for Clis {
             BackendKind::ClaudeCode => claude::start(&spec, (self.path)()),
             BackendKind::Codex => codex::start(&spec, (self.path)()),
             BackendKind::CopilotCli => acp::start(&spec, &acp::copilot(&spec), (self.path)()),
-            BackendKind::Antigravity => acp::start(&spec, &acp::antigravity(&spec), (self.path)()),
         }
     }
 

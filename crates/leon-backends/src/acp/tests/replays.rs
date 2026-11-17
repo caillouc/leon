@@ -193,7 +193,7 @@ fn cases() -> Vec<Case> {
 #[test]
 fn replayed_exchanges() {
     for case in cases() {
-        let (events, sent) = replay(&spec(case.resume), None, case.lines, case.commands);
+        let (events, sent) = replay(&spec(case.resume), case.lines, case.commands);
         assert_eq!(events, case.events, "{}", case.name);
         let sent: Vec<String> = sent.iter().map(describe).collect();
         assert_eq!(sent, case.sent, "{}", case.name);

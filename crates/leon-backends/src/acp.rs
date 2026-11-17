@@ -1,7 +1,7 @@
-//! Copilot CLI and Antigravity over ACP, the Agent Client Protocol: JSON-RPC
+//! Copilot CLI over ACP, the Agent Client Protocol: JSON-RPC
 //! 2.0, one message per line on the CLI's stdio; Leon is the client.
 //! Protocol version 1, schema v1.32.0 and the protocol pages on
-//! agentclientprotocol.com, checked on 2026-11-17. Neither CLI was run: the
+//! agentclientprotocol.com, checked on 2026-11-17. The CLI was not run: the
 //! tests replay the spec's own examples.
 //!
 //! [`session::Session`] is the protocol state machine, free of I/O;
@@ -30,9 +30,6 @@ pub(crate) struct Cli {
     label: &'static str,
     program: &'static str,
     args: Vec<String>,
-    /// Permission set through the agent's ACP mode selector, if the CLI
-    /// takes it there.
-    mode: Option<String>,
 }
 
 /// `copilot --acp --stdio` (Copilot CLI docs, ACP server page and command
@@ -60,19 +57,6 @@ pub(crate) fn copilot(spec: &SessionSpec) -> Cli {
         label: "Copilot CLI",
         program: "copilot",
         args,
-        mode: None,
-    }
-}
-
-/// `agy acp` (Antigravity docs, "Other editors (ACP)", 2026-11-17). Its ACP
-/// server has no model, effort or mode flag: they go through the agent's
-/// selectors.
-pub(crate) fn antigravity(spec: &SessionSpec) -> Cli {
-    Cli {
-        label: "Antigravity",
-        program: "agy",
-        args: vec!["acp".to_owned()],
-        mode: Some(spec.settings.permission.clone()),
     }
 }
 
@@ -81,7 +65,7 @@ pub(crate) fn start(
     cli: &Cli,
     path: Option<&OsString>,
 ) -> Result<BackendChannel, PortError> {
-    let (session, first) = Session::new(spec, cli.label, cli.mode.as_deref());
+    let (session, first) = Session::new(spec, cli.label);
     let launch = Launch {
         path,
         program: cli.program,
