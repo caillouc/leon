@@ -4,6 +4,8 @@
 //!   cargo-deny).
 //! - `cargo xtask layers`: checks that crate dependencies follow
 //!   `spec/architecture.md`.
+//! - `cargo xtask bundle [--install]`: builds Leon.app (macOS), and copies
+//!   it to /Applications with `--install`.
 
 #![allow(
     clippy::print_stdout,
@@ -11,6 +13,7 @@
     reason = "a command-line tool reports on the terminal"
 )]
 
+mod bundle;
 mod layers;
 
 use std::process::{Command, ExitCode};
@@ -19,8 +22,9 @@ fn main() -> ExitCode {
     let ok = match std::env::args().nth(1).as_deref() {
         Some("ci") => ci(),
         Some("layers") => layers::check(),
+        Some("bundle") => bundle::bundle(std::env::args().any(|a| a == "--install")),
         _ => {
-            eprintln!("usage: cargo xtask <ci|layers>");
+            eprintln!("usage: cargo xtask <ci|layers|bundle [--install]>");
             false
         }
     };

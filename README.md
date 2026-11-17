@@ -18,9 +18,20 @@ for GitHub.
 Needs macOS or Linux, and [rustup](https://rustup.rs). The toolchain version is
 pinned in `rust-toolchain.toml` and installed on first build.
 
+As a Mac app (Leon.app with its icon, in /Applications):
+
+```bash
+cargo xtask bundle --install
+```
+
+Without `--install` it only builds `target/release/Leon.app`. While working on
+Leon itself:
+
 ```bash
 cargo run -p leon
 ```
+
+Only one Leon runs at a time: quit the other one first.
 
 Linux also needs the windowing and font libraries listed in
 `.github/workflows/ci.yml`.
