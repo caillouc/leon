@@ -38,6 +38,7 @@ Runs formatting, clippy (warnings are errors), tests, the crate layer check and
 
 | Path | What |
 |---|---|
+| `docs/how-leon-works.md` | How Leon works, in plain language, and the choices to review. |
 | `spec/` | Features, decisions, architecture. Read before changing anything. |
 | `AGENTS.md` | Rules for anyone (human or AI) writing code here. |
 | `crates/` | The app, split by layer (see `spec/architecture.md`). |
