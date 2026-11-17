@@ -12,10 +12,13 @@
 
 mod composer;
 mod conversation;
+mod diff_view;
 mod flow;
 mod form;
+mod github;
 mod left;
 mod picker;
+mod pr_view;
 #[cfg(feature = "preview")]
 pub mod preview;
 mod right;

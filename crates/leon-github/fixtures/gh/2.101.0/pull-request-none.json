@@ -1,0 +1,12 @@
+{
+  "data": {
+    "repository": {
+      "defaultBranchRef": {
+        "name": "trunk"
+      },
+      "pullRequests": {
+        "nodes": []
+      }
+    }
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "__typename": "PullRequest",
+          "baseRefName": "trunk",
+          "headRefName": "dependabot/npm_and_yarn/evals/zod-4.6.6",
+          "isDraft": false,
+          "labels": {
+            "nodes": [
+              {
+                "name": "dependencies"
+              },
+              {
+                "name": "javascript"
+              }
+            ]
+          },
+          "latestReviews": {
+            "nodes": [
+              {
+                "author": {
+                  "login": "copilot-pull-request-reviewer"
+                }
+              }
+            ]
+          },
+          "number": 15086,
+          "repository": {
+            "nameWithOwner": "cli/cli"
+          },
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": null
+              },
+              {
+                "requestedReviewer": {
+                  "login": "reviewer-a"
+                }
+              }
+            ]
+          },
+          "state": "OPEN",
+          "title": "chore(deps): Bump zod from 4.3.6 to 4.6.6 in /evals",
+          "url": "https://github.com/cli/cli/pull/15086"
+        },
+        {
+          "__typename": "PullRequest",
+          "baseRefName": "trunk",
+          "headRefName": "dependabot/npm_and_yarn/evals/hono-4.13.19",
+          "isDraft": false,
+          "labels": {
+            "nodes": [
+              {
+                "name": "dependencies"
+              },
+              {
+                "name": "javascript"
+              }
+            ]
+          },
+          "latestReviews": {
+            "nodes": [
+              {
+                "author": {
+                  "login": "copilot-pull-request-reviewer"
+                }
+              }
+            ]
+          },
+          "number": 15084,
+          "repository": {
+            "nameWithOwner": "cli/cli"
+          },
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": null
+              },
+              {
+                "requestedReviewer": {
+                  "login": "reviewer-a"
+                }
+              }
+            ]
+          },
+          "state": "OPEN",
+          "title": "chore(deps): Bump hono from 4.13.13 to 4.13.19 in /evals",
+          "url": "https://github.com/cli/cli/pull/15084"
+        },
+        {
+          "__typename": "PullRequest",
+          "baseRefName": "feature/multi-account-base",
+          "headRefName": "feature/multi-account",
+          "isDraft": true,
+          "labels": {
+            "nodes": []
+          },
+          "latestReviews": {
+            "nodes": [
+              {
+                "author": {
+                  "login": "copilot-pull-request-reviewer"
+                }
+              }
+            ]
+          },
+          "number": 14927,
+          "repository": {
+            "nameWithOwner": "cli/cli"
+          },
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "login": "reviewer-a"
+                }
+              }
+            ]
+          },
+          "state": "OPEN",
+          "title": "Add guided multi-account setup and evaluation",
+          "url": "https://github.com/cli/cli/pull/14927"
+        }
+      ]
+    }
+  }
+}

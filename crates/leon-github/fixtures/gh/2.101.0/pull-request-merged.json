@@ -1,0 +1,82 @@
+{
+  "data": {
+    "repository": {
+      "defaultBranchRef": {
+        "name": "trunk"
+      },
+      "pullRequests": {
+        "nodes": [
+          {
+            "baseRefName": "feature/event-check-suite",
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "author-a"
+                  },
+                  "body": "Leaving the remaining review threads for a follow-up PR.\n",
+                  "createdAt": "2026-11-17T19:02:41Z"
+                }
+              ]
+            },
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "name": "CodeQL-Build (go, manual, ./.github/codeql/codeql-config.yml)",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "name": "lint",
+                            "status": "COMPLETED"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "headRefName": "feature/event-review",
+            "isDraft": false,
+            "labels": {
+              "nodes": []
+            },
+            "latestReviews": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "copilot-pull-request-reviewer"
+                  }
+                },
+                {
+                  "author": {
+                    "login": "reviewer-b"
+                  }
+                }
+              ]
+            },
+            "number": 15083,
+            "repository": {
+              "nameWithOwner": "cli/cli"
+            },
+            "reviewRequests": {
+              "nodes": []
+            },
+            "state": "MERGED",
+            "title": "Event streaming: Address code review findings across the stack",
+            "url": "https://github.com/cli/cli/pull/15083"
+          }
+        ]
+      }
+    }
+  }
+}

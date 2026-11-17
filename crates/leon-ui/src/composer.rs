@@ -77,7 +77,7 @@ impl Workspace {
                             div()
                                 .text_size(px(12.))
                                 .text_color(theme::fg_muted())
-                                .font_family("Menlo")
+                                .font_family(theme::MONO)
                                 .child(q.detail.clone()),
                         )
                     })

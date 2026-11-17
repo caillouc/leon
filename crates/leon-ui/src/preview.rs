@@ -10,6 +10,11 @@ use gpui_component::{Root, Theme, ThemeMode};
 use leon_core::{CoreHandle, Intent};
 use leon_domain::ConversationId;
 
+use leon_domain::{LineKind, ReviewComment};
+
+use crate::diff_view::{DiffSource, DraftAt};
+use crate::github::GhList;
+use crate::right::{Pending, RightTab};
 use crate::workspace::{Screen, Tab, Workspace};
 
 /// A UI state to capture.
@@ -25,11 +30,19 @@ pub enum Shot {
     Flow(ConversationId),
     /// The new-conversation form.
     NewConversation,
+    /// A conversation with a right-pane tab open: `changes`, `branch`, `pr`
+    /// or `info`.
+    Right(ConversationId, &'static str),
+    /// A conversation's changes with a pending comment and one being written.
+    Review(ConversationId),
+    /// My open pull requests in the main pane.
+    MyPullRequests,
 }
 
 impl Workspace {
-    fn preview(&mut self, shot: &Shot, cx: &mut gpui::Context<Self>) {
+    fn preview(&mut self, shot: &Shot, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         self.open_picker = None;
+        self.right.tab = RightTab::Changes;
         match shot {
             Shot::Empty => self.screen = Screen::Nothing,
             Shot::Conversation(id) => {
@@ -46,6 +59,44 @@ impl Workspace {
                 self.tabs.insert(*id, Tab::Flow);
             }
             Shot::NewConversation => self.show_new_conversation(cx),
+            Shot::Right(id, tab) => {
+                self.select(*id, cx);
+                self.tabs.remove(id);
+                self.right.tab = match *tab {
+                    "branch" => RightTab::Branch,
+                    "pr" => RightTab::Pr,
+                    "info" => RightTab::Info,
+                    _ => RightTab::Changes,
+                };
+            }
+            Shot::Review(id) => {
+                self.select(*id, cx);
+                self.tabs.remove(id);
+                let at = |line: u32| DraftAt {
+                    conversation: *id,
+                    source: DiffSource::Changes,
+                    path: "src/webhooks/retry.rs".into(),
+                    line,
+                    kind: LineKind::Added,
+                    code: String::new(),
+                };
+                let first = at(12);
+                self.right.review.insert(
+                    *id,
+                    vec![Pending {
+                        source: first.source,
+                        comment: ReviewComment {
+                            path: first.path,
+                            line: first.line,
+                            kind: first.kind,
+                            code: first.code,
+                            text: "15 minutes is long for a webhook; make it a setting?".into(),
+                        },
+                    }],
+                );
+                self.start_comment(at(14), window, cx);
+            }
+            Shot::MyPullRequests => self.screen = Screen::GitHub(GhList::PullRequests),
         }
         self.core.send(Intent::View(None));
         cx.notify();
@@ -80,7 +131,10 @@ pub fn capture(core: CoreHandle, shots: Vec<(String, Shot)>, out: PathBuf, cx: &
     };
     cx.spawn(async move |cx| {
         for (name, shot) in shots {
-            view.update(cx, |view, cx| view.preview(&shot, cx));
+            cx.update_window(window.into(), |_, window, cx| {
+                view.update(cx, |view, cx| view.preview(&shot, window, cx));
+            })
+            .ok();
             cx.background_executor().timer(Duration::from_millis(500)).await;
             let image = cx.update_window(window.into(), |_, window, cx| {
                 window.draw(cx).clear(cx);

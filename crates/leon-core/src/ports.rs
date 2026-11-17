@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Project, ProjectId,
-    SessionSettings, TimedEntry, Usage,
+    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, FileDiff, Issue,
+    Project, ProjectId, PullRequest, SessionSettings, TimedEntry, Usage,
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -209,4 +209,46 @@ pub trait Backends: Send + Sync + 'static {
     fn start(&self, spec: SessionSpec) -> Result<BackendChannel, PortError>;
     /// What the pickers offer for `backend`.
     fn options(&self, backend: BackendKind) -> BackendOptions;
+}
+
+/// The `PATH` adapters start programs with: the user's login-shell `PATH`,
+/// looked up once on first use, or `None` to keep the inherited one. An app
+/// started from the Finder inherits a minimal `PATH` that misses
+/// `/opt/homebrew/bin` or `~/.local/bin`.
+pub type SearchPath = fn() -> Option<&'static std::ffi::OsString>;
+
+/// No `PATH` change: the inherited `PATH` (tests, terminals).
+pub fn inherited_path() -> Option<&'static std::ffi::OsString> {
+    None
+}
+
+/// Reads a working directory's git state (GIT-1..3, CONV-14). Read-only:
+/// the app never changes a repository (D4). Calls may block.
+pub trait Git: Send + Sync + 'static {
+    /// Current branch name; `None` outside a repository or on a detached HEAD.
+    fn branch(&self, dir: &Path) -> Option<String>;
+    /// The branch to compare with when none was recorded: the remote's
+    /// default branch, e.g. `origin/main`.
+    fn default_base(&self, dir: &Path) -> Option<String>;
+    /// Uncommitted changes: working tree against `HEAD`, untracked files
+    /// included (GIT-1, GIT-2).
+    fn changes(&self, dir: &Path) -> Result<Vec<FileDiff>, PortError>;
+    /// What the branch changed since it left `base`, as a PR shows it:
+    /// `merge-base(base, HEAD)..HEAD` (GIT-3).
+    fn branch_diff(&self, dir: &Path, base: &str) -> Result<Vec<FileDiff>, PortError>;
+}
+
+/// Talks to GitHub with the user's own login (P7). Calls may block.
+pub trait GitHub: Send + Sync + 'static {
+    /// The pull request whose head is `branch` in the repository at `dir`
+    /// (NAV-6, GH-1), open ones first; `None` when there is none.
+    fn pull_request(&self, dir: &Path, branch: &str) -> Result<Option<PullRequest>, PortError>;
+    /// Open issues assigned to the user (GH-2).
+    fn my_issues(&self) -> Result<Vec<Issue>, PortError>;
+    /// Open pull requests the user opened (GH-3).
+    fn my_pull_requests(&self) -> Result<Vec<PullRequest>, PortError>;
+    /// Asks Copilot to review a pull request (GH-5).
+    fn request_copilot_review(&self, repo: &str, number: u64) -> Result<(), PortError>;
+    /// Posts a comment on a pull request or an issue (GH-6).
+    fn comment(&self, repo: &str, number: u64, body: &str) -> Result<(), PortError>;
 }

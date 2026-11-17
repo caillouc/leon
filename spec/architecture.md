@@ -11,7 +11,12 @@ How the code is organised. Owned by agents; must follow
 - One CLI child process per agent session while a turn runs or input is
   awaited; stopped after an idle timeout, resumed by the CLI's session id. A CLI
   crash sets that agent session to `error`; it never takes the app down.
-- `git` spawned per query (P6); GitHub over HTTPS (P7).
+- `git` and `gh` spawned per query (P6, P7). ⚠️ P7 says GitHub's API over
+  HTTPS; the code runs `gh` instead (no HTTP/TLS crate yet). Waiting for the
+  maintainer's decision.
+- Every adapter that starts a program gets the user's login-shell `PATH` from
+  the binary (`leon_core::ports::SearchPath`), read once on first use: an app
+  started from the Finder inherits a `PATH` without `/opt/homebrew/bin`.
 
 ## Crates and layers
 
@@ -22,7 +27,7 @@ Ports and adapters: dependencies point inward, to the core and the domain.
 |---|---|---|---|---|
 | 1 | `leon-domain` | Pure types and rules: ids, projects, settings; later conversation state, events, status/unread rules, PR badge, fold matching | nothing internal | M0 |
 | 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain | M0 |
-| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json, Codex app-server: `Backends`), `leon-catalog` (agent files: `Catalog`); later `leon-git`, `leon-github`, `leon-app-tools` | Implement one port each against the outside world | domain, core; never another adapter | M0–M1 |
+| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json, Codex app-server: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`); later `leon-app-tools` | Implement one port each against the outside world | domain, core; never another adapter | M0–M2 |
 | 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core | M0 |
 | 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any | M0 |
 | — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate | M0 |
@@ -119,18 +124,30 @@ MCP list for its CLI.
 
 ## git (P6)
 
-- Uncommitted: `git status --porcelain=v2 -z` + per-file diff against `HEAD`.
-- Branch diff: `git diff <merge-base(base, HEAD)>..HEAD`.
-- Refresh on file-watcher events (debounced) and at turn end; never polled.
-- Diffs computed per file, lazily, off the UI thread; rendered virtualised.
+- Read-only commands with `--no-optional-locks`; the user's diff settings are
+  overridden so the output always parses (`crates/leon-git`).
+- Uncommitted: `git status --porcelain=v2 -z` for untracked files, one
+  `git diff HEAD` for tracked ones; untracked files are read from disk.
+- Branch diff: `git diff <merge-base(base, HEAD)> HEAD`; the base is
+  `origin/HEAD`, else the first of `origin/main`, `origin/master`, `main`,
+  `master` that exists.
+- Read off the core's async workers (`spawn_blocking`); refreshes of one
+  conversation coalesce. Triggers: opening the conversation, clicking the
+  Changes or Branch tab, an agent's edit or command finishing, the turn ending.
+  No file watcher yet.
+- The UI renders a diff as one virtualised list of rows (summary, file,
+  hunk, line, comment); files matching `diff.fold` start folded.
 
 ## GitHub (P7)
 
-- Token from `gh auth token`, else `GITHUB_TOKEN`; never stored.
-- One GraphQL query refreshes the PRs of all visible conversations; paused when
-  the window is hidden; conditional requests and back-off on rate limits.
-- Copilot review request: API route ⚠️ not verified; fallback
-  `gh pr edit --add-reviewer @copilot`.
+- `gh` with the user's own login; the app never reads the token
+  (`crates/leon-github`). Reads are one `gh api graphql` query each.
+- A conversation's PR: read when the conversation is opened, when its branch
+  changes, after a review request or comment, and every 120 s for every open
+  conversation (one `gh` call each, not batched yet).
+- My issues and PRs: read at startup and when the list is opened.
+- Copilot review: `gh pr edit <n> --add-reviewer @copilot` (documented in
+  `gh pr edit --help`, gh 2.101.0, 2026-11-17; never run for real).
 
 ## Speed targets (QUAL-1, QUAL-2)
 

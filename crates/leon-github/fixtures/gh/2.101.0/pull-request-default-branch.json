@@ -1,0 +1,148 @@
+{
+  "data": {
+    "repository": {
+      "defaultBranchRef": {
+        "name": "trunk"
+      },
+      "pullRequests": {
+        "nodes": [
+          {
+            "baseRefName": "trunk",
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "github-actions"
+                  },
+                  "body": "Automated comment.",
+                  "createdAt": "2026-11-10T03:25:20Z"
+                }
+              ]
+            },
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "name": "label-external / label_issues",
+                            "status": "COMPLETED"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "headRefName": "trunk",
+            "isDraft": false,
+            "labels": {
+              "nodes": [
+                {
+                  "name": "external"
+                },
+                {
+                  "name": "unmet-requirements"
+                }
+              ]
+            },
+            "latestReviews": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "copilot-pull-request-reviewer"
+                  }
+                }
+              ]
+            },
+            "number": 15005,
+            "repository": {
+              "nameWithOwner": "cli/cli"
+            },
+            "reviewRequests": {
+              "nodes": [
+                {
+                  "requestedReviewer": null
+                },
+                {
+                  "requestedReviewer": {
+                    "login": "reviewer-a"
+                  }
+                }
+              ]
+            },
+            "state": "CLOSED",
+            "title": "Pull request from a fork",
+            "url": "https://github.com/cli/cli/pull/15005"
+          },
+          {
+            "baseRefName": "trunk",
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "github-actions"
+                  },
+                  "body": "Automated comment.",
+                  "createdAt": "2026-10-30T07:11:19Z"
+                }
+              ]
+            },
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "contexts": {
+                        "nodes": null
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "headRefName": "trunk",
+            "isDraft": false,
+            "labels": {
+              "nodes": [
+                {
+                  "name": "external"
+                },
+                {
+                  "name": "unmet-requirements"
+                }
+              ]
+            },
+            "latestReviews": {
+              "nodes": []
+            },
+            "number": 14872,
+            "repository": {
+              "nameWithOwner": "cli/cli"
+            },
+            "reviewRequests": {
+              "nodes": [
+                {
+                  "requestedReviewer": null
+                },
+                {
+                  "requestedReviewer": {
+                    "login": "reviewer-a"
+                  }
+                }
+              ]
+            },
+            "state": "CLOSED",
+            "title": "Pull request from a fork",
+            "url": "https://github.com/cli/cli/pull/14872"
+          }
+        ]
+      }
+    }
+  }
+}

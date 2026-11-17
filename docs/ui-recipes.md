@@ -17,6 +17,10 @@ from Leon's own code instead of guessing the API. Pinned versions:
 | Virtualised transcript that follows the end | `crates/leon-ui/src/transcript.rs` + `Workspace::list_for` |
 | Markdown | `gpui_component::text::TextView::markdown(id, text)` in `transcript.rs` |
 | Multi-line input, Enter sends | `TextareaState::new(..).submit_on_enter(true)` + `InputEvent::PressEnter` in `workspace.rs` |
+| Virtualised rows of different kinds, reset when they change (diff) | `crates/leon-ui/src/diff_view.rs` → `render_diff` + `diff_list` |
+| Show a child only while its row is hovered | `group(..)` on the row + `group_hover(..)` on the child, in `diff_view.rs` → `line_row` |
+| Focus an input | `entity.focus_handle(cx).focus(window, cx)` (trait `Focusable`), in `diff_view.rs` → `start_comment` |
+| A short message that disappears | `Workspace::show_flash` (timer with `cx.spawn` + `background_executor().timer`) |
 | Look at the UI without a screen | `cargo run -p leon-ui --example screenshots --features preview -- <folder>` writes PNGs of the main screens |
 
 Rules:

@@ -62,7 +62,13 @@ pub(crate) struct State {
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     pub notifications: Arc<Vec<Notification>>,
     pub next_notification: u64,
-    pub branches: Arc<HashMap<ConversationId, String>>,
+    pub git: crate::repo::GitMap,
+    pub prs: Arc<HashMap<ConversationId, leon_domain::PullRequest>>,
+    pub my_issues: Arc<Vec<leon_domain::Issue>>,
+    pub my_prs: Arc<Vec<leon_domain::PullRequest>>,
+    pub github_error: Option<String>,
+    pub fold: Arc<Vec<leon_domain::FoldPattern>>,
+    pub flash: Option<(u64, String)>,
 }
 
 impl State {
@@ -148,7 +154,13 @@ impl State {
             agents: Arc::clone(&self.agents),
             options: Arc::clone(&self.options),
             notifications: Arc::clone(&self.notifications),
-            branches: Arc::clone(&self.branches),
+            git: Arc::clone(&self.git),
+            prs: Arc::clone(&self.prs),
+            my_issues: Arc::clone(&self.my_issues),
+            my_prs: Arc::clone(&self.my_prs),
+            github_error: self.github_error.clone(),
+            fold: Arc::clone(&self.fold),
+            flash: self.flash.clone(),
         }
     }
 }

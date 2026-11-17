@@ -1,0 +1,89 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "__typename": "Issue",
+          "labels": {
+            "nodes": [
+              {
+                "name": "bug"
+              },
+              {
+                "name": "priority-3"
+              },
+              {
+                "name": "needs-investigation"
+              },
+              {
+                "name": "gh-api"
+              }
+            ]
+          },
+          "number": 14962,
+          "repository": {
+            "nameWithOwner": "cli/cli"
+          },
+          "title": "CLI reports `delete_repo` scope needed on 403 for /dependabot/alerts endpoint",
+          "updatedAt": "2026-11-17T18:43:43Z",
+          "url": "https://github.com/cli/cli/issues/14962"
+        },
+        {
+          "__typename": "Issue",
+          "labels": {
+            "nodes": [
+              {
+                "name": "bug"
+              },
+              {
+                "name": "blocked"
+              },
+              {
+                "name": "priority-3"
+              },
+              {
+                "name": "needs-investigation"
+              },
+              {
+                "name": "gh-label"
+              }
+            ]
+          },
+          "number": 15066,
+          "repository": {
+            "nameWithOwner": "cli/cli"
+          },
+          "title": "`gh label list --json` prints nothing instead of `[]` when the repository has no labels",
+          "updatedAt": "2026-11-17T16:46:28Z",
+          "url": "https://github.com/cli/cli/issues/15066"
+        },
+        {
+          "__typename": "Issue",
+          "labels": {
+            "nodes": [
+              {
+                "name": "bug"
+              },
+              {
+                "name": "priority-3"
+              },
+              {
+                "name": "core"
+              },
+              {
+                "name": "gh-run"
+              }
+            ]
+          },
+          "number": 15019,
+          "repository": {
+            "nameWithOwner": "cli/cli"
+          },
+          "title": "`gh run view --log` silently drops the rest of a step after a log line longer than 64 KiB",
+          "updatedAt": "2026-11-16T14:10:51Z",
+          "url": "https://github.com/cli/cli/issues/15019"
+        }
+      ]
+    }
+  }
+}

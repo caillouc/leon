@@ -59,3 +59,34 @@ pub fn warn() -> Rgba {
 pub fn err() -> Rgba {
     rgb(0x00e6_727b)
 }
+/// Success, added lines, open pull requests.
+pub fn ok() -> Rgba {
+    rgb(0x006d_be86)
+}
+/// Merged pull requests.
+pub fn merged() -> Rgba {
+    rgb(0x00b1_8cf0)
+}
+/// Background of an added line.
+pub fn add_bg() -> Rgba {
+    rgba(0x6dbe_861f)
+}
+/// Line-number gutter of an added line.
+pub fn add_gutter() -> Rgba {
+    rgba(0x6dbe_8638)
+}
+/// Background of a removed line.
+pub fn del_bg() -> Rgba {
+    rgba(0xe672_7b1f)
+}
+/// Line-number gutter of a removed line.
+pub fn del_gutter() -> Rgba {
+    rgba(0xe672_7b38)
+}
+
+/// Monospace font for code, paths and diffs.
+pub const MONO: &str = if cfg!(target_os = "macos") {
+    "Menlo"
+} else {
+    "DejaVu Sans Mono"
+};

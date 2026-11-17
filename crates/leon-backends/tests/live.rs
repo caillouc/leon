@@ -17,13 +17,13 @@ async fn pong(backend: BackendKind, model: Option<&str>) -> Vec<BackendEvent> {
             agent: None,
             model: model.map(str::to_owned),
             effort: Some("low".into()),
-            permission: Clis.options(backend).permissions[0].clone(),
+            permission: Clis::default().options(backend).permissions[0].clone(),
         },
         agent: None,
         working_dir: dir.path().to_path_buf(),
         resume: None,
     };
-    let mut channel = Clis.start(spec).unwrap();
+    let mut channel = Clis::default().start(spec).unwrap();
     channel
         .commands
         .send(BackendCommand::Send(

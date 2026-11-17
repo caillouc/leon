@@ -5,6 +5,7 @@
 //! the process; the next message starts it again with `--resume`.
 
 use std::collections::HashSet;
+use std::ffi::OsString;
 
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
 use leon_domain::Usage;
@@ -54,8 +55,11 @@ pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
     args
 }
 
-pub(crate) fn start(spec: &SessionSpec) -> Result<BackendChannel, PortError> {
-    let mut child = spawn("claude", &args(spec), &spec.working_dir)
+pub(crate) fn start(
+    spec: &SessionSpec,
+    path: Option<&OsString>,
+) -> Result<BackendChannel, PortError> {
+    let mut child = spawn(path, "claude", &args(spec), &spec.working_dir)
         .map_err(|e| PortError::new("starting Claude Code", e))?;
     let (Some(stdin), Some(stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())

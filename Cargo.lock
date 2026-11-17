@@ -3608,6 +3608,8 @@ dependencies = [
  "leon-config",
  "leon-core",
  "leon-domain",
+ "leon-git",
+ "leon-github",
  "leon-store",
  "leon-ui",
  "tokio",
@@ -3660,7 +3662,26 @@ dependencies = [
 name = "leon-domain"
 version = "0.1.0"
 dependencies = [
+ "regex",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "leon-git"
+version = "0.1.0"
+dependencies = [
+ "leon-core",
+ "leon-domain",
+ "tempfile",
+]
+
+[[package]]
+name = "leon-github"
+version = "0.1.0"
+dependencies = [
+ "leon-core",
+ "leon-domain",
  "serde_json",
 ]
 

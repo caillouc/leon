@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gpui::{
     AnyElement, App, Context, Entity, FollowMode, IntoElement, ListAlignment, ListState, Render,
@@ -13,6 +13,8 @@ use gpui_component::input::{InputEvent, InputState, TextareaState};
 use leon_core::{CoreHandle, Intent, Snapshot};
 use leon_domain::{AgentSessionId, BackendKind, ConversationId, ProjectId, SessionSettings};
 
+use crate::github::GhList;
+use crate::right::RightState;
 use crate::theme;
 
 /// What the main pane shows.
@@ -21,6 +23,8 @@ pub(crate) enum Screen {
     Nothing,
     Conversation(ConversationId),
     NewConversation,
+    /// My issues or my pull requests (GH-2, GH-3).
+    GitHub(GhList),
 }
 
 /// The tab shown for a conversation (FLOW-3): the flow, or one agent session.
@@ -53,6 +57,9 @@ pub struct Workspace {
     pub(crate) confirm_delete: Option<ConversationId>,
     pub(crate) expanded_tools: HashSet<(AgentSessionId, usize)>,
     pub(crate) lists: HashMap<AgentSessionId, (ListState, usize)>,
+    pub(crate) right: RightState,
+    /// The flash message shown, by id (an action's result).
+    flash: Option<(u64, String)>,
     /// Open the next new conversation when it shows up.
     pub(crate) pending_open: bool,
     shown_notifications: u64,
@@ -94,7 +101,8 @@ impl Workspace {
                 .placeholder("What should the agent do?")
         });
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search conversations"));
-        let subscriptions = vec![
+        let (right, right_subscriptions) = RightState::new(window, cx);
+        let mut subscriptions = vec![
             cx.subscribe_in(
                 &composer,
                 window,
@@ -119,6 +127,7 @@ impl Workspace {
                 }
             }),
         ];
+        subscriptions.extend(right_subscriptions);
         let snapshot = core.snapshot();
         let defaults = snapshot.settings.defaults.clone();
         Self {
@@ -145,6 +154,8 @@ impl Workspace {
             confirm_delete: None,
             expanded_tools: HashSet::new(),
             lists: HashMap::new(),
+            right,
+            flash: None,
             pending_open: false,
             shown_notifications: 0,
             started: Some(started),
@@ -187,12 +198,35 @@ impl Workspace {
             .notifications
             .last()
             .map_or(self.shown_notifications, |n| n.id);
+        self.show_flash(cx);
         if let Screen::Conversation(id) = self.screen
             && self.snapshot.conversation(id).is_none()
         {
             self.screen = Screen::Nothing;
         }
         cx.notify();
+    }
+
+    /// Shows the core's latest flash message for a few seconds.
+    fn show_flash(&mut self, cx: &mut Context<Self>) {
+        let Some((id, text)) = self.snapshot.flash.clone() else {
+            return;
+        };
+        if self.flash.as_ref().is_some_and(|(shown, _)| *shown >= id) {
+            return;
+        }
+        self.flash = Some((id, text));
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(4)).await;
+            this.update(cx, |this, cx| {
+                if this.flash.as_ref().is_some_and(|(shown, _)| *shown == id) {
+                    this.flash = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Shows a conversation (NAV-7).
@@ -291,9 +325,32 @@ impl Render for Workspace {
             Screen::Nothing => crate::widgets::empty("Select a conversation, or start a new one."),
             Screen::Conversation(id) => self.render_conversation(id, window, cx),
             Screen::NewConversation => self.render_new_conversation(window, cx),
+            Screen::GitHub(list) => self.render_github_list(list, cx),
         };
+        let flash = self.flash.as_ref().map(|(_, text)| {
+            div()
+                .absolute()
+                .bottom_4()
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(theme::border_strong())
+                        .bg(theme::surface())
+                        .shadow_lg()
+                        .text_size(px(12.5))
+                        .child(text.clone()),
+                )
+        });
         div()
             .size_full()
+            .relative()
             .flex()
             .flex_row()
             .bg(theme::window())
@@ -309,7 +366,8 @@ impl Render for Workspace {
                     .flex_col()
                     .child(main),
             )
-            .child(Self::render_right(cx))
+            .child(self.render_right(window, cx))
+            .children(flash)
     }
 }
 

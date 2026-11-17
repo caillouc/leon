@@ -1,7 +1,7 @@
 //! The core actor: applies intents and CLI events to the state, persists
 //! them, and publishes snapshots. The only writer of application state.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -15,8 +15,9 @@ use tokio::sync::watch;
 
 use crate::intent::Intent;
 use crate::ports::{
-    BackendCommand, BackendEvent, Backends, Catalog, NewSession, SessionSpec, Storage,
+    BackendCommand, BackendEvent, Backends, Catalog, Git, GitHub, NewSession, SessionSpec, Storage,
 };
+use crate::repo::Internal;
 use crate::snapshot::Snapshot;
 use crate::state::{SessionState, State, title_from};
 
@@ -28,6 +29,10 @@ pub struct Ports {
     pub backends: Arc<dyn Backends>,
     /// The user's agent files.
     pub catalog: Arc<dyn Catalog>,
+    /// Git state of working directories.
+    pub git: Arc<dyn Git>,
+    /// GitHub, with the user's login.
+    pub github: Arc<dyn GitHub>,
     /// Current time, Unix milliseconds.
     pub clock: fn() -> i64,
 }
@@ -66,6 +71,18 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
     let (publish, snapshots) = watch::channel(Arc::new(state.snapshot()));
     let (intents, intent_rx) = unbounded_channel();
     let (event_tx, event_rx) = unbounded_channel();
+    let (internal_tx, internal_rx) = unbounded_channel();
+    let ticker = internal_tx.clone();
+    runtime.spawn(async move {
+        let mut every = tokio::time::interval(std::time::Duration::from_secs(120));
+        every.tick().await;
+        loop {
+            every.tick().await;
+            if ticker.send(Internal::Tick).is_err() {
+                return;
+            }
+        }
+    });
     let core = Core {
         ports,
         state,
@@ -73,8 +90,12 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         live: HashMap::new(),
         viewing: None,
         event_tx,
+        internal_tx,
+        git_in_flight: HashSet::new(),
+        git_dirty: HashSet::new(),
+        next_flash: 0,
     };
-    runtime.spawn(core.run(intent_rx, event_rx));
+    runtime.spawn(core.run(intent_rx, event_rx, internal_rx));
     CoreHandle { snapshots, intents }
 }
 
@@ -104,12 +125,16 @@ pub fn detached(snapshot: Snapshot) -> (CoreHandle, Detached) {
 type SessionEvent = (AgentSessionId, Option<BackendEvent>);
 
 pub(crate) struct Core {
-    ports: Ports,
-    state: State,
+    pub(crate) ports: Ports,
+    pub(crate) state: State,
     publish: watch::Sender<Arc<Snapshot>>,
     live: HashMap<AgentSessionId, UnboundedSender<BackendCommand>>,
     viewing: Option<ConversationId>,
     event_tx: UnboundedSender<SessionEvent>,
+    pub(crate) internal_tx: UnboundedSender<Internal>,
+    pub(crate) git_in_flight: HashSet<ConversationId>,
+    pub(crate) git_dirty: HashSet<ConversationId>,
+    next_flash: u64,
 }
 
 /// Runs a blocking store call without stalling the async workers.
@@ -122,9 +147,12 @@ impl Core {
         mut self,
         mut intents: UnboundedReceiver<Intent>,
         mut events: UnboundedReceiver<SessionEvent>,
+        mut internal: UnboundedReceiver<Internal>,
     ) {
         self.load();
         self.publish();
+        self.refresh_all_git();
+        self.refresh_lists();
         loop {
             tokio::select! {
                 intent = intents.recv() => match intent {
@@ -132,9 +160,16 @@ impl Core {
                     None => break,
                 },
                 Some((session, event)) = events.recv() => self.on_event(session, event),
+                Some(message) = internal.recv() => self.on_internal(message),
             }
             self.publish();
         }
+    }
+
+    /// Shows a short message to the user.
+    pub(crate) fn flash(&mut self, message: String) {
+        self.next_flash += 1;
+        self.state.flash = Some((self.next_flash, message));
     }
 
     fn publish(&self) {
@@ -173,6 +208,14 @@ impl Core {
             .collect();
         self.state.options = Arc::new(options);
         self.refresh_agents();
+        let fold = self
+            .state
+            .settings
+            .diff_fold
+            .iter()
+            .filter_map(|p| leon_domain::FoldPattern::parse(p))
+            .collect();
+        self.state.fold = Arc::new(fold);
         self.state.loaded = true;
     }
 
@@ -216,6 +259,10 @@ impl Core {
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
             Intent::Delete(id) => self.delete(id),
+            Intent::RefreshGit(id) => self.refresh_git(id),
+            Intent::RefreshGitHub => self.refresh_lists(),
+            Intent::RequestCopilotReview(id) => self.request_review(id),
+            Intent::CommentOnPr(id, body) => self.comment(id, body),
         }
     }
 
@@ -244,6 +291,8 @@ impl Core {
         {
             self.edit(id, |c| c.unread = false);
         }
+        self.refresh_git(id);
+        self.refresh_pr(id);
         for session in self.state.sessions_of(id) {
             self.load_transcript(session);
         }
@@ -531,6 +580,7 @@ impl Core {
             self.record(id, Entry::Error { text });
         }
         self.record(id, Entry::TurnEnd { usage });
+        self.refresh_git(conversation);
         self.answered(id, conversation, failed);
     }
 

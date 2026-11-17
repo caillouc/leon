@@ -1,7 +1,8 @@
 //! Leon's entry point: builds the adapters, starts the core on tokio (P8) and
 //! hands the UI a handle on it. No logic lives here.
 
-use std::sync::Arc;
+use std::ffi::OsString;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use anyhow::Context as _;
@@ -21,13 +22,32 @@ fn main() -> anyhow::Result<()> {
     let home = dirs::home_dir().context("no home folder for this user")?;
     let ports = leon_core::Ports {
         storage: Arc::new(store),
-        backends: Arc::new(leon_backends::Clis),
+        backends: Arc::new(leon_backends::Clis::new(login_path)),
         catalog: Arc::new(leon_catalog::AgentFiles::new(home)),
+        git: Arc::new(leon_git::GitCli::new(login_path)),
+        github: Arc::new(leon_github::GhCli::new(login_path)),
         clock: now_ms,
     };
     let core = leon_core::start(runtime.handle(), ports, settings);
     leon_ui::run(core, started);
     Ok(())
+}
+
+/// The user's login-shell `PATH`, read once on first use. An app started
+/// from the Finder inherits a minimal `PATH` that misses where `git`, `gh`
+/// and the coding CLIs usually live.
+fn login_path() -> Option<&'static OsString> {
+    static PATH: OnceLock<Option<OsString>> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let shell = std::env::var_os("SHELL")?;
+        let out = std::process::Command::new(shell)
+            .args(["-l", "-c", "printf %s \"$PATH\""])
+            .output()
+            .ok()?;
+        let path = String::from_utf8(out.stdout).ok()?;
+        (!path.trim().is_empty()).then(|| OsString::from(path.trim()))
+    })
+    .as_ref()
 }
 
 fn now_ms() -> i64 {

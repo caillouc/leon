@@ -5,6 +5,8 @@ use crate::BackendKind;
 pub struct Settings {
     /// Prefilled choices for a new conversation.
     pub defaults: SessionDefaults,
+    /// `diff.fold` patterns (GIT-4), as written.
+    pub diff_fold: Vec<String>,
 }
 
 /// Choices prefilled when the user starts a conversation (CONV-3, CONV-4).

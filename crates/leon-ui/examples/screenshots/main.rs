@@ -14,6 +14,8 @@ use leon_domain::{
 };
 use leon_ui::preview::{Shot, capture};
 
+mod repo;
+
 fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| (*s).to_owned()).collect()
 }
@@ -181,11 +183,13 @@ fn sample() -> Snapshot {
         transcripts,
         agents: Arc::new(agents),
         options: Arc::new(options),
-        branches: Arc::new(HashMap::from([(
-            ConversationId(1),
-            "fix-webhook-retry".to_owned(),
-        )])),
+        git: repo::git(),
+        prs: repo::prs(),
+        my_issues: repo::my_issues(),
+        my_prs: repo::my_prs(),
+        fold: repo::fold(),
         notifications: Arc::new(Vec::new()),
+        ..Snapshot::default()
     }
 }
 
@@ -213,6 +217,17 @@ fn main() {
         ),
         ("flow".to_owned(), Shot::Flow(ConversationId(1))),
         ("new-conversation".to_owned(), Shot::NewConversation),
+        (
+            "right-branch".to_owned(),
+            Shot::Right(ConversationId(1), "branch"),
+        ),
+        ("right-pr".to_owned(), Shot::Right(ConversationId(1), "pr")),
+        (
+            "right-info".to_owned(),
+            Shot::Right(ConversationId(1), "info"),
+        ),
+        ("review".to_owned(), Shot::Review(ConversationId(1))),
+        ("my-prs".to_owned(), Shot::MyPullRequests),
     ];
     gpui_platform::application().run(move |cx| capture(core, shots, out, cx));
 }

@@ -10,7 +10,7 @@ publish.workspace = true
 [dependencies]
 leon-domain.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "sync", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "macros", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]

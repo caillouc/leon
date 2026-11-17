@@ -126,5 +126,11 @@ fn tool_done(core: &mut Core, id: AgentSessionId, tool: &str, output: String, fa
         *f = failed;
     }
     let done = timed.clone();
+    let conversation = s.session.conversation;
     core.save_entry(id, &done);
+    if let leon_domain::Entry::Tool { name, .. } = &done.entry
+        && matches!(name.as_str(), "Edited" | "Wrote" | "Ran")
+    {
+        core.refresh_git(conversation);
+    }
 }

@@ -11,13 +11,14 @@ mod app;
 mod events;
 mod intent;
 pub mod ports;
+mod repo;
 mod snapshot;
 mod state;
 
 pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use intent::Intent;
 pub use snapshot::{
-    ConversationView, Notification, Question, SessionView, Snapshot, TranscriptView,
+    ConversationView, GitView, Notification, Question, SessionView, Snapshot, TranscriptView,
 };
 
 #[cfg(test)]

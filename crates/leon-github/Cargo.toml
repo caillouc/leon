@@ -1,0 +1,16 @@
+[package]
+name = "leon-github"
+description = "Talks to GitHub with the gh login (P7)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+leon-core.workspace = true
+leon-domain.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

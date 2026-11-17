@@ -5,6 +5,7 @@
 //! to the process.
 
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
 use leon_domain::Usage;
@@ -382,9 +383,12 @@ fn changed_paths(changes: &Value) -> String {
     clip(&paths.join(", "), 200)
 }
 
-pub(crate) fn start(spec: &SessionSpec) -> Result<BackendChannel, PortError> {
+pub(crate) fn start(
+    spec: &SessionSpec,
+    path: Option<&OsString>,
+) -> Result<BackendChannel, PortError> {
     let args = vec!["app-server".to_owned()];
-    let mut child = spawn("codex", &args, &spec.working_dir)
+    let mut child = spawn(path, "codex", &args, &spec.working_dir)
         .map_err(|e| PortError::new("starting Codex", e))?;
     let (Some(mut stdin), Some(stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())

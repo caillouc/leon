@@ -1,0 +1,97 @@
+{
+  "data": {
+    "repository": {
+      "defaultBranchRef": {
+        "name": "trunk"
+      },
+      "pullRequests": {
+        "nodes": [
+          {
+            "baseRefName": "trunk",
+            "comments": {
+              "nodes": []
+            },
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "name": "CodeQL-Build (go, manual, ./.github/codeql/codeql-config.yml)",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "name": "label-external / label_issues",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SKIPPED",
+                            "name": "label-external",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SKIPPED",
+                            "name": "label-external",
+                            "status": "COMPLETED"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "headRefName": "dependabot/npm_and_yarn/evals/zod-4.6.6",
+            "isDraft": false,
+            "labels": {
+              "nodes": [
+                {
+                  "name": "dependencies"
+                },
+                {
+                  "name": "javascript"
+                }
+              ]
+            },
+            "latestReviews": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "copilot-pull-request-reviewer"
+                  }
+                }
+              ]
+            },
+            "number": 15086,
+            "repository": {
+              "nameWithOwner": "cli/cli"
+            },
+            "reviewRequests": {
+              "nodes": [
+                {
+                  "requestedReviewer": null
+                },
+                {
+                  "requestedReviewer": {
+                    "login": "reviewer-a"
+                  }
+                }
+              ]
+            },
+            "state": "OPEN",
+            "title": "chore(deps): Bump zod from 4.3.6 to 4.6.6 in /evals",
+            "url": "https://github.com/cli/cli/pull/15086"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -13,6 +13,8 @@ const RULES: &[(&str, &[&str])] = &[
     ("leon-store", &["leon-domain", "leon-core"]),
     ("leon-backends", &["leon-domain", "leon-core"]),
     ("leon-catalog", &["leon-domain", "leon-core"]),
+    ("leon-git", &["leon-domain", "leon-core"]),
+    ("leon-github", &["leon-domain", "leon-core"]),
     ("leon-ui", &["leon-domain", "leon-core"]),
     ("leon", &["*"]),
     ("xtask", &[]),

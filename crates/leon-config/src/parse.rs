@@ -76,6 +76,7 @@ pub fn parse(text: &str) -> Loaded {
         match key.as_str() {
             "version" => check_version(value, &mut out.warnings),
             "defaults" => read_defaults(value, &mut out.settings.defaults, &mut out.warnings),
+            "diff" => read_diff(value, &mut out.settings.diff_fold, &mut out.warnings),
             other => out
                 .warnings
                 .push(Warning::new(other, "unknown key, ignored")),
@@ -121,6 +122,38 @@ fn read_defaults(value: &Value, defaults: &mut SessionDefaults, warnings: &mut V
             "effort" => defaults.effort = Some(text.to_owned()),
             "permission" => text.clone_into(&mut defaults.permission),
             _ => warnings.push(Warning::new(dotted, "unknown key, ignored")),
+        }
+    }
+}
+
+fn read_diff(value: &Value, fold: &mut Vec<String>, warnings: &mut Vec<Warning>) {
+    let Some(table) = value.as_table() else {
+        warnings.push(Warning::new("diff", "must be a table, ignored"));
+        return;
+    };
+    for (key, value) in table {
+        if key != "fold" {
+            warnings.push(Warning::new(format!("diff.{key}"), "unknown key, ignored"));
+            continue;
+        }
+        let Some(items) = value.as_array() else {
+            warnings.push(Warning::new(
+                "diff.fold",
+                "must be a list of patterns, ignored",
+            ));
+            continue;
+        };
+        for item in items {
+            match item.as_str() {
+                Some(pattern) if leon_domain::FoldPattern::parse(pattern).is_some() => {
+                    fold.push(pattern.to_owned());
+                }
+                Some(pattern) => warnings.push(Warning::new(
+                    "diff.fold",
+                    format!("\"{pattern}\" is not a valid glob or regex, ignored"),
+                )),
+                None => warnings.push(Warning::new("diff.fold", "patterns must be strings")),
+            }
         }
     }
 }
@@ -171,6 +204,17 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn reads_fold_patterns_and_rejects_bad_ones() {
+        let loaded = parse("[diff]\nfold = [\"glob:**/*.lock\", \"re:(\", \"re:^generated/\"]");
+        assert_eq!(
+            loaded.settings.diff_fold,
+            ["glob:**/*.lock", "re:^generated/"]
+        );
+        assert_eq!(loaded.warnings.len(), 1);
+        assert_eq!(loaded.warnings[0].key, "diff.fold");
     }
 
     #[test]

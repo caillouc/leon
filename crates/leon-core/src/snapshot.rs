@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Project, ProjectId,
-    Settings, Status, TimedEntry,
+    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, FileDiff, FoldPattern,
+    Issue, Project, ProjectId, PullRequest, Settings, Status, TimedEntry,
 };
 
 use crate::ports::{AgentDefinition, BackendOptions};
@@ -30,8 +30,21 @@ pub struct Snapshot {
     pub agents: Arc<HashMap<ProjectId, Vec<AgentDefinition>>>,
     /// What each backend's pickers offer (CONV-4).
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
-    /// Current branch of each conversation's working directory (CONV-14).
-    pub branches: Arc<HashMap<ConversationId, String>>,
+    /// Git state of each conversation's working directory (GIT-*, CONV-14).
+    pub git: Arc<HashMap<ConversationId, GitView>>,
+    /// Pull request of each conversation's branch (NAV-6, GH-1).
+    pub prs: Arc<HashMap<ConversationId, PullRequest>>,
+    /// My open issues (GH-2).
+    pub my_issues: Arc<Vec<Issue>>,
+    /// My open pull requests (GH-3).
+    pub my_prs: Arc<Vec<PullRequest>>,
+    /// Why the GitHub lists could not be read, if they could not.
+    pub github_error: Option<String>,
+    /// `diff.fold` patterns (GIT-4).
+    pub fold: Arc<Vec<FoldPattern>>,
+    /// The latest short message to show the user (an action's result), with
+    /// a unique id.
+    pub flash: Option<(u64, String)>,
     /// Desktop notifications to show (NOTIF-1), oldest first. Each has a
     /// unique id so the UI shows it once.
     pub notifications: Arc<Vec<Notification>>,
@@ -101,4 +114,19 @@ pub struct Notification {
     pub title: String,
     /// Second line.
     pub body: String,
+}
+
+/// Git state of a conversation's working directory.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GitView {
+    /// Current branch (CONV-14).
+    pub branch: Option<String>,
+    /// Branch the branch diff compares with.
+    pub base: Option<String>,
+    /// Uncommitted changes (GIT-1, GIT-2).
+    pub changes: Arc<Vec<FileDiff>>,
+    /// Everything the branch changed since its base (GIT-3).
+    pub branch_diff: Arc<Vec<FileDiff>>,
+    /// Why git could not be read (not a repository…).
+    pub error: Option<String>,
 }

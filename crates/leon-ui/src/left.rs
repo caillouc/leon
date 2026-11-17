@@ -6,6 +6,7 @@ use gpui_component::input::Input;
 use leon_core::ConversationView;
 use leon_domain::Status;
 
+use crate::pr_view::pr_badge;
 use crate::theme;
 use crate::widgets::{empty, label, link, primary, status_dot};
 use crate::workspace::{Screen, Workspace, value_of};
@@ -31,7 +32,8 @@ impl Workspace {
             .px_1()
             .pb_4()
             .flex()
-            .flex_col();
+            .flex_col()
+            .child(self.render_github_rows(cx));
 
         let pinned: Vec<_> = snapshot
             .conversations
@@ -165,6 +167,7 @@ impl Workspace {
                             .when(unread, |s| s.font_weight(gpui::FontWeight::SEMIBOLD))
                             .child(c.conversation.title.clone()),
                     )
+                    .children(self.snapshot.prs.get(&id).map(pr_badge))
                     .when(unread, |s| {
                         s.child(div().size(px(7.)).rounded_full().bg(theme::accent()))
                     }),

@@ -18,6 +18,8 @@ leon-store = { path = "crates/leon-store" }
 leon-ui = { path = "crates/leon-ui" }
 leon-backends = { path = "crates/leon-backends" }
 leon-catalog = { path = "crates/leon-catalog" }
+leon-git = { path = "crates/leon-git" }
+leon-github = { path = "crates/leon-github" }
 
 # UI (P1): pinned to one exact snapshot; only `leon-ui` may use them.
 gpui = { package = "gpui-pre", version = "=0.3.12", default-features = false }
@@ -27,6 +29,7 @@ gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", default-fe
 # Everything else
 anyhow = "1.0.104"
 dirs = "7.0.0"
+regex = "1.13.1"
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

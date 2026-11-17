@@ -3,7 +3,6 @@
 use std::ffi::OsString;
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::OnceLock;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStderr, Command};
@@ -28,25 +27,14 @@ const HOST_SESSION_VARS: &[&str] = &[
     "CLAUDE_EFFORT",
 ];
 
-/// The user's login-shell `PATH`. An app started from the Finder gets a
-/// minimal `PATH` that misses `~/.local/bin` or `/opt/homebrew/bin`.
-fn login_path() -> Option<&'static OsString> {
-    static PATH: OnceLock<Option<OsString>> = OnceLock::new();
-    PATH.get_or_init(|| {
-        let shell = std::env::var_os("SHELL")?;
-        let out = std::process::Command::new(shell)
-            .args(["-l", "-c", "printf %s \"$PATH\""])
-            .output()
-            .ok()?;
-        let path = String::from_utf8(out.stdout).ok()?;
-        (!path.trim().is_empty()).then(|| OsString::from(path.trim()))
-    })
-    .as_ref()
-}
-
-/// Starts `program` in `cwd` with piped stdio. The process is killed when
-/// the returned [`Child`] is dropped.
-pub(crate) fn spawn(program: &str, args: &[String], cwd: &Path) -> std::io::Result<Child> {
+/// Starts `program` in `cwd` with piped stdio, and `path` as `PATH` if
+/// given. The process is killed when the returned [`Child`] is dropped.
+pub(crate) fn spawn(
+    path: Option<&OsString>,
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+) -> std::io::Result<Child> {
     let mut cmd = Command::new(program);
     cmd.args(args)
         .current_dir(cwd)
@@ -57,7 +45,7 @@ pub(crate) fn spawn(program: &str, args: &[String], cwd: &Path) -> std::io::Resu
     for var in HOST_SESSION_VARS {
         cmd.env_remove(var);
     }
-    if let Some(path) = login_path() {
+    if let Some(path) = path {
         cmd.env("PATH", path);
     }
     cmd.spawn()
