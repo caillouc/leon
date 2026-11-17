@@ -7,7 +7,7 @@
 //! transcript files.
 
 mod migrations;
-mod projects;
+mod storage;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};

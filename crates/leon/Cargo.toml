@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 dirs.workspace = true
+leon-backends.workspace = true
+leon-catalog.workspace = true
 leon-config.workspace = true
 leon-core.workspace = true
 leon-domain.workspace = true

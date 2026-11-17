@@ -1,29 +1,42 @@
+//! The core actor: applies intents and CLI events to the state, persists
+//! them, and publishes snapshots. The only writer of application state.
+
+use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
-use leon_domain::{Project, Settings};
+use leon_domain::{
+    AgentSessionId, BackendKind, ConversationId, Entry, SessionSettings, Settings, Status,
+    TimedEntry,
+};
 use tokio::runtime::Handle;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::sync::watch;
 
-use crate::ports::ProjectRepository;
+use crate::intent::Intent;
+use crate::ports::{
+    BackendCommand, BackendEvent, Backends, Catalog, NewSession, SessionSpec, Storage,
+};
+use crate::snapshot::Snapshot;
+use crate::state::{SessionState, State, title_from};
 
-/// What the UI renders: an immutable copy of the application state.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Snapshot {
-    /// `false` until the first load from the store finished.
-    pub loaded: bool,
-    /// Projects, sorted by name (NAV-2).
-    pub projects: Vec<Project>,
-    /// The user's settings.
-    pub settings: Settings,
+/// Everything the core talks to.
+pub struct Ports {
+    /// Leon's own data.
+    pub storage: Arc<dyn Storage>,
+    /// The coding CLIs.
+    pub backends: Arc<dyn Backends>,
+    /// The user's agent files.
+    pub catalog: Arc<dyn Catalog>,
+    /// Current time, Unix milliseconds.
+    pub clock: fn() -> i64,
 }
 
-/// The UI's handle on the core: read the latest snapshot, wait for the next.
-///
-/// The channel is runtime-agnostic, so the UI can await it on its own
-/// executor (P8).
+/// The UI's handle on the core.
 #[derive(Debug, Clone)]
 pub struct CoreHandle {
     snapshots: watch::Receiver<Arc<Snapshot>>,
+    intents: UnboundedSender<Intent>,
 }
 
 impl CoreHandle {
@@ -32,110 +45,600 @@ impl CoreHandle {
         Arc::clone(&self.snapshots.borrow())
     }
 
-    /// A receiver that wakes up each time a new snapshot is published.
+    /// A receiver woken each time a snapshot is published. Runtime-agnostic
+    /// (P8): the UI awaits it on its own executor.
     pub fn subscribe(&self) -> watch::Receiver<Arc<Snapshot>> {
         self.snapshots.clone()
     }
+
+    /// Asks the core to do something. Ignored once the core has stopped.
+    pub fn send(&self, intent: Intent) {
+        let _ = self.intents.send(intent);
+    }
 }
 
-/// Starts the core on `runtime` and returns the UI's handle.
-///
-/// Loads the projects off the async workers; a failure is logged and the app
-/// keeps running with an empty list.
-pub fn start(
-    runtime: &Handle,
-    projects: Arc<dyn ProjectRepository>,
-    settings: Settings,
-) -> CoreHandle {
-    let initial = Snapshot {
-        loaded: false,
-        projects: Vec::new(),
+/// Starts the core on `runtime` (multi-threaded) and returns the UI's handle.
+pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
+    let state = State {
         settings,
+        ..State::default()
     };
-    let (publish, snapshots) = watch::channel(Arc::new(initial));
-    runtime.spawn(async move {
-        let loaded = tokio::task::spawn_blocking(move || projects.list_projects()).await;
-        let list = match loaded {
-            Ok(Ok(list)) => list,
-            Ok(Err(error)) => {
-                tracing::error!(%error, "could not load projects");
-                Vec::new()
+    let (publish, snapshots) = watch::channel(Arc::new(state.snapshot()));
+    let (intents, intent_rx) = unbounded_channel();
+    let (event_tx, event_rx) = unbounded_channel();
+    let core = Core {
+        ports,
+        state,
+        publish,
+        live: HashMap::new(),
+        viewing: None,
+        event_tx,
+    };
+    runtime.spawn(core.run(intent_rx, event_rx));
+    CoreHandle { snapshots, intents }
+}
+
+/// The other end of a [`CoreHandle`] made by [`detached`].
+#[derive(Debug)]
+pub struct Detached {
+    /// Publishes snapshots to the handle.
+    pub publish: watch::Sender<Arc<Snapshot>>,
+    /// Intents sent through the handle.
+    pub intents: UnboundedReceiver<Intent>,
+}
+
+/// A handle with no core behind it: the caller publishes snapshots and reads
+/// intents. For UI previews and tests.
+pub fn detached(snapshot: Snapshot) -> (CoreHandle, Detached) {
+    let (publish, snapshots) = watch::channel(Arc::new(snapshot));
+    let (intents, intent_rx) = unbounded_channel();
+    (
+        CoreHandle { snapshots, intents },
+        Detached {
+            publish,
+            intents: intent_rx,
+        },
+    )
+}
+
+type SessionEvent = (AgentSessionId, Option<BackendEvent>);
+
+pub(crate) struct Core {
+    ports: Ports,
+    state: State,
+    publish: watch::Sender<Arc<Snapshot>>,
+    live: HashMap<AgentSessionId, UnboundedSender<BackendCommand>>,
+    viewing: Option<ConversationId>,
+    event_tx: UnboundedSender<SessionEvent>,
+}
+
+/// Runs a blocking store call without stalling the async workers.
+fn blocking<T>(f: impl FnOnce() -> T) -> T {
+    tokio::task::block_in_place(f)
+}
+
+impl Core {
+    async fn run(
+        mut self,
+        mut intents: UnboundedReceiver<Intent>,
+        mut events: UnboundedReceiver<SessionEvent>,
+    ) {
+        self.load();
+        self.publish();
+        loop {
+            tokio::select! {
+                intent = intents.recv() => match intent {
+                    Some(intent) => self.apply(intent),
+                    None => break,
+                },
+                Some((session, event)) = events.recv() => self.on_event(session, event),
+            }
+            self.publish();
+        }
+    }
+
+    fn publish(&self) {
+        self.publish.send_replace(Arc::new(self.state.snapshot()));
+    }
+
+    fn now(&self) -> i64 {
+        (self.ports.clock)()
+    }
+
+    fn report<T>(result: Result<T, crate::ports::PortError>) -> Option<T> {
+        result
+            .map_err(|error| tracing::error!(%error, "store"))
+            .ok()
+    }
+
+    fn load(&mut self) {
+        let storage = Arc::clone(&self.ports.storage);
+        let (projects, conversations, sessions) = blocking(|| {
+            (
+                storage.list_projects(),
+                storage.list_conversations(),
+                storage.list_sessions(),
+            )
+        });
+        self.state.projects = Arc::new(Self::report(projects).unwrap_or_default());
+        self.state.conversations = Self::report(conversations).unwrap_or_default();
+        for session in Self::report(sessions).unwrap_or_default() {
+            self.state
+                .sessions
+                .insert(session.id, SessionState::new(session));
+        }
+        let options = BackendKind::ALL
+            .into_iter()
+            .map(|b| (b, self.ports.backends.options(b)))
+            .collect();
+        self.state.options = Arc::new(options);
+        self.refresh_agents();
+        self.state.loaded = true;
+    }
+
+    fn refresh_agents(&mut self) {
+        let catalog = Arc::clone(&self.ports.catalog);
+        let projects = Arc::clone(&self.state.projects);
+        let agents = blocking(|| {
+            projects
+                .iter()
+                .map(|p| (p.id, catalog.agents(&p.path)))
+                .collect()
+        });
+        self.state.agents = Arc::new(agents);
+    }
+
+    fn apply(&mut self, intent: Intent) {
+        match intent {
+            Intent::AddProject(path) => self.add_project(&path),
+            Intent::View(id) => self.view(id),
+            Intent::NewConversation {
+                project,
+                settings,
+                text,
+            } => self.new_conversation(project, settings, &text),
+            Intent::Send { session, text } => self.send(session, &text),
+            Intent::Stop(session) => {
+                if let Some(commands) = self.live.get(&session) {
+                    let _ = commands.send(BackendCommand::Interrupt);
+                }
+            }
+            Intent::Answer {
+                session,
+                question,
+                answer,
+            } => self.answer(session, question, &answer),
+            Intent::ChangeSettings { session, settings } => {
+                self.change_settings(session, &settings);
+            }
+            Intent::Rename(id, title) => self.edit(id, |c| title.trim().clone_into(&mut c.title)),
+            Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
+            Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
+            Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
+            Intent::Delete(id) => self.delete(id),
+        }
+    }
+
+    fn add_project(&mut self, path: &Path) {
+        let name = path.file_name().map_or_else(
+            || path.to_string_lossy().into_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        let storage = Arc::clone(&self.ports.storage);
+        let now = self.now();
+        if Self::report(blocking(|| storage.add_project(&name, path, now))).is_some() {
+            self.state.projects =
+                Arc::new(Self::report(blocking(|| storage.list_projects())).unwrap_or_default());
+            self.refresh_agents();
+        }
+    }
+
+    fn view(&mut self, id: Option<ConversationId>) {
+        self.viewing = id;
+        let Some(id) = id else { return };
+        if self
+            .state
+            .conversations
+            .iter()
+            .any(|c| c.id == id && c.unread)
+        {
+            self.edit(id, |c| c.unread = false);
+        }
+        for session in self.state.sessions_of(id) {
+            self.load_transcript(session);
+        }
+    }
+
+    fn load_transcript(&mut self, id: AgentSessionId) {
+        if self
+            .state
+            .sessions
+            .get(&id)
+            .is_none_or(|s| s.transcript.is_some())
+        {
+            return;
+        }
+        let storage = Arc::clone(&self.ports.storage);
+        let entries = Self::report(blocking(|| storage.entries(id))).unwrap_or_default();
+        if let Some(s) = self.state.sessions.get_mut(&id) {
+            s.transcript = Some(crate::snapshot::TranscriptView {
+                entries: Arc::new(entries),
+                partial: None,
+            });
+        }
+    }
+
+    fn edit(&mut self, id: ConversationId, change: impl FnOnce(&mut leon_domain::Conversation)) {
+        let Some(c) = self.state.conversation_mut(id) else {
+            return;
+        };
+        change(c);
+        let saved = c.clone();
+        let storage = Arc::clone(&self.ports.storage);
+        Self::report(blocking(|| storage.update_conversation(&saved)));
+    }
+
+    fn touch(&mut self, id: ConversationId, mark_unread: bool) {
+        let now = self.now();
+        let unread = mark_unread && self.viewing != Some(id);
+        self.edit(id, |c| {
+            c.updated_at = now;
+            c.unread |= unread;
+        });
+    }
+
+    fn new_conversation(
+        &mut self,
+        project: leon_domain::ProjectId,
+        settings: SessionSettings,
+        text: &str,
+    ) {
+        let Some(dir) = self.state.project(project).map(|p| p.path.clone()) else {
+            return;
+        };
+        let storage = Arc::clone(&self.ports.storage);
+        let now = self.now();
+        let title = title_from(text);
+        let Some(conversation) = Self::report(blocking(|| {
+            storage.create_conversation(project, &title, now)
+        })) else {
+            return;
+        };
+        let new = NewSession {
+            conversation: conversation.id,
+            started_by: None,
+            settings,
+            working_dir: dir,
+        };
+        let Some(session) = Self::report(blocking(|| storage.create_session(&new))) else {
+            return;
+        };
+        let id = session.id;
+        let mut state = SessionState::new(session);
+        state.transcript = Some(crate::snapshot::TranscriptView::default());
+        self.state.sessions.insert(id, state);
+        self.state.conversations.push(conversation.clone());
+        self.viewing = Some(conversation.id);
+        self.send(id, text);
+    }
+
+    fn record(&mut self, id: AgentSessionId, entry: Entry) -> Option<usize> {
+        let at = self.now();
+        let timed = TimedEntry { at, entry };
+        if !matches!(timed.entry, Entry::Tool { output: None, .. }) {
+            let storage = Arc::clone(&self.ports.storage);
+            Self::report(blocking(|| storage.append_entry(id, &timed)));
+        }
+        Some(self.state.sessions.get_mut(&id)?.push(timed))
+    }
+
+    fn send(&mut self, id: AgentSessionId, text: &str) {
+        let Some(s) = self.state.sessions.get(&id) else {
+            return;
+        };
+        if s.status == Status::Running || text.trim().is_empty() {
+            return;
+        }
+        let conversation = s.session.conversation;
+        let message = if s.carry_context {
+            with_context(s, text)
+        } else {
+            text.to_owned()
+        };
+        self.load_transcript(id);
+        self.record(
+            id,
+            Entry::User {
+                text: text.to_owned(),
+            },
+        );
+        if !self.ensure_live(id) {
+            return;
+        }
+        if let Some(s) = self.state.sessions.get_mut(&id) {
+            s.carry_context = false;
+            s.status = Status::Running;
+            s.question = None;
+        }
+        if let Some(commands) = self.live.get(&id) {
+            let _ = commands.send(BackendCommand::Send(message));
+        }
+        self.touch(conversation, false);
+    }
+
+    /// Starts the CLI for a session if it is not running. Returns `false`
+    /// (and records the error) when it cannot start.
+    fn ensure_live(&mut self, id: AgentSessionId) -> bool {
+        if self.live.get(&id).is_some_and(|c| !c.is_closed()) {
+            return true;
+        }
+        let Some(s) = self.state.sessions.get(&id) else {
+            return false;
+        };
+        let session = &s.session;
+        let agent = session.settings.agent.as_ref().and_then(|name| {
+            let project = self
+                .state
+                .conversations
+                .iter()
+                .find(|c| c.id == session.conversation)?
+                .project;
+            self.state
+                .agents
+                .get(&project)?
+                .iter()
+                .find(|a| &a.name == name)
+                .cloned()
+        });
+        let spec = SessionSpec {
+            settings: session.settings.clone(),
+            agent,
+            working_dir: session.working_dir.clone(),
+            resume: session.cli_session.clone(),
+        };
+        match self.ports.backends.start(spec) {
+            Ok(channel) => {
+                self.live.insert(id, channel.commands);
+                let tx = self.event_tx.clone();
+                let mut events = channel.events;
+                tokio::spawn(async move {
+                    while let Some(event) = events.recv().await {
+                        if tx.send((id, Some(event))).is_err() {
+                            return;
+                        }
+                    }
+                    let _ = tx.send((id, None));
+                });
+                true
             }
             Err(error) => {
-                tracing::error!(%error, "project loading task failed");
-                Vec::new()
+                self.record(
+                    id,
+                    Entry::Error {
+                        text: error.to_string(),
+                    },
+                );
+                if let Some(s) = self.state.sessions.get_mut(&id) {
+                    s.status = Status::Error;
+                }
+                false
             }
+        }
+    }
+
+    fn answer(&mut self, id: AgentSessionId, question: String, answer: &str) {
+        if let Some(commands) = self.live.get(&id) {
+            let _ = commands.send(BackendCommand::Answer {
+                id: question,
+                answer: answer.to_owned(),
+            });
+        }
+        self.record(
+            id,
+            Entry::Notice {
+                text: format!("You answered: {answer}"),
+            },
+        );
+        if let Some(s) = self.state.sessions.get_mut(&id) {
+            s.question = None;
+            s.status = Status::Running;
+        }
+    }
+
+    fn change_settings(&mut self, id: AgentSessionId, settings: &SessionSettings) {
+        let Some(s) = self.state.sessions.get_mut(&id) else {
+            return;
         };
-        publish.send_modify(|snapshot| {
-            let mut next = Snapshot::clone(snapshot);
-            next.loaded = true;
-            next.projects = list;
-            *snapshot = Arc::new(next);
+        if &s.session.settings == settings {
+            return;
+        }
+        let old = std::mem::replace(&mut s.session.settings, settings.clone());
+        if old.backend != settings.backend {
+            s.session.cli_session = None;
+            s.carry_context = true;
+        }
+        let saved = s.session.clone();
+        // The CLI reads these choices at start: the next message restarts it.
+        self.live.remove(&id);
+        let storage = Arc::clone(&self.ports.storage);
+        Self::report(blocking(|| storage.update_session(&saved)));
+        self.record(
+            id,
+            Entry::Notice {
+                text: describe_change(&old, settings),
+            },
+        );
+    }
+
+    fn delete(&mut self, id: ConversationId) {
+        for session in self.state.sessions_of(id) {
+            self.live.remove(&session);
+            self.state.sessions.remove(&session);
+        }
+        self.state.conversations.retain(|c| c.id != id);
+        let storage = Arc::clone(&self.ports.storage);
+        Self::report(blocking(|| storage.delete_conversation(id)));
+    }
+
+    fn on_event(&mut self, id: AgentSessionId, event: Option<BackendEvent>) {
+        let Some(event) = event else {
+            self.live.remove(&id);
+            if self
+                .state
+                .sessions
+                .get(&id)
+                .is_some_and(|s| s.status == Status::Running)
+            {
+                self.finish_turn(
+                    id,
+                    None,
+                    Some("The CLI stopped before finishing.".to_owned()),
+                );
+            }
+            return;
+        };
+        crate::events::apply(self, id, event);
+    }
+
+    pub(crate) fn finish_turn(
+        &mut self,
+        id: AgentSessionId,
+        usage: Option<leon_domain::Usage>,
+        error: Option<String>,
+    ) {
+        let Some(s) = self.state.sessions.get_mut(&id) else {
+            return;
+        };
+        let partial = s.transcript.as_mut().and_then(|t| t.partial.take());
+        let pending: Vec<usize> = s.pending_tools.drain().map(|(_, i)| i).collect();
+        let conversation = s.session.conversation;
+        let failed = error.is_some() || s.status == Status::Error;
+        s.status = if failed { Status::Error } else { Status::Idle };
+        let storage = Arc::clone(&self.ports.storage);
+        let entries: Vec<TimedEntry> = s.transcript.as_ref().map_or_default(|t| {
+            pending
+                .iter()
+                .filter_map(|&i| t.entries.get(i).cloned())
+                .collect()
         });
-    });
-    CoreHandle { snapshots }
+        for entry in &entries {
+            Self::report(blocking(|| storage.append_entry(id, entry)));
+        }
+        if let Some(text) = partial.filter(|t| !t.trim().is_empty()) {
+            self.record(id, Entry::Agent { text });
+        }
+        if let Some(text) = error {
+            self.record(id, Entry::Error { text });
+        }
+        self.record(id, Entry::TurnEnd { usage });
+        self.answered(id, conversation, failed);
+    }
+
+    /// The agent finished or needs the user: mark unread and notify when the
+    /// conversation is not on screen (NAV-4, NOTIF-1).
+    pub(crate) fn answered(
+        &mut self,
+        id: AgentSessionId,
+        conversation: ConversationId,
+        failed: bool,
+    ) {
+        self.touch(conversation, true);
+        if self.viewing == Some(conversation) {
+            return;
+        }
+        let agent = self
+            .state
+            .sessions
+            .get(&id)
+            .and_then(|s| s.session.settings.agent.clone())
+            .unwrap_or_else(|| "The agent".to_owned());
+        let title = self
+            .state
+            .conversations
+            .iter()
+            .find(|c| c.id == conversation)
+            .map_or_default(|c| c.title.clone());
+        let headline = if failed {
+            format!("{agent} stopped with an error")
+        } else {
+            format!("{agent} answered")
+        };
+        self.state.notify(conversation, headline, title);
+    }
+
+    pub(crate) fn state_mut(&mut self) -> &mut State {
+        &mut self.state
+    }
+
+    pub(crate) fn record_entry(&mut self, id: AgentSessionId, entry: Entry) -> Option<usize> {
+        self.record(id, entry)
+    }
+
+    pub(crate) fn save_session(&mut self, id: AgentSessionId) {
+        let Some(saved) = self.state.sessions.get(&id).map(|s| s.session.clone()) else {
+            return;
+        };
+        let storage = Arc::clone(&self.ports.storage);
+        Self::report(blocking(|| storage.update_session(&saved)));
+    }
+
+    pub(crate) fn save_entry(&mut self, id: AgentSessionId, entry: &TimedEntry) {
+        let storage = Arc::clone(&self.ports.storage);
+        Self::report(blocking(|| storage.append_entry(id, entry)));
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use leon_domain::{Project, ProjectId, Settings};
-
-    use super::{CoreHandle, start};
-    use crate::ports::{PortError, ProjectRepository};
-
-    struct FakeRepo(Result<Vec<Project>, PortError>);
-
-    impl ProjectRepository for FakeRepo {
-        fn list_projects(&self) -> Result<Vec<Project>, PortError> {
-            self.0.clone()
+/// The message for a new CLI session that must know the conversation so far.
+fn with_context(s: &SessionState, text: &str) -> String {
+    let mut lines = Vec::new();
+    for e in s
+        .transcript
+        .as_ref()
+        .map_or_default(|t| t.entries.as_slice())
+    {
+        match &e.entry {
+            Entry::User { text } => lines.push(format!("User: {text}")),
+            Entry::Agent { text } => lines.push(format!("Assistant: {text}")),
+            _ => {}
         }
     }
-
-    fn project(id: i64, name: &str) -> Project {
-        Project {
-            id: ProjectId(id),
-            name: name.to_owned(),
-            path: PathBuf::from("/tmp").join(name),
-        }
+    let mut context = lines.join("\n\n");
+    if context.len() > 24_000 {
+        let start = context.len() - 24_000;
+        let start = (start..context.len())
+            .find(|&i| context.is_char_boundary(i))
+            .unwrap_or(0);
+        context = context[start..].to_owned();
     }
+    format!(
+        "Context: this conversation started with another assistant. Here it is so far:\n\n{context}\n\n---\n\n{text}"
+    )
+}
 
-    async fn loaded(handle: &CoreHandle) -> Arc<super::Snapshot> {
-        let mut rx = handle.subscribe();
-        tokio::time::timeout(Duration::from_secs(2), rx.wait_for(|s| s.loaded))
-            .await
-            .expect("core did not publish in time")
-            .expect("core stopped")
-            .clone()
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn publishes_projects_from_the_repository() {
-        let repo = FakeRepo(Ok(vec![project(1, "api"), project(2, "web")]));
-        let handle = start(
-            &tokio::runtime::Handle::current(),
-            Arc::new(repo),
-            Settings::default(),
-        );
-        let snapshot = loaded(&handle).await;
-        assert_eq!(
-            snapshot.projects,
-            vec![project(1, "api"), project(2, "web")]
+fn describe_change(old: &SessionSettings, new: &SessionSettings) -> String {
+    if old.backend != new.backend {
+        return format!(
+            "Switched from {} to {}. Your next message starts a new {} session with this conversation's context.",
+            old.backend.display_name(),
+            new.backend.display_name(),
+            new.backend.display_name()
         );
     }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn a_repository_error_leaves_an_empty_list() {
-        let repo = FakeRepo(Err(PortError::new("listing projects", "disk full")));
-        let handle = start(
-            &tokio::runtime::Handle::current(),
-            Arc::new(repo),
-            Settings::default(),
-        );
-        let snapshot = loaded(&handle).await;
-        assert_eq!(snapshot.projects, Vec::<Project>::new());
+    let mut parts = Vec::new();
+    if old.model != new.model {
+        parts.push(format!(
+            "model {}",
+            new.model.as_deref().unwrap_or("default")
+        ));
     }
+    if old.effort != new.effort {
+        parts.push(format!(
+            "effort {}",
+            new.effort.as_deref().unwrap_or("default")
+        ));
+    }
+    if old.permission != new.permission {
+        parts.push(format!("permission {}", new.permission));
+    }
+    format!("Changed {} from your next message.", parts.join(", "))
 }

@@ -13,12 +13,25 @@ gpui-component.workspace = true
 leon-core.workspace = true
 leon-domain.workspace = true
 tracing.workspace = true
+image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 gpui_platform = { workspace = true, features = ["font-kit", "runtime_shaders"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gpui_platform = { workspace = true, features = ["wayland", "x11"] }
+
+[features]
+# Offscreen screenshots of the UI (`cargo run -p leon-ui --example screenshots --features preview`).
+preview = ["gpui/test-support", "gpui_platform/test-support", "dep:image"]
+
+[[example]]
+name = "screenshots"
+required-features = ["preview"]
+
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

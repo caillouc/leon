@@ -11,6 +11,7 @@ publish.workspace = true
 leon-core.workspace = true
 leon-domain.workspace = true
 rusqlite.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

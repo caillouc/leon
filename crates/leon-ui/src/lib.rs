@@ -5,12 +5,29 @@
 //! Must not: do I/O, or hold business rules. Patterns to copy live in
 //! `docs/ui-recipes.md`.
 
+#![allow(
+    clippy::too_many_lines,
+    reason = "GPUI element trees are long builder chains; views are split by meaning, not by line count"
+)]
+
+mod composer;
+mod conversation;
+mod flow;
+mod form;
+mod left;
+mod picker;
+#[cfg(feature = "preview")]
+pub mod preview;
+mod right;
 mod theme;
+mod transcript;
+mod widgets;
 mod workspace;
 
 use std::time::Instant;
 
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use gpui_component::{Root, Theme, ThemeMode};
 use leon_core::CoreHandle;
 
 use crate::workspace::Workspace;
@@ -22,7 +39,8 @@ use crate::workspace::Workspace;
 pub fn run(core: CoreHandle, started: Instant) {
     gpui_platform::application().run(move |cx: &mut App| {
         gpui_component::init(cx);
-        let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+        let bounds = Bounds::centered(None, size(px(1360.), px(860.)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: Some(TitlebarOptions {
@@ -31,9 +49,11 @@ pub fn run(core: CoreHandle, started: Instant) {
             }),
             ..WindowOptions::default()
         };
-        if let Err(error) = cx.open_window(options, |_window, cx| {
-            cx.new(|cx| Workspace::new(&core, started, cx))
-        }) {
+        let opened = cx.open_window(options, |window, cx| {
+            let workspace = cx.new(|cx| Workspace::new(&core, started, window, cx));
+            cx.new(|cx| Root::new(workspace, window, cx))
+        });
+        if let Err(error) = opened {
             tracing::error!(%error, "could not open the window");
             cx.quit();
             return;

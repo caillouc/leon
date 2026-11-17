@@ -1,0 +1,18 @@
+[package]
+name = "leon-catalog"
+description = "Finds the user's agent definitions in their standard folders."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+leon-core.workspace = true
+leon-domain.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

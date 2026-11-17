@@ -4,9 +4,15 @@
 //! glossary in `AGENTS.md`.
 
 mod backend;
+mod conversation;
 mod project;
 mod settings;
+mod transcript;
 
 pub use backend::BackendKind;
+pub use conversation::{
+    AgentSession, AgentSessionId, Conversation, ConversationId, SessionSettings, Status,
+};
 pub use project::{Project, ProjectId};
 pub use settings::{SessionDefaults, Settings};
+pub use transcript::{Entry, TimedEntry, Usage};

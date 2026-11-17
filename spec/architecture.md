@@ -22,7 +22,7 @@ Ports and adapters: dependencies point inward, to the core and the domain.
 |---|---|---|---|---|
 | 1 | `leon-domain` | Pure types and rules: ids, projects, settings; later conversation state, events, status/unread rules, PR badge, fold matching | nothing internal | M0 |
 | 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain | M0 |
-| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite, implements the storage ports); later `leon-backends`, `leon-git`, `leon-github`, `leon-catalog`, `leon-app-tools` | Implement one port each against the outside world | domain, core; never another adapter | M0: config, store |
+| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json, Codex app-server: `Backends`), `leon-catalog` (agent files: `Catalog`); later `leon-git`, `leon-github`, `leon-app-tools` | Implement one port each against the outside world | domain, core; never another adapter | M0–M1 |
 | 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core | M0 |
 | 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any | M0 |
 | — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate | M0 |

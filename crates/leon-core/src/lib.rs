@@ -1,13 +1,24 @@
 //! Leon's application services.
 //!
-//! The core owns the application state and is its only writer. It defines the
-//! ports (traits) that adapters implement, and publishes snapshots the UI
-//! reads.
+//! The core owns the application state and is its only writer. It applies
+//! [`Intent`]s from the UI and events from the CLIs, persists what must
+//! survive a restart, and publishes [`Snapshot`]s the UI renders.
 //!
 //! Must not: know a concrete CLI, git, HTTP or database library, or the UI
 //! framework. Runs on tokio (P8).
 
 mod app;
+mod events;
+mod intent;
 pub mod ports;
+mod snapshot;
+mod state;
 
-pub use app::{CoreHandle, Snapshot, start};
+pub use app::{CoreHandle, Detached, Ports, detached, start};
+pub use intent::Intent;
+pub use snapshot::{
+    ConversationView, Notification, Question, SessionView, Snapshot, TranscriptView,
+};
+
+#[cfg(test)]
+mod tests;

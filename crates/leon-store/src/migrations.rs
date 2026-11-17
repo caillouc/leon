@@ -15,6 +15,35 @@ const MIGRATIONS: &[&str] = &[
         path TEXT NOT NULL UNIQUE,
         added_at INTEGER NOT NULL
     ) STRICT;",
+    // 2: conversations, agent sessions and their transcripts (P5).
+    "CREATE TABLE conversations (
+        id INTEGER PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        archived INTEGER NOT NULL DEFAULT 0,
+        unread INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE agent_sessions (
+        id INTEGER PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        started_by INTEGER REFERENCES agent_sessions(id) ON DELETE SET NULL,
+        backend TEXT NOT NULL,
+        agent TEXT,
+        model TEXT,
+        effort TEXT,
+        permission TEXT NOT NULL,
+        working_dir TEXT NOT NULL,
+        cli_session TEXT
+    ) STRICT;
+    CREATE TABLE entries (
+        session_id INTEGER NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        at INTEGER NOT NULL,
+        entry TEXT NOT NULL,
+        PRIMARY KEY (session_id, seq)
+    ) STRICT;",
 ];
 
 /// Latest schema version this build knows.

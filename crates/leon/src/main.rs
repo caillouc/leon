@@ -18,9 +18,23 @@ fn main() -> anyhow::Result<()> {
         .thread_name("leon-core")
         .build()
         .context("starting the core runtime")?;
-    let core = leon_core::start(runtime.handle(), Arc::new(store), settings);
+    let home = dirs::home_dir().context("no home folder for this user")?;
+    let ports = leon_core::Ports {
+        storage: Arc::new(store),
+        backends: Arc::new(leon_backends::Clis),
+        catalog: Arc::new(leon_catalog::AgentFiles::new(home)),
+        clock: now_ms,
+    };
+    let core = leon_core::start(runtime.handle(), ports, settings);
     leon_ui::run(core, started);
     Ok(())
+}
+
+fn now_ms() -> i64 {
+    let since = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
 }
 
 fn init_tracing() {
