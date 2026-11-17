@@ -1,0 +1,24 @@
+[package]
+name = "leon-ui"
+description = "Leon's user interface; the only crate that uses GPUI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gpui.workspace = true
+gpui-component.workspace = true
+leon-core.workspace = true
+leon-domain.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui_platform = { workspace = true, features = ["font-kit", "runtime_shaders"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui_platform = { workspace = true, features = ["wayland", "x11"] }
+
+[lints]
+workspace = true

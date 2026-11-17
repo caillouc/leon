@@ -1,0 +1,20 @@
+[package]
+name = "leon-core"
+description = "Leon's application services and the ports adapters implement."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+leon-domain.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

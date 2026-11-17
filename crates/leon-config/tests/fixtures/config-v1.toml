@@ -1,0 +1,8 @@
+# Leon config, format version 1.
+version = 1
+
+[defaults]
+backend = "codex"
+model = "gpt-5.5-codex"
+effort = "high"
+permission = "on-request"

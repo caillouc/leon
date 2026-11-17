@@ -1,0 +1,61 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# Leon crates
+leon-domain = { path = "crates/leon-domain" }
+leon-core = { path = "crates/leon-core" }
+leon-config = { path = "crates/leon-config" }
+leon-store = { path = "crates/leon-store" }
+leon-ui = { path = "crates/leon-ui" }
+
+# UI (P1): pinned to one exact snapshot; only `leon-ui` may use them.
+gpui = { package = "gpui-pre", version = "=0.3.12", default-features = false }
+gpui-component = "=0.10.0"
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", default-features = false }
+
+# Everything else
+anyhow = "1.0.104"
+dirs = "7.0.0"
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+serde_json = "1.0.154"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+tokio = "1.54.1"
+toml = "1.2.1"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Allowed pedantic lints (the only list of exceptions).
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+# Denied outside tests (clippy.toml allows them in tests).
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

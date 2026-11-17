@@ -1,0 +1,35 @@
+use crate::BackendKind;
+
+/// The user's settings, independent of the file format they come from.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Settings {
+    /// Prefilled choices for a new conversation.
+    pub defaults: SessionDefaults,
+}
+
+/// Choices prefilled when the user starts a conversation (CONV-3, CONV-4).
+///
+/// Model, effort and permission are the CLI's own values, so they stay
+/// strings; the backend checks them when a session starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionDefaults {
+    /// CLI to use.
+    pub backend: BackendKind,
+    /// Model id; `None` lets the CLI pick its default.
+    pub model: Option<String>,
+    /// Effort level; `None` lets the CLI pick its default.
+    pub effort: Option<String>,
+    /// Permission mode (CONV-4: default auto).
+    pub permission: String,
+}
+
+impl Default for SessionDefaults {
+    fn default() -> Self {
+        Self {
+            backend: BackendKind::ClaudeCode,
+            model: None,
+            effort: None,
+            permission: "auto".to_owned(),
+        }
+    }
+}

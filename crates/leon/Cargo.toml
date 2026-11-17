@@ -1,0 +1,23 @@
+[package]
+name = "leon"
+description = "Leon: one window for many coding-agent conversations."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+dirs.workspace = true
+leon-config.workspace = true
+leon-core.workspace = true
+leon-domain.workspace = true
+leon-store.workspace = true
+leon-ui.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

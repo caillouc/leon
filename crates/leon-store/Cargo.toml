@@ -1,0 +1,20 @@
+[package]
+name = "leon-store"
+description = "SQLite storage for Leon's own data."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+leon-core.workspace = true
+leon-domain.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
