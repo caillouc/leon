@@ -36,6 +36,7 @@ fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
         archived: row.get(4)?,
         unread: row.get(5)?,
         updated_at: row.get(6)?,
+        working_dir: row.get::<_, Option<String>>(7)?.map(PathBuf::from),
     })
 }
 
@@ -91,7 +92,7 @@ impl Storage for Store {
         let conn = self.lock();
         let mut stmt = conn
             .prepare_cached(
-                "SELECT id, project_id, title, pinned, archived, unread, updated_at FROM conversations
+                "SELECT id, project_id, title, pinned, archived, unread, updated_at, working_dir FROM conversations
                  ORDER BY updated_at DESC, id DESC",
             )
             .map_err(err(C))?;
@@ -132,15 +133,24 @@ impl Storage for Store {
             archived: false,
             unread: false,
             updated_at: now,
+            working_dir: None,
         })
     }
 
     fn update_conversation(&self, c: &Conversation) -> Result<(), PortError> {
         self.lock()
             .execute(
-                "UPDATE conversations SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6
-                 WHERE id = ?1",
-                params![c.id.0, c.title, c.pinned, c.archived, c.unread, c.updated_at],
+                "UPDATE conversations SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
+                 working_dir = ?7 WHERE id = ?1",
+                params![
+                    c.id.0,
+                    c.title,
+                    c.pinned,
+                    c.archived,
+                    c.unread,
+                    c.updated_at,
+                    c.working_dir.as_deref().map(path_text)
+                ],
             )
             .map(drop)
             .map_err(err("saving a conversation"))
@@ -308,6 +318,7 @@ mod tests {
         session.cli_session = Some("thread-1".into());
         store.update_session(&session).unwrap();
         conv.pinned = true;
+        conv.working_dir = Some(PathBuf::from("/code/api/.worktrees/fix"));
         store.update_conversation(&conv).unwrap();
         store
             .append_entry(
@@ -329,15 +340,36 @@ mod tests {
                 },
             )
             .unwrap();
+        store
+            .append_entry(
+                session.id,
+                &TimedEntry {
+                    at: 13,
+                    entry: Entry::FromAgent {
+                        from: session.id,
+                        text: "done".into(),
+                        answer: true,
+                    },
+                },
+            )
+            .unwrap();
 
         assert_eq!(store.list_conversations().unwrap(), vec![conv.clone()]);
         assert_eq!(store.list_sessions().unwrap(), vec![session.clone()]);
         let entries = store.entries(session.id).unwrap();
-        assert_eq!(entries.len(), 2);
+        assert_eq!(entries.len(), 3);
         assert_eq!(
             entries[1].entry,
             Entry::Agent {
                 text: "hello".into()
+            }
+        );
+        assert_eq!(
+            entries[2].entry,
+            Entry::FromAgent {
+                from: session.id,
+                text: "done".into(),
+                answer: true,
             }
         );
 

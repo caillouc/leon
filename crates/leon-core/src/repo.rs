@@ -4,7 +4,6 @@
 //! the core actor as an [`Internal`] message, so the actor never waits.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_domain::{ConversationId, Issue, PullRequest};
@@ -28,23 +27,13 @@ pub(crate) enum Internal {
 }
 
 impl Core {
-    /// Working directory of the session the user started in a conversation.
-    fn root_dir(&self, id: ConversationId) -> Option<PathBuf> {
-        self.state
-            .sessions
-            .values()
-            .filter(|s| s.session.conversation == id)
-            .find(|s| s.session.started_by.is_none())
-            .map(|s| s.session.working_dir.clone())
-    }
-
     /// Re-reads git state; coalesces calls while one is running.
     pub(crate) fn refresh_git(&mut self, id: ConversationId) {
         if !self.git_in_flight.insert(id) {
             self.git_dirty.insert(id);
             return;
         }
-        let Some(dir) = self.root_dir(id) else {
+        let Some(dir) = self.conversation_dir(id) else {
             self.git_in_flight.remove(&id);
             return;
         };
@@ -73,7 +62,7 @@ impl Core {
     /// Re-reads the pull request of a conversation's branch.
     pub(crate) fn refresh_pr(&mut self, id: ConversationId) {
         let (Some(dir), Some(branch)) = (
-            self.root_dir(id),
+            self.conversation_dir(id),
             self.state.git.get(&id).and_then(|g| g.branch.clone()),
         ) else {
             return;

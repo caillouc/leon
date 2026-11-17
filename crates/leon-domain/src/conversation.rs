@@ -64,6 +64,9 @@ pub struct Conversation {
     pub unread: bool,
     /// Last activity, Unix milliseconds.
     pub updated_at: i64,
+    /// The folder an agent said the conversation moved to, e.g. a worktree
+    /// (D3, P10); `None`: the first session's folder.
+    pub working_dir: Option<PathBuf>,
 }
 
 /// Choices that shape an agent session (CONV-2..4).

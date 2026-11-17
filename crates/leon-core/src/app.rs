@@ -15,7 +15,8 @@ use tokio::sync::watch;
 
 use crate::intent::Intent;
 use crate::ports::{
-    BackendCommand, BackendEvent, Backends, Catalog, Git, GitHub, NewSession, SessionSpec, Storage,
+    AppToolRequest, AppToolSender, AppTools, BackendCommand, BackendEvent, Backends, Catalog, Git,
+    GitHub, NewSession, SessionSpec, Storage,
 };
 use crate::repo::Internal;
 use crate::snapshot::Snapshot;
@@ -33,6 +34,9 @@ pub struct Ports {
     pub git: Arc<dyn Git>,
     /// GitHub, with the user's login.
     pub github: Arc<dyn GitHub>,
+    /// The app's MCP server given to every agent session (P10); `None`: no
+    /// app tools.
+    pub app_tools: Option<Arc<dyn AppTools>>,
     /// Current time, Unix milliseconds.
     pub clock: fn() -> i64,
 }
@@ -42,6 +46,7 @@ pub struct Ports {
 pub struct CoreHandle {
     snapshots: watch::Receiver<Arc<Snapshot>>,
     intents: UnboundedSender<Intent>,
+    tools: AppToolSender,
 }
 
 impl CoreHandle {
@@ -60,6 +65,11 @@ impl CoreHandle {
     pub fn send(&self, intent: Intent) {
         let _ = self.intents.send(intent);
     }
+
+    /// Where the app's MCP server sends agents' tool calls (P10).
+    pub fn app_tools(&self) -> AppToolSender {
+        self.tools.clone()
+    }
 }
 
 /// Starts the core on `runtime` (multi-threaded) and returns the UI's handle.
@@ -72,6 +82,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
     let (intents, intent_rx) = unbounded_channel();
     let (event_tx, event_rx) = unbounded_channel();
     let (internal_tx, internal_rx) = unbounded_channel();
+    let (tools, tool_rx) = unbounded_channel();
     let ticker = internal_tx.clone();
     runtime.spawn(async move {
         let mut every = tokio::time::interval(std::time::Duration::from_secs(120));
@@ -95,8 +106,12 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         git_dirty: HashSet::new(),
         next_flash: 0,
     };
-    runtime.spawn(core.run(intent_rx, event_rx, internal_rx));
-    CoreHandle { snapshots, intents }
+    runtime.spawn(core.run(intent_rx, event_rx, internal_rx, tool_rx));
+    CoreHandle {
+        snapshots,
+        intents,
+        tools,
+    }
 }
 
 /// The other end of a [`CoreHandle`] made by [`detached`].
@@ -113,8 +128,13 @@ pub struct Detached {
 pub fn detached(snapshot: Snapshot) -> (CoreHandle, Detached) {
     let (publish, snapshots) = watch::channel(Arc::new(snapshot));
     let (intents, intent_rx) = unbounded_channel();
+    let (tools, _) = unbounded_channel();
     (
-        CoreHandle { snapshots, intents },
+        CoreHandle {
+            snapshots,
+            intents,
+            tools,
+        },
         Detached {
             publish,
             intents: intent_rx,
@@ -148,6 +168,7 @@ impl Core {
         mut intents: UnboundedReceiver<Intent>,
         mut events: UnboundedReceiver<SessionEvent>,
         mut internal: UnboundedReceiver<Internal>,
+        mut tools: UnboundedReceiver<AppToolRequest>,
     ) {
         self.load();
         self.publish();
@@ -161,6 +182,7 @@ impl Core {
                 },
                 Some((session, event)) = events.recv() => self.on_event(session, event),
                 Some(message) = internal.recv() => self.on_internal(message),
+                Some(request) = tools.recv() => self.on_tool(request),
             }
             self.publish();
         }
@@ -317,7 +339,11 @@ impl Core {
         }
     }
 
-    fn edit(&mut self, id: ConversationId, change: impl FnOnce(&mut leon_domain::Conversation)) {
+    pub(crate) fn edit(
+        &mut self,
+        id: ConversationId,
+        change: impl FnOnce(&mut leon_domain::Conversation),
+    ) {
         let Some(c) = self.state.conversation_mut(id) else {
             return;
         };
@@ -381,28 +407,37 @@ impl Core {
         Some(self.state.sessions.get_mut(&id)?.push(timed))
     }
 
+    /// Sends the user's message (CONV-1).
     fn send(&mut self, id: AgentSessionId, text: &str) {
-        let Some(s) = self.state.sessions.get(&id) else {
-            return;
-        };
-        if s.status == Status::Running || text.trim().is_empty() {
-            return;
-        }
-        let conversation = s.session.conversation;
-        let message = if s.carry_context {
-            with_context(s, text)
-        } else {
-            text.to_owned()
-        };
-        self.load_transcript(id);
-        self.record(
+        self.deliver(
             id,
             Entry::User {
                 text: text.to_owned(),
             },
+            text,
         );
+    }
+
+    /// Records `entry` in a session's transcript and sends `message` to its
+    /// CLI, starting it if needed. `false` when nothing was sent: the session
+    /// is busy, the message empty, or the CLI could not start.
+    pub(crate) fn deliver(&mut self, id: AgentSessionId, entry: Entry, message: &str) -> bool {
+        let Some(s) = self.state.sessions.get(&id) else {
+            return false;
+        };
+        if s.status == Status::Running || message.trim().is_empty() {
+            return false;
+        }
+        let conversation = s.session.conversation;
+        let message = if s.carry_context {
+            with_context(s, message)
+        } else {
+            message.to_owned()
+        };
+        self.load_transcript(id);
+        self.record(id, entry);
         if !self.ensure_live(id) {
-            return;
+            return false;
         }
         if let Some(s) = self.state.sessions.get_mut(&id) {
             s.carry_context = false;
@@ -413,6 +448,7 @@ impl Core {
             let _ = commands.send(BackendCommand::Send(message));
         }
         self.touch(conversation, false);
+        true
     }
 
     /// Starts the CLI for a session if it is not running. Returns `false`
@@ -444,6 +480,11 @@ impl Core {
             agent,
             working_dir: session.working_dir.clone(),
             resume: session.cli_session.clone(),
+            mcp_servers: self
+                .ports
+                .app_tools
+                .as_ref()
+                .map_or_default(|tools| vec![tools.server(id)]),
         };
         match self.ports.backends.start(spec) {
             Ok(channel) => {
@@ -581,7 +622,11 @@ impl Core {
         }
         self.record(id, Entry::TurnEnd { usage });
         self.refresh_git(conversation);
-        self.answered(id, conversation, failed);
+        if self.after_turn(id, failed) {
+            self.touch(conversation, false);
+        } else {
+            self.answered(id, conversation, failed);
+        }
     }
 
     /// The agent finished or needs the user: mark unread and notify when the
@@ -648,6 +693,9 @@ fn with_context(s: &SessionState, text: &str) -> String {
     {
         match &e.entry {
             Entry::User { text } => lines.push(format!("User: {text}")),
+            Entry::FromAgent { from, text, .. } => {
+                lines.push(format!("Agent session {}: {text}", from.0));
+            }
             Entry::Agent { text } => lines.push(format!("Assistant: {text}")),
             _ => {}
         }

@@ -17,11 +17,17 @@ leon-core.workspace = true
 leon-domain.workspace = true
 leon-git.workspace = true
 leon-github.workspace = true
+leon-app-tools.workspace = true
 leon-store.workspace = true
 leon-ui.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+leon-core.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]
 workspace = true

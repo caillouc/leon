@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use leon_domain::{
     AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, FileDiff, Issue,
-    Project, ProjectId, PullRequest, SessionSettings, TimedEntry, Usage,
+    McpServer, Project, ProjectId, PullRequest, SessionSettings, TimedEntry, Usage,
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -105,6 +105,8 @@ pub struct SessionSpec {
     pub working_dir: PathBuf,
     /// The CLI's session id to resume, if any.
     pub resume: Option<String>,
+    /// MCP servers to add to the session: the app's own tools (P10).
+    pub mcp_servers: Vec<McpServer>,
 }
 
 /// Something the CLI did, normalized across backends.
@@ -252,3 +254,59 @@ pub trait GitHub: Send + Sync + 'static {
     /// Posts a comment on a pull request or an issue (GH-6).
     fn comment(&self, repo: &str, number: u64, body: &str) -> Result<(), PortError>;
 }
+
+/// A call to one of the tools the app gives every agent session (P10, P15),
+/// made through the app's MCP server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppToolCall {
+    /// Start another agent in a new agent session of the same conversation
+    /// (FLOW-1). Returns at once; the answer comes back as a message.
+    StartAgent {
+        /// Agent name, as in its agent file.
+        agent: String,
+        /// First message to it.
+        prompt: String,
+        /// Where it runs; the caller's working directory when `None`.
+        working_directory: Option<PathBuf>,
+    },
+    /// Send a follow-up to another agent session of the conversation
+    /// (FLOW-2). Returns at once; the answer comes back as a message.
+    MessageAgent {
+        /// Target session.
+        session: AgentSessionId,
+        /// Message text.
+        text: String,
+    },
+    /// Rename the conversation.
+    RenameConversation {
+        /// New title.
+        title: String,
+    },
+    /// The calling session moved to another folder, e.g. a worktree (D3).
+    SetWorkingDirectory {
+        /// Absolute path.
+        path: PathBuf,
+    },
+}
+
+/// An [`AppToolCall`] from a session, with where to send the result text
+/// (or why it failed) for the agent.
+#[derive(Debug)]
+pub struct AppToolRequest {
+    /// The calling agent session.
+    pub session: AgentSessionId,
+    /// What it asks.
+    pub call: AppToolCall,
+    /// Result for the agent: `Ok` text or `Err` message.
+    pub reply: tokio::sync::oneshot::Sender<Result<String, String>>,
+}
+
+/// How a CLI reaches the app's MCP server (P10).
+pub trait AppTools: Send + Sync + 'static {
+    /// The MCP server to give one agent session; its tool calls arrive as
+    /// [`AppToolRequest`]s from that session.
+    fn server(&self, session: AgentSessionId) -> McpServer;
+}
+
+/// Where the app's MCP server sends tool calls to the core.
+pub type AppToolSender = tokio::sync::mpsc::UnboundedSender<AppToolRequest>;

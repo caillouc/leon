@@ -6,8 +6,12 @@ How the code is organised. Owned by agents; must follow
 
 ## Processes
 
-- One app process: UI thread (GPUI, P1), core on tokio (P8), a local MCP server
-  for app tools (P10).
+- One app process: UI thread (GPUI, P1), core on tokio (P8), and the app
+  tools' MCP server (P10) listening on a Unix socket in the data folder
+  (`tools.sock`, folder mode 0700). A second Leon finding it in use stops.
+- Each CLI starts `leon mcp` (the app's own binary) as a stdio MCP server; that
+  bridge only pipes bytes between its stdio and the socket, after one line
+  naming its session (`LEON_SESSION`, `LEON_SOCKET` in its environment).
 - One CLI child process per agent session while a turn runs or input is
   awaited; stopped after an idle timeout, resumed by the CLI's session id. A CLI
   crash sets that agent session to `error`; it never takes the app down.
@@ -27,7 +31,7 @@ Ports and adapters: dependencies point inward, to the core and the domain.
 |---|---|---|---|---|
 | 1 | `leon-domain` | Pure types and rules: ids, projects, settings; later conversation state, events, status/unread rules, PR badge, fold matching | nothing internal | M0 |
 | 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain | M0 |
-| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json, Codex app-server: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`); later `leon-app-tools` | Implement one port each against the outside world | domain, core; never another adapter | M0–M2 |
+| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json, Codex app-server: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter | M0–M4 |
 | 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core | M0 |
 | 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any | M0 |
 | — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate | M0 |
@@ -51,24 +55,33 @@ CLI output ─▶ adapter ─▶ domain Event ─▶ apply(state, event) ─▶ 
 ## Agent sessions (D5, P15)
 
 ```
-Conversation
- ├─ AgentSession  planner   (started by the user)
- ├─ AgentSession  coder     (started by planner)
- ├─ AgentSession  reviewer  (started by planner)
- └─ AgentCall[]   from, to, prompt, answer, started_at, answered_at
+Conversation (working_dir: where an agent said it moved, D3)
+ ├─ AgentSession  planner   (started_by: none, the user)
+ ├─ AgentSession  coder     (started_by: planner)
+ └─ AgentSession  reviewer  (started_by: planner)
 ```
 
-1. The planner calls `start_agent(agent, prompt, working_directory?)` on the
-   app's MCP server (`leon-app-tools`), which knows which session is calling.
-2. The core creates the coder's agent session in the same conversation, starts
-   its CLI, sends the prompt, records an `AgentCall`, and returns its id at once.
-3. When the coder's turn ends, the core sends the coder's final answer as a new
-   message to the planner's session and fills `AgentCall.answer`.
-4. `message_agent(session, text)` follows the same path for follow-ups.
-5. The flow view (FLOW-4) is drawn from the `AgentCall` rows only.
-
-A message the user types in the coder's session is answered to the user, not
-forwarded to the planner (proposal in features.md).
+1. Every session's CLI gets Leon's MCP server: Claude Code through
+   `--mcp-config` and `--allowedTools mcp__leon`, Codex through `thread/start`
+   `config.mcp_servers.leon` with `default_tools_approval_mode = "approve"`
+   (checked live with Codex 0.160.0 on 2026-11-17; Claude ⚠️ not verified).
+2. The planner calls `start_agent(agent, prompt, working_directory?)`. The core
+   (`crates/leon-core/src/agents.rs`) creates the coder's session in the same
+   conversation with the planner's CLI, model, effort and permission, sends
+   the prompt as `[From planner · session N]` and answers the tool at once.
+3. The coder's transcript records the prompt as `Entry::FromAgent { answer:
+   false }`; the coder's `reply_to` is the planner.
+4. When the coder's turn ends, its answer (its agent messages since the
+   prompt) is sent to the planner as `Entry::FromAgent { answer: true }`, now
+   if the planner is idle, else when its turn ends (the session's inbox).
+   Answers between agents raise no notification.
+5. `message_agent(session, text)` follows the same path. A message the user
+   types in the coder's session is answered to the user.
+6. `rename_conversation` and `set_working_directory` edit the conversation; the
+   latter moves the git view and the folder of later sessions, not the folder
+   the calling CLI was started in (its resume depends on it).
+7. The flow view (FLOW-4) is built from the sessions' `started_by` and their
+   transcripts only (`crates/leon-ui/src/flow_model.rs`).
 
 ## Events (sketch, shaped like ACP session updates — P2)
 

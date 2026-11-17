@@ -1,6 +1,7 @@
 //! An agent session's transcript, virtualised (only visible entries are
 //! laid out), following the end while the agent writes.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui::{AnyElement, Context, ElementId, IntoElement, SharedString, div, list, prelude::*, px};
@@ -31,8 +32,15 @@ impl Workspace {
         }
         let state = self.list_for(session, count, streaming);
         let view = cx.entity().downgrade();
+        let names: Arc<HashMap<AgentSessionId, String>> = Arc::new(
+            self.snapshot
+                .sessions
+                .values()
+                .map(|s| (s.session.id, self.session_name(s)))
+                .collect(),
+        );
         let expanded = self.expanded_tools.clone();
-        list(state, move |ix, _window, cx| {
+        list(state, move |ix, _window, _cx| {
             let item = match transcript.entries.get(ix) {
                 Some(entry) => entry_view(
                     session,
@@ -40,7 +48,7 @@ impl Workspace {
                     entry,
                     expanded.contains(&(session, ix)),
                     &view,
-                    cx,
+                    &names,
                 ),
                 None => partial_view(session, &transcript),
             };
@@ -82,7 +90,7 @@ fn entry_view(
     timed: &TimedEntry,
     expanded: bool,
     view: &gpui::WeakEntity<Workspace>,
-    _cx: &mut gpui::App,
+    names: &HashMap<AgentSessionId, String>,
 ) -> AnyElement {
     let id = |kind: &str| ElementId::Name(format!("{kind}-{}-{ix}", session.0).into());
     match &timed.entry {
@@ -96,6 +104,34 @@ fn entry_view(
             .bg(theme::surface())
             .child(markdown(id("user"), text))
             .into_any_element(),
+        Entry::FromAgent { from, text, answer } => {
+            let name = names
+                .get(from)
+                .cloned()
+                .unwrap_or_else(|| format!("session {}", from.0));
+            let what = if *answer {
+                "Answer from"
+            } else {
+                "Message from"
+            };
+            div()
+                .my_1()
+                .px_3()
+                .py_2()
+                .rounded_lg()
+                .border_1()
+                .border_l_2()
+                .border_color(theme::border())
+                .bg(theme::surface())
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(theme::accent())
+                        .child(format!("{what} {name}")),
+                )
+                .child(markdown(id("from-agent"), text))
+                .into_any_element()
+        }
         Entry::Agent { text } => div()
             .my_1()
             .child(markdown(id("agent"), text))

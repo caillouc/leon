@@ -1,0 +1,160 @@
+//! The app's local MCP server (P10, P15): the tools every agent session gets
+//! to start and message other agents, rename its conversation and say it
+//! moved to another folder.
+//!
+//! How it is wired: each agent session's CLI starts `leon mcp` (the app's own
+//! binary) as a stdio MCP server. That process runs [`bridge`], which pipes
+//! bytes between its stdin/stdout and the Unix socket the app listens on with
+//! [`serve`]. The app side reads one `{"session": <id>}` line written by the
+//! bridge, then speaks MCP and sends each tool call to the core as an
+//! [`AppToolRequest`](leon_core::ports::AppToolRequest).
+//!
+//! MCP facts used here — stdio transport (newline-delimited JSON-RPC 2.0, no
+//! embedded newlines, nothing else on stdout), `initialize` /
+//! `notifications/initialized`, `ping`, `tools/list`, `tools/call` and their
+//! JSON shapes — come from the spec, version 2025-06-18, read at
+//! <https://modelcontextprotocol.io/specification/2025-06-18> on 2026-11-17.
+//! What Claude Code and Codex actually send is ⚠️ not verified against
+//! recorded traffic.
+//!
+//! Must not: write anything but MCP messages to the bridge's stdout; act on a
+//! call itself (the core decides); or depend on another adapter.
+
+mod bridge;
+mod protocol;
+mod server;
+mod tools;
+
+use std::path::PathBuf;
+
+use leon_core::ports::AppTools;
+use leon_domain::{AgentSessionId, McpServer};
+
+pub use bridge::bridge;
+pub use server::serve;
+
+/// Name of the MCP server; agents see its tools under it.
+pub const SERVER_NAME: &str = "leon";
+
+/// Environment variable telling the bridge where the app's socket is.
+const SOCKET_VAR: &str = "LEON_SOCKET";
+/// Environment variable telling the bridge which agent session it serves.
+const SESSION_VAR: &str = "LEON_SESSION";
+
+/// The [`AppTools`] port: every session's CLI starts `<command> mcp`, which
+/// reaches the app through `socket`.
+#[derive(Debug, Clone)]
+pub struct LocalTools {
+    command: PathBuf,
+    socket: PathBuf,
+}
+
+impl LocalTools {
+    /// `command` is the app's own binary; `socket` is where [`serve`] listens.
+    pub fn new(command: PathBuf, socket: PathBuf) -> Self {
+        Self { command, socket }
+    }
+}
+
+impl AppTools for LocalTools {
+    fn server(&self, session: AgentSessionId) -> McpServer {
+        McpServer {
+            name: SERVER_NAME.to_owned(),
+            command: self.command.clone(),
+            args: vec!["mcp".to_owned()],
+            env: vec![
+                (
+                    SOCKET_VAR.to_owned(),
+                    self.socket.to_string_lossy().into_owned(),
+                ),
+                (SESSION_VAR.to_owned(), session.0.to_string()),
+            ],
+        }
+    }
+}
+
+/// What went wrong while serving or bridging.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// The bridge was started without one of its variables.
+    #[error("{0} is not set: `leon mcp` is started by a coding CLI inside Leon")]
+    MissingVariable(&'static str),
+    /// `LEON_SESSION` is not a session id.
+    #[error("{SESSION_VAR} is not a session id: {0:?}")]
+    BadSession(String),
+    /// The folder for the socket could not be created.
+    #[error("could not create {}", .dir.display())]
+    CreateDir {
+        /// The folder.
+        dir: PathBuf,
+        /// Why.
+        source: std::io::Error,
+    },
+    /// Another Leon is already listening on the socket.
+    #[error("another Leon is already running (it listens on {})", .socket.display())]
+    InUse {
+        /// The socket path.
+        socket: PathBuf,
+    },
+    /// A socket file left by an earlier run could not be removed.
+    #[error("could not remove the old socket {}", .socket.display())]
+    RemoveStale {
+        /// The socket path.
+        socket: PathBuf,
+        /// Why.
+        source: std::io::Error,
+    },
+    /// The app could not listen on its socket.
+    #[error("could not listen on {}", .socket.display())]
+    Bind {
+        /// The socket path.
+        socket: PathBuf,
+        /// Why.
+        source: std::io::Error,
+    },
+    /// The bridge could not reach the app.
+    #[error("session {session}: could not connect to Leon at {}", .socket.display())]
+    Connect {
+        /// The calling session.
+        session: i64,
+        /// The socket path.
+        socket: PathBuf,
+        /// Why.
+        source: std::io::Error,
+    },
+    /// The bridge lost its stdin, stdout or socket.
+    #[error("session {session}: the MCP bridge failed")]
+    Pipe {
+        /// The calling session.
+        session: i64,
+        /// Why.
+        source: std::io::Error,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use leon_core::ports::AppTools;
+    use leon_domain::{AgentSessionId, McpServer};
+
+    use super::LocalTools;
+
+    #[test]
+    fn server_runs_the_bridge_with_socket_and_session() {
+        let tools = LocalTools::new(PathBuf::from("/app/leon"), PathBuf::from("/run/leon.sock"));
+        assert_eq!(
+            tools.server(AgentSessionId(42)),
+            McpServer {
+                name: "leon".to_owned(),
+                command: PathBuf::from("/app/leon"),
+                args: vec!["mcp".to_owned()],
+                env: vec![
+                    ("LEON_SOCKET".to_owned(), "/run/leon.sock".to_owned()),
+                    ("LEON_SESSION".to_owned(), "42".to_owned()),
+                ],
+            }
+        );
+    }
+}

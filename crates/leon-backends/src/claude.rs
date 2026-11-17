@@ -49,6 +49,20 @@ pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
             agent.name.clone(),
         ]);
     }
+    if !spec.mcp_servers.is_empty() {
+        // The app's own tools (P10) are allowed without asking.
+        let allowed: Vec<String> = spec
+            .mcp_servers
+            .iter()
+            .map(|m| format!("mcp__{}", m.name))
+            .collect();
+        args.extend([
+            "--mcp-config".to_owned(),
+            json!({ "mcpServers": crate::mcp::servers(&spec.mcp_servers) }).to_string(),
+            "--allowedTools".to_owned(),
+            allowed.join(","),
+        ]);
+    }
     if let Some(id) = &spec.resume {
         args.extend(["--resume".to_owned(), id.clone()]);
     }
@@ -274,6 +288,7 @@ mod tests {
 
     use leon_core::ports::{AgentDefinition, BackendEvent, SessionSpec};
     use leon_domain::{BackendKind, SessionSettings};
+    use serde_json::{Value, json};
 
     use super::{Parser, args};
 
@@ -382,8 +397,22 @@ mod tests {
             }),
             working_dir: PathBuf::from("/tmp"),
             resume: Some("s1".into()),
+            mcp_servers: vec![leon_domain::McpServer {
+                name: "leon".into(),
+                command: PathBuf::from("/bin/leon"),
+                args: vec!["mcp".into()],
+                env: vec![],
+            }],
         };
-        let a = args(&spec).join(" ");
+        let list = args(&spec);
+        let at = list.iter().position(|a| a == "--mcp-config").unwrap();
+        let config: Value = serde_json::from_str(&list[at + 1]).unwrap();
+        assert_eq!(
+            config,
+            json!({ "mcpServers": { "leon": { "command": "/bin/leon", "args": ["mcp"], "env": {} } } })
+        );
+        assert_eq!(list[at + 2..at + 4], ["--allowedTools", "mcp__leon"]);
+        let a = list.join(" ");
         assert!(a.contains("--permission-mode auto"));
         assert!(a.contains("--model opus"));
         assert!(a.contains("--effort high"));

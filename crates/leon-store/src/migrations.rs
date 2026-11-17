@@ -44,6 +44,8 @@ const MIGRATIONS: &[&str] = &[
         entry TEXT NOT NULL,
         PRIMARY KEY (session_id, seq)
     ) STRICT;",
+    // 3: the folder a conversation moved to (D3, P10).
+    "ALTER TABLE conversations ADD COLUMN working_dir TEXT;",
 ];
 
 /// Latest schema version this build knows.

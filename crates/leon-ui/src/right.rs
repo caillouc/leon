@@ -16,7 +16,7 @@ use crate::theme;
 use crate::widgets::{button, empty, label, primary};
 use crate::workspace::{Screen, Workspace};
 
-const WIDTH: f32 = 440.;
+pub(crate) const WIDTH: f32 = 440.;
 
 /// The right pane's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

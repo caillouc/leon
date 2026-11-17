@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::AgentSessionId;
+
 /// One line of an agent session's transcript. Persisted (P5): new variants
 /// only, never change the meaning of an existing one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -9,6 +11,17 @@ pub enum Entry {
     User {
         /// Message text.
         text: String,
+    },
+    /// A message another agent session sent to this one: a request, a
+    /// follow-up, or the answer to a request (FLOW-1, FLOW-2).
+    FromAgent {
+        /// The session that sent it.
+        from: AgentSessionId,
+        /// Message text.
+        text: String,
+        /// `true`: the answer to a request this session sent; `false`: a
+        /// request, whose answer goes back to `from`.
+        answer: bool,
     },
     /// A complete message from the agent.
     Agent {

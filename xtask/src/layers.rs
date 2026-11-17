@@ -15,6 +15,7 @@ const RULES: &[(&str, &[&str])] = &[
     ("leon-catalog", &["leon-domain", "leon-core"]),
     ("leon-git", &["leon-domain", "leon-core"]),
     ("leon-github", &["leon-domain", "leon-core"]),
+    ("leon-app-tools", &["leon-domain", "leon-core"]),
     ("leon-ui", &["leon-domain", "leon-core"]),
     ("leon", &["*"]),
     ("xtask", &[]),

@@ -14,6 +14,7 @@ mod composer;
 mod conversation;
 mod diff_view;
 mod flow;
+mod flow_model;
 mod form;
 mod github;
 mod left;

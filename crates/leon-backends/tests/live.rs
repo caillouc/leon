@@ -22,6 +22,7 @@ async fn pong(backend: BackendKind, model: Option<&str>) -> Vec<BackendEvent> {
         agent: None,
         working_dir: dir.path().to_path_buf(),
         resume: None,
+        mcp_servers: Vec::new(),
     };
     let mut channel = Clis::default().start(spec).unwrap();
     channel

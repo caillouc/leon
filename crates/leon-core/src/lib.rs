@@ -7,6 +7,7 @@
 //! Must not: know a concrete CLI, git, HTTP or database library, or the UI
 //! framework. Runs on tokio (P8).
 
+mod agents;
 mod app;
 mod events;
 mod intent;

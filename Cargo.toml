@@ -20,6 +20,7 @@ leon-backends = { path = "crates/leon-backends" }
 leon-catalog = { path = "crates/leon-catalog" }
 leon-git = { path = "crates/leon-git" }
 leon-github = { path = "crates/leon-github" }
+leon-app-tools = { path = "crates/leon-app-tools" }
 
 # UI (P1): pinned to one exact snapshot; only `leon-ui` may use them.
 gpui = { package = "gpui-pre", version = "=0.3.12", default-features = false }

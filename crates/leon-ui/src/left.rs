@@ -11,7 +11,7 @@ use crate::theme;
 use crate::widgets::{empty, label, link, primary, status_dot};
 use crate::workspace::{Screen, Workspace, value_of};
 
-const WIDTH: f32 = 268.;
+pub(crate) const WIDTH: f32 = 268.;
 
 impl Workspace {
     pub(crate) fn render_left(

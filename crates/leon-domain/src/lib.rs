@@ -7,6 +7,7 @@ mod backend;
 mod conversation;
 mod diff;
 mod github;
+mod mcp;
 mod project;
 mod review;
 mod settings;
@@ -18,6 +19,7 @@ pub use conversation::{
 };
 pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason};
 pub use github::{Check, CheckState, Comment, Issue, PrState, PullRequest};
+pub use mcp::McpServer;
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
 pub use settings::{SessionDefaults, Settings};

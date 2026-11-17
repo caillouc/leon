@@ -60,6 +60,16 @@ impl Session {
         if let Some(agent) = &spec.agent {
             params["developerInstructions"] = json!(agent.instructions);
         }
+        if !spec.mcp_servers.is_empty() {
+            // The app's own tools (P10) run without asking.
+            let mut servers = crate::mcp::servers(&spec.mcp_servers);
+            if let Some(map) = servers.as_object_mut() {
+                for server in map.values_mut() {
+                    server["default_tools_approval_mode"] = json!("approve");
+                }
+            }
+            params["config"] = json!({ "mcp_servers": servers });
+        }
         let method = match &spec.resume {
             Some(id) => {
                 params["threadId"] = json!(id);
@@ -476,7 +486,26 @@ mod tests {
             }),
             working_dir: PathBuf::from("/tmp/project"),
             resume: resume.map(str::to_owned),
+            mcp_servers: Vec::new(),
         }
+    }
+
+    #[test]
+    fn app_tools_go_in_the_thread_config() {
+        let mut with_tools = spec(None);
+        with_tools.mcp_servers = vec![leon_domain::McpServer {
+            name: "leon".into(),
+            command: PathBuf::from("/bin/leon"),
+            args: vec!["mcp".into()],
+            env: vec![],
+        }];
+        let (session, _) = Session::new(&with_tools);
+        assert_eq!(
+            session.thread_request.1["config"]["mcp_servers"]["leon"]["command"],
+            "/bin/leon"
+        );
+        let (session, _) = Session::new(&spec(None));
+        assert!(session.thread_request.1.get("config").is_none());
     }
 
     /// Replays the recorded Codex 0.160.0 exchange ("Reply with the single

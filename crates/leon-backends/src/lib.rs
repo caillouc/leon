@@ -10,6 +10,7 @@
 
 mod claude;
 mod codex;
+mod mcp;
 mod options;
 mod process;
 mod summary;

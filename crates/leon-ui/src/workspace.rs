@@ -13,6 +13,7 @@ use gpui_component::input::{InputEvent, InputState, TextareaState};
 use leon_core::{CoreHandle, Intent, Snapshot};
 use leon_domain::{AgentSessionId, BackendKind, ConversationId, ProjectId, SessionSettings};
 
+use crate::flow::FlowState;
 use crate::github::GhList;
 use crate::right::RightState;
 use crate::theme;
@@ -58,6 +59,7 @@ pub struct Workspace {
     pub(crate) expanded_tools: HashSet<(AgentSessionId, usize)>,
     pub(crate) lists: HashMap<AgentSessionId, (ListState, usize)>,
     pub(crate) right: RightState,
+    pub(crate) flow: FlowState,
     /// The flash message shown, by id (an action's result).
     flash: Option<(u64, String)>,
     /// Open the next new conversation when it shows up.
@@ -155,6 +157,7 @@ impl Workspace {
             expanded_tools: HashSet::new(),
             lists: HashMap::new(),
             right,
+            flow: FlowState::default(),
             flash: None,
             pending_open: false,
             shown_notifications: 0,

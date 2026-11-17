@@ -24,7 +24,7 @@ impl Workspace {
         };
         let session = self.current_session();
         let body = match (self.tabs.get(&id), session) {
-            (Some(Tab::Flow), _) => Self::render_flow(id, window, cx),
+            (Some(Tab::Flow), _) => self.render_flow(id, window, cx),
             (_, Some(session)) => {
                 let transcript = self.render_transcript(session, cx);
                 div()

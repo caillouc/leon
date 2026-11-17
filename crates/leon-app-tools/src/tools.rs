@@ -1,0 +1,260 @@
+//! The four tools: what `tools/list` shows agents, and how `tools/call`
+//! arguments become an [`AppToolCall`].
+
+use std::path::PathBuf;
+
+use leon_core::ports::AppToolCall;
+use leon_domain::AgentSessionId;
+use serde_json::{Value, json};
+
+const START_AGENT: &str = "start_agent";
+const MESSAGE_AGENT: &str = "message_agent";
+const RENAME_CONVERSATION: &str = "rename_conversation";
+const SET_WORKING_DIRECTORY: &str = "set_working_directory";
+
+/// Why a `tools/call` could not become an [`AppToolCall`].
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ToolError {
+    /// No tool has this name.
+    Unknown,
+    /// The arguments are wrong; the message is for the agent.
+    Arguments(String),
+}
+
+/// The `tools/list` result.
+pub(crate) fn list() -> Value {
+    json!({ "tools": [
+        {
+            "name": START_AGENT,
+            "description": "Start another agent in a new agent session of this conversation and \
+                send it a first message. Returns at once with the new session's id: do not wait \
+                for it. When that agent finishes its answer, the answer arrives in this session \
+                as a new message starting with `[From <agent> · session <id>]`. Meanwhile, keep \
+                working or end your turn. Send it follow-ups with message_agent.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "agent": {
+                        "type": "string",
+                        "description": "Name of the agent to start, as in its agent file.",
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "First message to the agent. It starts a new session \
+                            and does not see this one, so give it everything it needs.",
+                    },
+                    "working_directory": {
+                        "type": "string",
+                        "description": "Absolute path of the folder it works in, e.g. a git \
+                            worktree. Defaults to this session's working directory.",
+                    },
+                },
+                "required": ["agent", "prompt"],
+            },
+        },
+        {
+            "name": MESSAGE_AGENT,
+            "description": "Send a follow-up message to another agent session of this \
+                conversation. Returns at once: do not wait for it. When that agent finishes its \
+                answer, the answer arrives in this session as a new message starting with \
+                `[From <agent> · session <id>]`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session": {
+                        "type": "integer",
+                        "description": "Id of the agent session, as start_agent returned it or \
+                            as a `[From <agent> · session <id>]` message shows it.",
+                    },
+                    "text": { "type": "string", "description": "The message." },
+                },
+                "required": ["session", "text"],
+            },
+        },
+        {
+            "name": RENAME_CONVERSATION,
+            "description": "Rename this conversation in Leon's list of conversations. Use a \
+                short title that says what the work is about.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "The new title, a few words." },
+                },
+                "required": ["title"],
+            },
+        },
+        {
+            "name": SET_WORKING_DIRECTORY,
+            "description": "Tell Leon this session now works in another folder, e.g. a git \
+                worktree you created or another repository, so Leon shows that folder's \
+                changes. Call it right after you move.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Absolute path of the folder." },
+                },
+                "required": ["path"],
+            },
+        },
+    ] })
+}
+
+/// Turns a `tools/call`'s `name` and `arguments` into a call to the core.
+pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolError> {
+    Ok(match name {
+        START_AGENT => AppToolCall::StartAgent {
+            agent: text(arguments, "agent")?,
+            prompt: text(arguments, "prompt")?,
+            working_directory: arguments
+                .get("working_directory")
+                .filter(|value| !value.is_null() && *value != "")
+                .map(|_| path(arguments, "working_directory"))
+                .transpose()?,
+        },
+        MESSAGE_AGENT => AppToolCall::MessageAgent {
+            session: AgentSessionId(
+                arguments
+                    .get("session")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(|| {
+                        ToolError::Arguments(
+                            "`session` must be an integer: the id of an agent session".to_owned(),
+                        )
+                    })?,
+            ),
+            text: text(arguments, "text")?,
+        },
+        RENAME_CONVERSATION => AppToolCall::RenameConversation {
+            title: text(arguments, "title")?,
+        },
+        SET_WORKING_DIRECTORY => AppToolCall::SetWorkingDirectory {
+            path: path(arguments, "path")?,
+        },
+        _ => return Err(ToolError::Unknown),
+    })
+}
+
+/// A required, non-blank string argument.
+fn text(arguments: &Value, key: &str) -> Result<String, ToolError> {
+    match arguments.get(key).and_then(Value::as_str) {
+        Some(value) if !value.trim().is_empty() => Ok(value.to_owned()),
+        _ => Err(ToolError::Arguments(format!(
+            "`{key}` is required: a non-empty string"
+        ))),
+    }
+}
+
+/// A required absolute path argument.
+fn path(arguments: &Value, key: &str) -> Result<PathBuf, ToolError> {
+    let path = PathBuf::from(text(arguments, key)?);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err(ToolError::Arguments(format!(
+            "`{key}` must be an absolute path, got {}",
+            path.display()
+        )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use super::{ToolError, list, parse};
+
+    #[test]
+    fn every_listed_tool_parses_its_required_arguments() {
+        let samples = json!({
+            "agent": "coder", "prompt": "do it", "session": 3, "text": "more",
+            "title": "Title", "path": "/repo",
+        });
+        let tools = list()["tools"].as_array().cloned().unwrap_or_default();
+        assert_eq!(tools.len(), 4);
+        for tool in tools {
+            let name = tool["name"].as_str().unwrap_or_default();
+            let mut arguments = json!({});
+            for key in tool["inputSchema"]["required"].as_array().unwrap() {
+                let key = key.as_str().unwrap();
+                arguments[key] = samples[key].clone();
+            }
+            assert!(parse(name, &arguments).is_ok(), "{name} with {arguments}");
+        }
+    }
+
+    #[test]
+    fn bad_arguments_say_what_is_wrong() {
+        let cases: &[(&str, Value, &str)] = &[
+            (
+                "start_agent",
+                json!({ "prompt": "p" }),
+                "`agent` is required",
+            ),
+            (
+                "start_agent",
+                json!({ "agent": " ", "prompt": "p" }),
+                "`agent` is required",
+            ),
+            (
+                "start_agent",
+                json!({ "agent": "a", "prompt": 3 }),
+                "`prompt` is required",
+            ),
+            (
+                "start_agent",
+                json!({ "agent": "a", "prompt": "p", "working_directory": "rel" }),
+                "`working_directory` must be an absolute path",
+            ),
+            (
+                "message_agent",
+                json!({ "session": "3", "text": "t" }),
+                "`session` must be an integer",
+            ),
+            (
+                "message_agent",
+                json!({ "session": 3 }),
+                "`text` is required",
+            ),
+            ("rename_conversation", json!("title"), "`title` is required"),
+            ("rename_conversation", Value::Null, "`title` is required"),
+            (
+                "set_working_directory",
+                json!({ "path": "src" }),
+                "`path` must be an absolute path",
+            ),
+        ];
+        for (name, arguments, expected) in cases {
+            match parse(name, arguments) {
+                Err(ToolError::Arguments(message)) => {
+                    assert!(message.contains(expected), "{name} {arguments}: {message}");
+                }
+                other => panic!("{name} {arguments}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn null_or_empty_working_directory_means_none() {
+        for directory in [Value::Null, json!("")] {
+            assert_eq!(
+                parse(
+                    "start_agent",
+                    &json!({ "agent": "a", "prompt": "p", "working_directory": directory })
+                ),
+                Ok(leon_core::ports::AppToolCall::StartAgent {
+                    agent: "a".to_owned(),
+                    prompt: "p".to_owned(),
+                    working_directory: None,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_tool() {
+        assert_eq!(
+            parse("delete_everything", &json!({})),
+            Err(ToolError::Unknown)
+        );
+    }
+}

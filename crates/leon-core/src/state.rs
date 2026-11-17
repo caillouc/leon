@@ -1,6 +1,6 @@
 //! The core's mutable state and how it becomes a [`Snapshot`].
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 
 use leon_domain::{
@@ -27,6 +27,20 @@ pub(crate) struct SessionState {
     /// The next message must carry the conversation so far (backend changed,
     /// CONV-5).
     pub carry_context: bool,
+    /// The session whose request this session is answering (P15); its
+    /// answer goes there instead of to the user.
+    pub reply_to: Option<AgentSessionId>,
+    /// Messages from other sessions waiting for this one to finish its turn.
+    pub inbox: VecDeque<Waiting>,
+}
+
+/// A message from another agent session, not sent yet.
+#[derive(Debug, Clone)]
+pub(crate) struct Waiting {
+    pub from: AgentSessionId,
+    pub text: String,
+    /// A request: the answer goes back to `from`.
+    pub expects_answer: bool,
 }
 
 impl SessionState {
@@ -39,6 +53,8 @@ impl SessionState {
             transcript: None,
             pending_tools: HashMap::new(),
             carry_context: false,
+            reply_to: None,
+            inbox: VecDeque::new(),
         }
     }
 

@@ -62,6 +62,7 @@ fn conversation(id: i64, project: i64, title: &str, unread: bool, pinned: bool) 
         archived: false,
         unread,
         updated_at: 0,
+        working_dir: None,
     }
 }
 
@@ -79,6 +80,11 @@ fn sample() -> Snapshot {
         }),
         timed(Entry::TurnEnd { usage: Some(Usage { input_tokens: 41_200, output_tokens: 1_830, cost_usd: Some(0.42) }) }),
         timed(Entry::User { text: "Go ahead".into() }),
+        timed(Entry::FromAgent {
+            from: AgentSessionId(2),
+            text: "Done: the window is 15 minutes and each delay is capped at 2 minutes.".into(),
+            answer: true,
+        }),
         timed(Entry::Notice { text: "Changed model sonnet from your next message.".into() }),
         timed(Entry::Tool { id: "3".into(), name: "Edited".into(), detail: "src/webhooks/retry.rs".into(), output: None, failed: false }),
     ];
@@ -115,6 +121,31 @@ fn sample() -> Snapshot {
         Arc::new(TranscriptView {
             entries: Arc::new(transcript.clone()),
             partial: Some("Editing the retry loop: the delay now".into()),
+        }),
+    );
+    transcripts.insert(
+        AgentSessionId(2),
+        Arc::new(TranscriptView {
+            entries: Arc::new(vec![
+                timed(Entry::FromAgent {
+                    from: AgentSessionId(1),
+                    text: "Implement steps 1 and 2 of the plan in `src/webhooks/retry.rs`.".into(),
+                    answer: false,
+                }),
+                timed(Entry::Tool {
+                    id: "c1".into(),
+                    name: "Edited".into(),
+                    detail: "src/webhooks/retry.rs".into(),
+                    output: Some(String::new()),
+                    failed: false,
+                }),
+                timed(Entry::Agent {
+                    text: "Done: the window is 15 minutes and each delay is capped at 2 minutes."
+                        .into(),
+                }),
+                timed(Entry::TurnEnd { usage: None }),
+            ]),
+            partial: None,
         }),
     );
     transcripts.insert(

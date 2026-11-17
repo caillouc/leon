@@ -21,6 +21,7 @@ from Leon's own code instead of guessing the API. Pinned versions:
 | Show a child only while its row is hovered | `group(..)` on the row + `group_hover(..)` on the child, in `diff_view.rs` → `line_row` |
 | Focus an input | `entity.focus_handle(cx).focus(window, cx)` (trait `Focusable`), in `diff_view.rs` → `start_comment` |
 | A short message that disappears | `Workspace::show_flash` (timer with `cx.spawn` + `background_executor().timer`) |
+| Canvas with pan, zoom, drag and painted arrows | `crates/leon-ui/src/flow.rs` (`canvas` + `PathBuilder`, mouse and `on_scroll` / `on_pinch` listeners) |
 | Look at the UI without a screen | `cargo run -p leon-ui --example screenshots --features preview -- <folder>` writes PNGs of the main screens |
 
 Rules:

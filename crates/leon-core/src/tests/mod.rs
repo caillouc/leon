@@ -1,5 +1,6 @@
 //! Core behaviour with fake storage, CLIs, git and GitHub.
 
+mod agents;
 mod repo;
 mod turns;
 
@@ -64,6 +65,7 @@ impl Storage for FakeStorage {
             archived: false,
             unread: false,
             updated_at: now,
+            working_dir: None,
         };
         list.push(c.clone());
         Ok(c)
@@ -152,11 +154,18 @@ struct FakeCatalog;
 
 impl Catalog for FakeCatalog {
     fn agents(&self, _project: &Path) -> Vec<AgentDefinition> {
-        vec![AgentDefinition {
-            name: "planner".into(),
-            description: "Plans".into(),
-            instructions: "Plan carefully.".into(),
-        }]
+        vec![
+            AgentDefinition {
+                name: "planner".into(),
+                description: "Plans".into(),
+                instructions: "Plan carefully.".into(),
+            },
+            AgentDefinition {
+                name: "coder".into(),
+                description: "Codes".into(),
+                instructions: "Code carefully.".into(),
+            },
+        ]
     }
 }
 
@@ -168,6 +177,7 @@ fn ports(storage: Arc<dyn Storage>, backends: Arc<dyn Backends>) -> Ports {
         catalog: Arc::new(FakeCatalog),
         git: Arc::new(repo::FakeGit),
         github: Arc::new(repo::FakeGitHub::default()),
+        app_tools: Some(Arc::new(agents::FakeTools)),
         clock: || 1_000,
     }
 }

@@ -3603,6 +3603,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs 7.0.0",
+ "leon-app-tools",
  "leon-backends",
  "leon-catalog",
  "leon-config",
@@ -3612,9 +3613,23 @@ dependencies = [
  "leon-github",
  "leon-store",
  "leon-ui",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "leon-app-tools"
+version = "0.1.0"
+dependencies = [
+ "leon-core",
+ "leon-domain",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

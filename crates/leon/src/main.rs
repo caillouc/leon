@@ -12,8 +12,15 @@ use tracing_subscriber::EnvFilter;
 fn main() -> anyhow::Result<()> {
     let started = Instant::now();
     init_tracing();
+    // A coding CLI inside Leon starts `leon mcp` as its MCP server (P10).
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return leon_app_tools::bridge().context("running the MCP bridge for Leon's tools");
+    }
     let settings = load_settings();
-    let store = open_store()?;
+    let data = data_dir()?;
+    let store = open_store(&data)?;
+    let socket = data.join("tools.sock");
+    let exe = std::env::current_exe().context("finding Leon's own program")?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_name("leon-core")
@@ -26,9 +33,20 @@ fn main() -> anyhow::Result<()> {
         catalog: Arc::new(leon_catalog::AgentFiles::new(home)),
         git: Arc::new(leon_git::GitCli::new(login_path)),
         github: Arc::new(leon_github::GhCli::new(login_path)),
+        app_tools: Some(Arc::new(leon_app_tools::LocalTools::new(
+            exe,
+            socket.clone(),
+        ))),
         clock: now_ms,
     };
     let core = leon_core::start(runtime.handle(), ports, settings);
+    match leon_app_tools::serve(runtime.handle(), &socket, core.app_tools()) {
+        Ok(()) => {}
+        Err(error @ leon_app_tools::Error::InUse { .. }) => {
+            return Err(error).context("starting Leon");
+        }
+        Err(error) => tracing::error!(%error, "agents cannot start other agents"),
+    }
     leon_ui::run(core, started);
     Ok(())
 }
@@ -80,11 +98,15 @@ fn load_settings() -> Settings {
 
 /// App data lives in the platform data folder (P9): `~/Library/Application
 /// Support/leon` on macOS, `$XDG_DATA_HOME/leon` on Linux.
-fn open_store() -> anyhow::Result<leon_store::Store> {
+fn data_dir() -> anyhow::Result<std::path::PathBuf> {
     let dir = dirs::data_dir()
         .context("no data folder for this user")?
         .join("leon");
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+    Ok(dir)
+}
+
+fn open_store(dir: &std::path::Path) -> anyhow::Result<leon_store::Store> {
     let path = dir.join("state.db");
     leon_store::Store::open(&path).with_context(|| format!("opening {}", path.display()))
 }
