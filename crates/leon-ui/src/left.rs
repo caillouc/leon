@@ -1,19 +1,15 @@
 //! Left pane (NAV-*): new conversation, search, pinned conversations, one
 //! group per project, the archive.
 
-use gpui::{
-    AnyElement, Context, Focusable, IntoElement, SharedString, Window, div, prelude::*, px,
-};
+use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*, px};
 use gpui_component::input::Input;
 use leon_core::{ConversationView, Intent};
 use leon_domain::Status;
 
 use crate::pr_view::pr_badge;
 use crate::theme;
-use crate::widgets::{empty, label, link, primary, status_dot};
+use crate::widgets::{empty, label, primary, status_dot};
 use crate::workspace::{Screen, Workspace, value_of};
-
-pub(crate) const WIDTH: f32 = 268.;
 
 impl Workspace {
     pub(crate) fn render_left(
@@ -48,6 +44,7 @@ impl Workspace {
                 .child(label("Pinned"))
                 .children(pinned.into_iter().map(|c| self.row(c, true, cx)));
         }
+        body = body.child(Self::projects_header(cx));
         for project in snapshot.projects.iter() {
             let rows: Vec<_> = snapshot
                 .conversations
@@ -105,7 +102,7 @@ impl Workspace {
         }
 
         div()
-            .w(px(WIDTH))
+            .w(px(self.panes.left))
             .h_full()
             .flex_none()
             .flex()
@@ -130,12 +127,7 @@ impl Workspace {
                         .flex()
                         .justify_center(),
                     )
-                    .child(Input::new(&self.search))
-                    .child(link(
-                        "add-project",
-                        "Add project folder",
-                        cx.listener(|this, _, _, cx| this.add_project(cx)),
-                    )),
+                    .child(Input::new(&self.search)),
             )
             .child(body)
             .children(self.render_row_menu(cx))
@@ -146,6 +138,30 @@ impl Workspace {
                     .pt_1()
                     .child(self.render_tools_row(cx))
                     .child(self.render_doctor_row(cx)),
+            )
+            .into_any_element()
+    }
+
+    /// "Projects" and its own button to add one (NAV-1).
+    fn projects_header(cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .flex()
+            .items_end()
+            .justify_between()
+            .pr_2()
+            .child(label("Projects"))
+            .child(
+                div()
+                    .id("add-project")
+                    .px(px(6.))
+                    .py(px(1.))
+                    .rounded_md()
+                    .text_size(px(11.5))
+                    .text_color(theme::fg_muted())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
+                    .child("+ Add project")
+                    .on_click(cx.listener(|this, _, _, cx| this.add_project(cx))),
             )
             .into_any_element()
     }
@@ -267,10 +283,7 @@ impl Workspace {
                     .child("+")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         cx.stop_propagation();
-                        this.form.project = Some(id);
-                        this.form.settings.agent = None;
-                        this.show_new_conversation(cx);
-                        this.form_text.focus_handle(cx).focus(window, cx);
+                        this.open_new_conversation(Some(id), None, window, cx);
                     })),
             )
             .into_any_element()

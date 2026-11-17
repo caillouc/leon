@@ -10,6 +10,9 @@ use crate::ports::{Git, GitHub};
 pub(super) struct FakeGit;
 
 impl Git for FakeGit {
+    fn github_repo(&self, _dir: &Path) -> Option<String> {
+        Some("acme/api".into())
+    }
     fn doctor(&self) -> leon_domain::DoctorSection {
         leon_domain::DoctorSection {
             title: "git".into(),
@@ -65,6 +68,7 @@ impl GitHub for FakeGitHub {
             base: "main".into(),
             labels: vec![],
             checks: vec![],
+            rollup: None,
             reviewers: vec![],
             comments: vec![],
         }))

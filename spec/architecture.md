@@ -162,7 +162,9 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   Changes or Branch tab, an agent's edit or command finishing, the turn ending.
   No file watcher yet.
 - The UI renders a diff as one virtualised list of rows (summary, file,
-  hunk, line, comment); files matching `diff.fold` start folded.
+  hunk, line, comment); files matching `diff.fold` start folded. The drawer
+  (`crates/leon-ui/src/diff_drawer.rs`) reuses the same list for one file,
+  without the summary and file rows.
 
 ## GitHub (P7)
 
@@ -171,7 +173,11 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 - A conversation's PR: read when the conversation is opened, when its branch
   changes, after a review request or comment, and every 120 s for every open
   conversation (one `gh` call each, not batched yet).
-- My issues and PRs: read at startup and when the list is opened.
+- My issues and PRs: read at startup and when the list is opened. Issues
+  come with their GitHub Project "Status" (`projectItems.fieldValueByName`);
+  without the `read:project` scope the query is retried without it and issues
+  show under "No status". A project's GitHub repository is read from its
+  `origin` remote (`Git::github_repo`) to pick the project for an issue.
 - Copilot review: `gh pr edit <n> --add-reviewer @copilot` (documented in
   `gh pr edit --help`, gh 2.101.0, 2026-11-17; never run for real).
 

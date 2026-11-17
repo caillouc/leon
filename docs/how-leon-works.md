@@ -109,6 +109,13 @@ they move into a worktree, the Changes tab follows).
 - **GitHub** (`gh` command, your login): the branch's PR (checks, reviewers,
   comments), your issues and PRs, "Request Copilot review", "Post comment".
   PR badges refresh every 2 minutes.
+- **My issues** are grouped by their GitHub Project column (Todo, In
+  progress…), in the board's order. A click opens the issue on GitHub;
+  "Start conversation" opens the new-conversation form in the project whose
+  `origin` remote is the issue's repository, with the issue's title and link
+  as the first message.
+- Clicking a file in Changes or Branch opens its diff large in a drawer;
+  comments work there too.
 
 ## Where things live
 

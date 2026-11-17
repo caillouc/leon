@@ -300,6 +300,11 @@ fn main() {
         ),
         ("review".to_owned(), Shot::Review(ConversationId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),
+        ("my-issues".to_owned(), Shot::MyIssues),
+        (
+            "drawer".to_owned(),
+            Shot::Drawer(ConversationId(1), "src/webhooks/retry.rs"),
+        ),
         ("doctor".to_owned(), Shot::Doctor),
         ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
         ("tools".to_owned(), Shot::Tools),

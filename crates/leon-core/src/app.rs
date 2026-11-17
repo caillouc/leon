@@ -272,6 +272,17 @@ impl Core {
         let catalog = Arc::clone(&self.ports.catalog);
         self.state.sources = Arc::new(blocking(|| catalog.sources()));
         self.load_shared();
+        let (git, projects) = (
+            Arc::clone(&self.ports.git),
+            Arc::clone(&self.state.projects),
+        );
+        let repos = blocking(|| {
+            projects
+                .iter()
+                .filter_map(|p| Some((p.id, git.github_repo(&p.path)?)))
+                .collect()
+        });
+        self.state.project_repos = Arc::new(repos);
     }
 
     fn apply(&mut self, intent: Intent) {

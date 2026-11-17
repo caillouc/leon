@@ -95,16 +95,27 @@ impl GitHub for GhCli {
 
     fn my_issues(&self) -> Result<Vec<Issue>, PortError> {
         let error = |cause: &dyn std::fmt::Display| PortError::new("listing my issues", cause);
-        let json =
-            gh((self.path)(), &query::search(query::MY_ISSUES), None).map_err(|e| error(&e))?;
+        // Board columns need the `read:project` scope; without it, the
+        // issues come without their column.
+        let json = match gh((self.path)(), &query::search(query::MY_ISSUES, true), None) {
+            Err(GhError::Failed(message)) if message.contains("scope") => {
+                gh((self.path)(), &query::search(query::MY_ISSUES, false), None)
+            }
+            other => other,
+        }
+        .map_err(|e| error(&e))?;
         parse::search_issues(&json).map_err(|e| error(&e))
     }
 
     fn my_pull_requests(&self) -> Result<Vec<PullRequest>, PortError> {
         let error =
             |cause: &dyn std::fmt::Display| PortError::new("listing my pull requests", cause);
-        let json = gh((self.path)(), &query::search(query::MY_PULL_REQUESTS), None)
-            .map_err(|e| error(&e))?;
+        let json = gh(
+            (self.path)(),
+            &query::search(query::MY_PULL_REQUESTS, false),
+            None,
+        )
+        .map_err(|e| error(&e))?;
         parse::search_pull_requests(&json).map_err(|e| error(&e))
     }
 

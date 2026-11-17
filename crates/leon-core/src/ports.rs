@@ -333,6 +333,8 @@ pub trait Git: Send + Sync + 'static {
     fn branch_diff(&self, dir: &Path, base: &str) -> Result<Vec<FileDiff>, PortError>;
     /// Doctor: git installed and its version. Blocks.
     fn doctor(&self) -> DoctorSection;
+    /// `owner/name` of the GitHub repository `origin` points to, if any.
+    fn github_repo(&self, dir: &Path) -> Option<String>;
 }
 
 /// Talks to GitHub with the user's own login (P7). Calls may block.

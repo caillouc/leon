@@ -1,7 +1,8 @@
 fragment pr on PullRequest {
   number title url state isDraft headRefName baseRefName
   repository { nameWithOwner }
-  labels(first: 20) { nodes { name } }
+  labels(first: 20) { nodes { name color } }
+  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   reviewRequests(first: 20) { nodes { requestedReviewer { ... on Actor { login } ... on Team { combinedSlug } } } }
   latestReviews(first: 20) { nodes { author { login } } }
 }

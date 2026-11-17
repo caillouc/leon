@@ -6,8 +6,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, App, Context, Entity, FollowMode, IntoElement, ListAlignment, ListState, Render,
-    SharedString, Subscription, SystemNotification, Task, Window, div, prelude::*, px,
+    AnyElement, App, Context, Entity, Focusable, FollowMode, IntoElement, ListAlignment, ListState,
+    Render, SharedString, Subscription, SystemNotification, Task, Window, div, prelude::*, px,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
 use leon_core::{CoreHandle, Intent, Snapshot};
@@ -15,6 +15,7 @@ use leon_domain::{AgentSessionId, BackendKind, ConversationId, ProjectId, Sessio
 
 use crate::flow::FlowState;
 use crate::github::GhList;
+use crate::panes::Side;
 use crate::right::RightState;
 use crate::theme;
 
@@ -73,6 +74,7 @@ pub struct Workspace {
     pub(crate) lists: HashMap<AgentSessionId, (ListState, usize)>,
     pub(crate) right: RightState,
     pub(crate) flow: FlowState,
+    pub(crate) panes: crate::panes::Panes,
     pub(crate) tools_form: crate::tools_view::ToolsForm,
     /// The flash message shown, by id (an action's result).
     flash: Option<(u64, String)>,
@@ -175,6 +177,7 @@ impl Workspace {
             lists: HashMap::new(),
             right,
             flow: FlowState::default(),
+            panes: crate::panes::Panes::default(),
             tools_form,
             flash: None,
             pending_open: false,
@@ -284,6 +287,29 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Opens the new-conversation form on `project` (when known), with
+    /// `message` written in it when given, ready to type.
+    pub(crate) fn open_new_conversation(
+        &mut self,
+        project: Option<ProjectId>,
+        message: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if project.is_some() {
+            self.form.project = project;
+            self.form.settings.agent = None;
+        }
+        self.show_new_conversation(cx);
+        if let Some(message) = message {
+            let message = message.to_owned();
+            self.form_text.update(cx, |state, cx| {
+                state.set_value(message, window, cx);
+            });
+        }
+        self.form_text.focus_handle(cx).focus(window, cx);
+    }
+
     pub(crate) fn add_project(&mut self, cx: &mut Context<Self>) {
         let paths = cx.prompt_for_paths(gpui::PathPromptOptions {
             files: false,
@@ -380,7 +406,13 @@ impl Render for Workspace {
             .bg(theme::window())
             .text_color(theme::fg())
             .text_size(px(13.))
+            .on_mouse_move(cx.listener(|this, e, window, cx| this.resize_panes(e, window, cx)))
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, _| this.panes.resizing = None),
+            )
             .child(self.render_left(window, cx))
+            .child(Self::pane_handle(Side::Left, cx))
             .child(
                 div()
                     .flex_1()
@@ -390,7 +422,9 @@ impl Render for Workspace {
                     .flex_col()
                     .child(main),
             )
+            .child(Self::pane_handle(Side::Right, cx))
             .child(self.render_right(window, cx))
+            .children(self.render_drawer(cx))
             .children(flash)
     }
 }

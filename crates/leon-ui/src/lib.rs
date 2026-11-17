@@ -12,6 +12,7 @@
 
 mod composer;
 mod conversation;
+mod diff_drawer;
 mod diff_view;
 mod doctor;
 mod flow;
@@ -20,6 +21,7 @@ mod form;
 mod github;
 mod left;
 mod message_input;
+mod panes;
 mod picker;
 mod pr_view;
 #[cfg(feature = "preview")]

@@ -97,7 +97,7 @@ impl Workspace {
             let screen = window.viewport_size();
             let (w, h) = area.map_or(
                 (
-                    f32::from(screen.width) - crate::left::WIDTH - crate::right::WIDTH,
+                    f32::from(screen.width) - self.panes.left - self.panes.right,
                     f32::from(screen.height) - 100.,
                 ),
                 |b| (f32::from(b.size.width), f32::from(b.size.height)),

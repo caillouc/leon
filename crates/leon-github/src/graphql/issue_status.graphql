@@ -1,0 +1,8 @@
+fragment issueStatus on Issue {
+  projectItems(first: 5) { nodes { fieldValueByName(name: "Status") {
+    ... on ProjectV2ItemFieldSingleSelectValue {
+      name color optionId
+      field { ... on ProjectV2SingleSelectField { options { id } } }
+    }
+  } } }
+}

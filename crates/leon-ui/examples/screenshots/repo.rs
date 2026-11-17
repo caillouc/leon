@@ -6,7 +6,7 @@ use std::sync::Arc;
 use leon_core::GitView;
 use leon_domain::{
     Check, CheckState, Comment, ConversationId, DiffLine, FileDiff, FileStatus, FoldPattern, Hunk,
-    Issue, LineKind, PrState, PullRequest,
+    Issue, IssueStatus, Label, LineKind, PrState, PullRequest,
 };
 
 fn line(kind: LineKind, old: Option<u32>, new: Option<u32>, text: &str) -> DiffLine {
@@ -118,7 +118,8 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
         state,
         branch: "fix-webhook-retry".into(),
         base: "main".into(),
-        labels: vec!["bug".into(), "payments".into()],
+        labels: vec![label("bug", "d73a4a"), label("payments", "0e8a16")],
+        rollup: None,
         checks: vec![
             Check {
                 name: "build".into(),
@@ -149,22 +150,99 @@ pub fn prs() -> Arc<HashMap<ConversationId, PullRequest>> {
     )]))
 }
 
+fn label(name: &str, color: &str) -> Label {
+    Label {
+        name: name.into(),
+        color: color.into(),
+    }
+}
+
+/// A list PR: checks summed up by GitHub, as the search returns them.
+fn listed(number: u64, title: &str, state: PrState, rollup: CheckState) -> PullRequest {
+    PullRequest {
+        checks: vec![],
+        rollup: Some(rollup),
+        comments: vec![],
+        ..pr(number, title, state)
+    }
+}
+
 pub fn my_prs() -> Arc<Vec<PullRequest>> {
     Arc::new(vec![
-        pr(412, "Fix webhook retry timeout", PrState::Open),
-        pr(398, "Export invoices as CSV", PrState::Draft),
+        listed(
+            412,
+            "Fix webhook retry timeout",
+            PrState::Open,
+            CheckState::Pending,
+        ),
+        PullRequest {
+            branch: "csv-export".into(),
+            labels: vec![label("feature", "a2eeef")],
+            ..listed(
+                398,
+                "Export invoices as CSV",
+                PrState::Draft,
+                CheckState::Fail,
+            )
+        },
+        PullRequest {
+            repo: "acme/web".into(),
+            branch: "bump-deps".into(),
+            labels: vec![label("dependencies", "0366d6")],
+            ..listed(77, "Bump the date library", PrState::Open, CheckState::Pass)
+        },
     ])
 }
 
 pub fn my_issues() -> Arc<Vec<Issue>> {
-    Arc::new(vec![Issue {
+    let status = |name: &str, order, color: &str| {
+        Some(IssueStatus {
+            name: name.into(),
+            order,
+            color: Some(color.into()),
+        })
+    };
+    let issue = |number, title: &str, labels, status| Issue {
         repo: "acme/payments-api".into(),
-        number: 401,
-        title: "Webhook retries give up after 30 seconds".into(),
+        number,
+        title: String::from(title),
         url: String::new(),
-        labels: vec!["bug".into()],
+        labels,
         updated_at: 0,
-    }])
+        status,
+    };
+    Arc::new(vec![
+        issue(
+            401,
+            "Webhook retries give up after 30 seconds",
+            vec![label("bug", "d73a4a")],
+            status("In progress", 2, "YELLOW"),
+        ),
+        issue(
+            405,
+            "Refunds over 10k need a second approval",
+            vec![label("feature", "a2eeef"), label("payments", "0e8a16")],
+            status("Todo", 1, "BLUE"),
+        ),
+        issue(
+            388,
+            "Invoice PDF misses the VAT number",
+            vec![label("bug", "d73a4a")],
+            status("Todo", 1, "BLUE"),
+        ),
+        issue(
+            379,
+            "Move the cron jobs to the new scheduler",
+            vec![],
+            status("Backlog", 0, "GRAY"),
+        ),
+        issue(
+            366,
+            "Document the webhook signature",
+            vec![label("docs", "0075ca")],
+            None,
+        ),
+    ])
 }
 
 pub fn doctor() -> (i64, Arc<Vec<leon_domain::DoctorSection>>) {

@@ -33,9 +33,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 ### Left pane
 
 - **NAV-1** Several projects and conversations at once; conversations run
-  concurrently.
+  concurrently. The left and right panes are resized by dragging their edge.
 - **NAV-2** Conversations grouped by project/folder. Click a project to fold
-  or unfold its conversations; the choice is kept.
+  or unfold its conversations; the choice is kept. A project is added with
+  its own button in the Projects header.
 - **NAV-3** Pinned conversations sit at the top of the left pane, above the
   projects.
 - **NAV-4** Unread indicator per conversation; the user can also mark one as
@@ -106,7 +107,8 @@ conversation**: one item in the left pane (D5).
 
 - **CTX-1** Information about the current conversation and its issue.
 - **GIT-1** Uncommitted files of the conversation's working directory.
-- **GIT-2** Diff of each uncommitted file.
+- **GIT-2** Diff of each uncommitted file. Clicking a file shows its diff
+  large, in a drawer over the middle of the window.
 - **GIT-3** Whole diff of the worktree against its starting branch/commit, as a
   PR shows it.
 - **GIT-4** Auto-fold files whose path matches configured patterns (glob or
@@ -118,8 +120,12 @@ conversation**: one item in the left pane (D5).
 
 ### GitHub
 
-- **GH-2** My issues, at the top of the left pane (with GH-3).
-- **GH-3** My open PRs.
+- **GH-2** My issues, at the top of the left pane (with GH-3), grouped by
+  their GitHub Project status in the board's order. Clicking one opens it on
+  GitHub; "Start conversation" opens the new-conversation form in the project
+  whose repository it belongs to, with the issue in the message.
+- **GH-3** My open PRs, with their state and checks. Clicking one opens it on
+  GitHub; one with a conversation has "Open conversation".
 - **GH-4** Labels of issues and PRs.
 - **GH-5** Request a Copilot review on a PR.
 - **GH-6** Post a comment.

@@ -37,12 +37,16 @@ pub enum Shot {
     Review(ConversationId),
     /// My open pull requests in the main pane.
     MyPullRequests,
+    /// My issues in the main pane, grouped by board status.
+    MyIssues,
     /// The doctor's report.
     Doctor,
     /// A left-pane row's right-click menu.
     RowMenu(ConversationId),
     /// The Tools view.
     Tools,
+    /// A conversation's changed file, large in the drawer (path).
+    Drawer(ConversationId, &'static str),
 }
 
 impl Workspace {
@@ -78,6 +82,11 @@ impl Workspace {
                 self.tabs.remove(id);
             }
             Shot::NewConversation => self.show_new_conversation(cx),
+            Shot::Drawer(id, path) => {
+                self.select(*id, cx);
+                self.open_first_session(*id);
+                self.open_drawer(DiffSource::Changes, (*path).to_owned(), cx);
+            }
             Shot::Right(id, tab) => {
                 self.select(*id, cx);
                 self.open_first_session(*id);
@@ -116,6 +125,7 @@ impl Workspace {
                 self.start_comment(at(14), window, cx);
             }
             Shot::MyPullRequests => self.screen = Screen::GitHub(GhList::PullRequests),
+            Shot::MyIssues => self.screen = Screen::GitHub(GhList::Issues),
             Shot::Doctor => self.screen = Screen::Doctor,
             Shot::Tools => self.screen = Screen::Tools,
             Shot::RowMenu(id) => {

@@ -61,6 +61,9 @@ pub struct Snapshot {
     pub tools: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
     /// The CLIs are being asked.
     pub tools_running: bool,
+    /// The GitHub repository (`owner/name`) of each project, from its
+    /// `origin`: an issue starts a conversation in its repository's project.
+    pub project_repos: Arc<HashMap<ProjectId, String>>,
     /// Desktop notifications to show (NOTIF-1), oldest first. Each has a
     /// unique id so the UI shows it once.
     pub notifications: Arc<Vec<Notification>>,

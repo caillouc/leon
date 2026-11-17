@@ -9,6 +9,9 @@ const PULL_REQUEST: &str = include_str!("graphql/pull_request.graphql");
 const SEARCH: &str = include_str!("graphql/search.graphql");
 /// The pull request fields both queries read.
 const PR_FIELDS: &str = include_str!("graphql/pr_fields.graphql");
+/// An issue's column on its GitHub Project board; needs the token's
+/// `read:project` scope.
+const ISSUE_STATUS: &str = include_str!("graphql/issue_status.graphql");
 
 /// Open issues assigned to the user (GH-2).
 pub(crate) const MY_ISSUES: &str = "is:issue is:open assignee:@me sort:updated-desc";
@@ -36,15 +39,24 @@ pub(crate) fn pull_request(branch: &str) -> Vec<String> {
     ])
 }
 
-/// `gh api graphql` for a GitHub search (`q` in GitHub's search syntax).
-pub(crate) fn search(q: &str) -> Vec<String> {
+/// `gh api graphql` for a GitHub search (`q` in GitHub's search syntax);
+/// with `status`, issues come with their Project board column.
+pub(crate) fn search(q: &str, status: bool) -> Vec<String> {
+    let query = if status {
+        format!(
+            "{}{PR_FIELDS}{ISSUE_STATUS}",
+            SEARCH.replace("__STATUS__", "...issueStatus")
+        )
+    } else {
+        format!("{}{PR_FIELDS}", SEARCH.replace("__STATUS__", ""))
+    };
     owned([
         "api",
         "graphql",
         "-f",
         &format!("q={q}"),
         "-f",
-        &format!("query={SEARCH}{PR_FIELDS}"),
+        &format!("query={query}"),
     ])
 }
 
@@ -101,11 +113,12 @@ mod tests {
 
     #[test]
     fn search_args() {
-        let args = search("is:pr author:@me");
+        let args = search("is:pr author:@me", false);
         assert_eq!(args[..4], ["api", "graphql", "-f", "q=is:pr author:@me"]);
-        assert_eq!(
-            args[4..],
-            ["-f".to_owned(), format!("query={SEARCH}{PR_FIELDS}")]
+        assert!(!args[5].contains("__STATUS__") && !args[5].contains("issueStatus"));
+        let with = search("is:issue", true);
+        assert!(
+            with[5].contains("...issueStatus") && with[5].contains("fragment issueStatus on Issue")
         );
     }
 

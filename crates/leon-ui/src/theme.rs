@@ -90,3 +90,27 @@ pub const MONO: &str = if cfg!(target_os = "macos") {
 } else {
     "DejaVu Sans Mono"
 };
+
+/// A color from six hex digits (`d73a4a`), as GitHub gives labels.
+pub fn hex(digits: &str) -> Option<Rgba> {
+    let value = u32::from_str_radix(digits.trim_start_matches('#'), 16).ok()?;
+    (digits.trim_start_matches('#').len() == 6).then(|| rgb(value))
+}
+
+/// A GitHub Project column's color name (`GRAY`, `BLUE`, `GREEN`…) in the
+/// theme.
+pub fn github_color(name: Option<&str>) -> Rgba {
+    match name {
+        Some("BLUE") => accent(),
+        Some("GREEN") => ok(),
+        Some("YELLOW" | "ORANGE") => warn(),
+        Some("RED") => err(),
+        Some("PINK" | "PURPLE") => merged(),
+        _ => fg_muted(),
+    }
+}
+
+/// Dims the window behind a drawer.
+pub fn scrim() -> Rgba {
+    gpui::rgba(0x0000_0099)
+}

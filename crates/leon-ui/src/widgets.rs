@@ -90,19 +90,3 @@ fn base_button(
         .child(text.into())
         .on_click(on_click)
 }
-
-/// A borderless link-like button.
-pub fn link(
-    id: impl Into<ElementId>,
-    text: impl Into<SharedString>,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
-    div()
-        .id(id.into())
-        .text_size(px(12.))
-        .text_color(theme::accent())
-        .cursor_pointer()
-        .hover(|s| s.opacity(0.8))
-        .child(text.into())
-        .on_click(on_click)
-}

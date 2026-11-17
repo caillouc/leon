@@ -1,7 +1,7 @@
 //! `gh api graphql` answers into domain types. A node missing a field Leon
 //! needs is skipped and unknown fields are ignored; only invalid JSON fails.
 
-use leon_domain::{Comment, Issue, PrState, PullRequest};
+use leon_domain::{CheckState, Comment, Issue, IssueStatus, Label, PrState, PullRequest};
 use serde_json::Value;
 
 use crate::checks::checks;
@@ -78,6 +78,7 @@ fn pull_request_node(pr: &Value) -> Option<PullRequest> {
         base: text(&pr["baseRefName"])?,
         labels: labels(pr),
         checks: checks(pr),
+        rollup: rollup(pr),
         reviewers: reviewers(pr),
         comments: comments(pr),
     })
@@ -91,6 +92,7 @@ fn issue_node(issue: &Value) -> Option<Issue> {
         url: text(&issue["url"])?,
         labels: labels(issue),
         updated_at: issue["updatedAt"].as_str().and_then(unix_ms).unwrap_or(0),
+        status: status(issue),
     })
 }
 
@@ -105,10 +107,48 @@ fn pr_state(pr: &Value) -> Option<PrState> {
     })
 }
 
-fn labels(item: &Value) -> Vec<String> {
+fn labels(item: &Value) -> Vec<Label> {
     nodes(&item["labels"])
-        .filter_map(|l| text(&l["name"]))
+        .filter_map(|l| {
+            Some(Label {
+                name: text(&l["name"])?,
+                color: text(&l["color"]).unwrap_or_default(),
+            })
+        })
         .collect()
+}
+
+/// GitHub's summary of the last commit's checks: `SUCCESS`, `FAILURE`,
+/// `ERROR`, `PENDING`, `EXPECTED`.
+fn rollup(pr: &Value) -> Option<CheckState> {
+    match pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["state"].as_str()? {
+        "SUCCESS" => Some(CheckState::Pass),
+        "FAILURE" | "ERROR" => Some(CheckState::Fail),
+        _ => Some(CheckState::Pending),
+    }
+}
+
+/// The issue's "Status" on the first Project board that has one; its order
+/// is the column's place on that board.
+fn status(issue: &Value) -> Option<IssueStatus> {
+    nodes(&issue["projectItems"]).find_map(|item| {
+        let value = &item["fieldValueByName"];
+        let name = text(&value["name"])?;
+        let option = value["optionId"].as_str();
+        let order = nodes_array(&value["field"]["options"])
+            .position(|o| o["id"].as_str() == option)
+            .unwrap_or(usize::MAX);
+        Some(IssueStatus {
+            name,
+            order,
+            color: text(&value["color"]),
+        })
+    })
+}
+
+/// The items of a plain JSON array; none when absent.
+fn nodes_array(array: &Value) -> impl Iterator<Item = &Value> {
+    array.as_array().into_iter().flatten()
 }
 
 /// Requested reviewers (users, bots, `org/team`), then past reviewers, each
@@ -143,7 +183,9 @@ fn comments(pr: &Value) -> Vec<Comment> {
 
 #[cfg(test)]
 mod tests {
-    use leon_domain::{Check, CheckState, Comment, Issue, PrState, PullRequest};
+    use leon_domain::{
+        Check, CheckState, Comment, Issue, IssueStatus, Label, PrState, PullRequest,
+    };
     use serde_json::json;
 
     use super::{pull_request, search_issues, search_pull_requests};
@@ -172,7 +214,7 @@ mod tests {
             state: PrState::Open,
             branch: branch.into(),
             base: "trunk".into(),
-            labels: vec!["dependencies".into(), "javascript".into()],
+            labels: ["dependencies", "javascript"].map(label).to_vec(),
             checks: vec![
                 check("CodeQL-Build (go, manual, ./.github/codeql/codeql-config.yml)"),
                 check("label-external / label_issues"),
@@ -181,6 +223,7 @@ mod tests {
             ],
             reviewers: vec!["reviewer-a".into(), "copilot-pull-request-reviewer".into()],
             comments: vec![],
+            rollup: None,
         };
         assert_eq!(pr, expected);
         assert_eq!(pr.checks_state(), Some(CheckState::Pass));
@@ -287,6 +330,50 @@ mod tests {
         );
     }
 
+    /// A label as recorded before colors were asked for.
+    fn label(name: &str) -> Label {
+        Label {
+            name: name.into(),
+            color: String::new(),
+        }
+    }
+
+    /// The shape of a live `gh api graphql` answer (2026-11-17) with the
+    /// project status, label colors and check summary; values made up.
+    #[test]
+    fn status_colors_and_check_summary() {
+        let json = r#"{"data":{"search":{"nodes":[
+          {"__typename":"Issue","number":7,"title":"Retry","url":"https://github.com/o/r/issues/7",
+           "updatedAt":"2026-11-17T10:00:00Z","repository":{"nameWithOwner":"o/r"},
+           "labels":{"nodes":[{"name":"bug","color":"d73a4a"}]},
+           "projectItems":{"nodes":[{"fieldValueByName":null},
+             {"fieldValueByName":{"name":"In progress","color":"YELLOW","optionId":"b",
+               "field":{"options":[{"id":"a"},{"id":"b"},{"id":"c"}]}}}]}},
+          {"__typename":"PullRequest","number":8,"title":"Fix","url":"https://github.com/o/r/pull/8",
+           "state":"OPEN","isDraft":false,"headRefName":"fix","baseRefName":"main",
+           "repository":{"nameWithOwner":"o/r"},"labels":{"nodes":[]},
+           "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}
+        ]}}}"#;
+        let issue = &search_issues(json).unwrap()[0];
+        assert_eq!(
+            issue.labels,
+            [Label {
+                name: "bug".into(),
+                color: "d73a4a".into()
+            }]
+        );
+        assert_eq!(
+            issue.status,
+            Some(IssueStatus {
+                name: "In progress".into(),
+                order: 1,
+                color: Some("YELLOW".into()),
+            })
+        );
+        let pr = &search_pull_requests(json).unwrap()[0];
+        assert_eq!(pr.checks_state(), Some(CheckState::Fail));
+    }
+
     #[test]
     fn recorded_search_issues() {
         let issues =
@@ -302,9 +389,10 @@ mod tests {
                         .into(),
                 url: "https://github.com/cli/cli/issues/14962".into(),
                 labels: ["bug", "priority-3", "needs-investigation", "gh-api"]
-                    .map(Into::into)
+                    .map(label)
                     .to_vec(),
                 updated_at: 1_794_941_023_000,
+                status: None,
             }
         );
         let numbers: Vec<u64> = issues.iter().map(|i| i.number).collect();

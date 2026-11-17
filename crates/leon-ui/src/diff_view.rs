@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    AnyElement, App, Context, Entity, Focusable, FontWeight, IntoElement, ListAlignment,
-    ListOffset, ListState, SharedString, Styled, WeakEntity, Window, div, list, prelude::*, px,
+    AnyElement, App, Context, Entity, Focusable, FontWeight, IntoElement, ListAlignment, ListState,
+    SharedString, Styled, WeakEntity, Window, div, list, prelude::*, px,
 };
 use gpui_component::input::{Textarea, TextareaState};
 use leon_domain::{
@@ -51,6 +51,10 @@ enum Row {
     Draft,
 }
 
+/// A diff list: its conversation, its source, and whether it is the
+/// drawer's.
+pub(crate) type ListKey = (ConversationId, DiffSource, bool);
+
 /// Scroll state of one diff and the rows it was laid out for.
 pub(crate) struct DiffList {
     state: ListState,
@@ -69,15 +73,17 @@ struct Data {
     subtitle: String,
     review: Vec<Pending>,
     comment: Entity<TextareaState>,
-    state: ListState,
     view: WeakEntity<Workspace>,
 }
 
 impl Workspace {
+    /// The diff of `source`; with `only`, that one file, opened and without
+    /// the summary and file headers, as the drawer shows it.
     pub(crate) fn render_diff(
         &mut self,
         id: ConversationId,
         source: DiffSource,
+        only: Option<&str>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(git) = self.snapshot.git.get(&id).cloned() else {
@@ -104,6 +110,13 @@ impl Workspace {
                 (DiffSource::Branch, None) => "No base branch found to compare with.".to_owned(),
             });
         }
+        let files = match only {
+            Some(path) => Arc::new(files.iter().filter(|f| f.path == path).cloned().collect()),
+            None => files,
+        };
+        if files.is_empty() {
+            return empty("This file has no changes any more.");
+        }
         let fold = Arc::clone(&self.snapshot.fold);
         let folded_by: Vec<Option<String>> = files
             .iter()
@@ -113,11 +126,13 @@ impl Workspace {
             .iter()
             .zip(&folded_by)
             .map(|(f, by)| {
-                self.right
-                    .open
-                    .get(&(id, source, f.path.clone()))
-                    .copied()
-                    .unwrap_or(by.is_none())
+                only.is_some()
+                    || self
+                        .right
+                        .open
+                        .get(&(id, source, f.path.clone()))
+                        .copied()
+                        .unwrap_or(by.is_none())
             })
             .collect();
         let review = self.right.review.get(&id).cloned().unwrap_or_default();
@@ -125,9 +140,21 @@ impl Workspace {
             .right
             .draft
             .clone()
-            .filter(|d| d.conversation == id && d.source == source);
-        let rows = build_rows(&files, &opened, source, &review, draft.as_ref());
-        let (state, rows) = self.diff_list(id, source, rows);
+            // The comment box shows once: in the drawer while it is open.
+            .filter(|d| {
+                d.conversation == id
+                    && d.source == source
+                    && only.is_some() == self.right.drawer.is_some()
+            });
+        let rows = build_rows(
+            &files,
+            &opened,
+            source,
+            &review,
+            draft.as_ref(),
+            only.is_none(),
+        );
+        let (state, rows) = self.diff_list((id, source, only.is_some()), rows);
         let data = Rc::new(Data {
             conversation: id,
             source,
@@ -139,7 +166,6 @@ impl Workspace {
             subtitle,
             review,
             comment: self.right.comment.clone(),
-            state: state.clone(),
             view: cx.entity().downgrade(),
         });
         list(state, move |ix, _window, cx| {
@@ -157,20 +183,11 @@ impl Workspace {
 
     /// The list state of a diff, reset (keeping the scroll position) when its
     /// rows change.
-    fn diff_list(
-        &mut self,
-        id: ConversationId,
-        source: DiffSource,
-        rows: Vec<Row>,
-    ) -> (ListState, Arc<Vec<Row>>) {
-        let list = self
-            .right
-            .lists
-            .entry((id, source))
-            .or_insert_with(|| DiffList {
-                state: ListState::new(0, ListAlignment::Top, px(200.)),
-                rows: Arc::new(Vec::new()),
-            });
+    fn diff_list(&mut self, key: ListKey, rows: Vec<Row>) -> (ListState, Arc<Vec<Row>>) {
+        let list = self.right.lists.entry(key).or_insert_with(|| DiffList {
+            state: ListState::new(0, ListAlignment::Top, px(200.)),
+            rows: Arc::new(Vec::new()),
+        });
         if *list.rows != rows {
             let top = list.state.logical_scroll_top();
             list.state.reset(rows.len());
@@ -227,18 +244,25 @@ impl Workspace {
     }
 }
 
-/// Rows of a diff: the summary, each file, and when a file is open its hunks
-/// and lines, each line followed by its pending comments and the draft.
+/// Rows of a diff: the summary and each file's header when `headers`, and
+/// when a file is open its hunks and lines, each line followed by its pending
+/// comments and the draft.
 fn build_rows(
     files: &[FileDiff],
     opened: &[bool],
     source: DiffSource,
     review: &[Pending],
     draft: Option<&DraftAt>,
+    headers: bool,
 ) -> Vec<Row> {
-    let mut rows = vec![Row::Summary];
+    let mut rows = Vec::new();
+    if headers {
+        rows.push(Row::Summary);
+    }
     for (f, file) in files.iter().enumerate() {
-        rows.push(Row::File(f));
+        if headers {
+            rows.push(Row::File(f));
+        }
         if !opened.get(f).copied().unwrap_or(true) {
             continue;
         }
@@ -307,7 +331,7 @@ fn mono(d: gpui::Div) -> gpui::Div {
     d.font_family(theme::MONO).text_size(px(11.5))
 }
 
-fn status_letter(status: FileStatus) -> AnyElement {
+pub(crate) fn status_letter(status: FileStatus) -> AnyElement {
     let (letter, color) = match status {
         FileStatus::Added | FileStatus::Untracked => ("A", theme::ok()),
         FileStatus::Modified => ("M", theme::warn()),
@@ -325,7 +349,7 @@ fn status_letter(status: FileStatus) -> AnyElement {
     .into_any_element()
 }
 
-fn counts(added: u32, removed: u32) -> AnyElement {
+pub(crate) fn counts(added: u32, removed: u32) -> AnyElement {
     mono(div().flex().flex_none().gap(px(6.)))
         .child(div().text_color(theme::ok()).child(format!("+{added}")))
         .child(div().text_color(theme::err()).child(format!("−{removed}")))
@@ -337,12 +361,7 @@ fn summary(data: &Rc<Data>) -> AnyElement {
     let removed: u32 = data.files.iter().map(|f| f.removed).sum();
     let n = data.files.len();
     let file_rows = data.files.iter().enumerate().map(|(f, file)| {
-        let target = data
-            .rows
-            .iter()
-            .position(|r| *r == Row::File(f))
-            .unwrap_or(0);
-        let state = data.state.clone();
+        let (source, path, view) = (data.source, file.path.clone(), data.view.clone());
         div()
             .id(("diff-index", f))
             .flex()
@@ -357,11 +376,10 @@ fn summary(data: &Rc<Data>) -> AnyElement {
             .child(status_letter(file.status))
             .child(path_text(&file.path))
             .child(counts(file.added, file.removed))
-            .on_click(move |_, _, _| {
-                state.scroll_to(ListOffset {
-                    item_ix: target,
-                    offset_in_item: px(0.),
-                });
+            .on_click(move |_, _, cx| {
+                let path = path.clone();
+                view.update(cx, |this, cx| this.open_drawer(source, path, cx))
+                    .ok();
             })
     });
     div()
@@ -408,12 +426,15 @@ fn summary(data: &Rc<Data>) -> AnyElement {
             div()
                 .text_size(px(11.5))
                 .text_color(theme::fg_faint())
-                .child("Hover a line and click + to comment. Comments pile up into one review."),
+                .child(
+                    "Click a file to read it large. Hover a line and click + to comment; \
+                     comments pile up into one review.",
+                ),
         )
         .into_any_element()
 }
 
-fn path_text(path: &str) -> gpui::Div {
+pub(crate) fn path_text(path: &str) -> gpui::Div {
     mono(
         div()
             .flex_1()
@@ -473,6 +494,26 @@ fn file_header(data: &Rc<Data>, f: usize) -> AnyElement {
         )
         .children(file.binary.then(|| tag("binary".to_owned())))
         .child(counts(file.added, file.removed))
+        .child(
+            div()
+                .id(("diff-open", f))
+                .flex_none()
+                .px(px(6.))
+                .rounded(px(4.))
+                .text_size(px(11.))
+                .text_color(theme::fg_muted())
+                .hover(|s| s.bg(theme::window()).text_color(theme::fg()))
+                .child("Open")
+                .on_click({
+                    let (path, view) = (file.path.clone(), data.view.clone());
+                    move |_, _, cx| {
+                        cx.stop_propagation();
+                        let path = path.clone();
+                        view.update(cx, |this, cx| this.open_drawer(source, path, cx))
+                            .ok();
+                    }
+                }),
+        )
         .on_click(move |_, _, cx| {
             let path = path.clone();
             view.update(cx, |this, cx| {
@@ -705,11 +746,26 @@ mod tests {
             (
                 [false, false],
                 None,
+                true,
                 vec![Row::Summary, Row::File(0), Row::File(1)],
             ),
             (
                 [true, false],
                 Some(&draft),
+                false,
+                vec![
+                    Row::Hunk(0, 0),
+                    Row::Line(0, 0, 0),
+                    Row::Line(0, 0, 1),
+                    Row::Comment(0),
+                    Row::Line(0, 0, 2),
+                    Row::Draft,
+                ],
+            ),
+            (
+                [true, false],
+                Some(&draft),
+                true,
                 vec![
                     Row::Summary,
                     Row::File(0),
@@ -723,9 +779,16 @@ mod tests {
                 ],
             ),
         ];
-        for (opened, draft, expected) in cases {
+        for (opened, draft, headers, expected) in cases {
             assert_eq!(
-                build_rows(&files, &opened, DiffSource::Changes, &review, draft),
+                build_rows(
+                    &files,
+                    &opened,
+                    DiffSource::Changes,
+                    &review,
+                    draft,
+                    headers
+                ),
                 expected
             );
         }

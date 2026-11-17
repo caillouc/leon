@@ -77,6 +77,11 @@ impl Git for GitCli {
         (!name.is_empty() && name != "HEAD").then_some(name)
     }
 
+    fn github_repo(&self, dir: &Path) -> Option<String> {
+        let url = git_line((self.path)(), dir, &["remote", "get-url", "origin"]).ok()?;
+        github_repo_of(&url)
+    }
+
     fn default_base(&self, dir: &Path) -> Option<String> {
         let path = (self.path)();
         let remote_head = ["symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"];
@@ -99,6 +104,19 @@ impl Git for GitCli {
         branch_diff((self.path)(), dir, base)
             .map_err(|e| PortError::new("reading the branch diff", e))
     }
+}
+
+/// `owner/name` from a GitHub remote URL: `git@github.com:o/n.git`,
+/// `https://github.com/o/n(.git)`, `ssh://git@github.com/o/n.git`.
+fn github_repo_of(url: &str) -> Option<String> {
+    let rest = url
+        .trim()
+        .strip_prefix("git@github.com:")
+        .or_else(|| url.trim().split_once("github.com/").map(|(_, r)| r))?;
+    let repo = rest.trim_end_matches('/').trim_end_matches(".git");
+    let (owner, name) = repo.split_once('/')?;
+    (!owner.is_empty() && !name.is_empty() && !name.contains('/'))
+        .then(|| format!("{owner}/{name}"))
 }
 
 /// Working tree against `HEAD` (staged and unstaged), plus untracked files
@@ -151,4 +169,24 @@ fn diff(path: Option<&OsString>, dir: &Path, revs: &[&str]) -> Result<Vec<FileDi
     args.push("--");
     let output = git(path, dir, &args)?;
     Ok(parse_diff(&String::from_utf8_lossy(&output)))
+}
+
+#[cfg(test)]
+mod remote_tests {
+    use super::github_repo_of;
+
+    #[test]
+    fn github_remotes_give_owner_and_name() {
+        let cases = [
+            ("git@github.com:acme/api.git", Some("acme/api")),
+            ("https://github.com/acme/api.git", Some("acme/api")),
+            ("https://github.com/acme/api", Some("acme/api")),
+            ("ssh://git@github.com/acme/api.git\n", Some("acme/api")),
+            ("https://gitlab.com/acme/api.git", None),
+            ("https://github.com/acme", None),
+        ];
+        for (url, expected) in cases {
+            assert_eq!(github_repo_of(url).as_deref(), expected, "{url}");
+        }
+    }
 }

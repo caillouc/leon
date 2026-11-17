@@ -101,6 +101,8 @@ pub(crate) struct State {
     /// What each CLI has as MCP servers and plugins, and when it was read.
     pub tools: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
     pub tools_running: bool,
+    /// The GitHub repository of each project, from its `origin`.
+    pub project_repos: Arc<HashMap<ProjectId, String>>,
 }
 
 impl State {
@@ -202,6 +204,7 @@ impl State {
             shared_tools_error: self.shared_error.clone(),
             tools: self.tools.clone(),
             tools_running: self.tools_running,
+            project_repos: Arc::clone(&self.project_repos),
         }
     }
 }

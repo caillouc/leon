@@ -7,7 +7,7 @@ use gpui::{
 use gpui_component::input::Textarea;
 use gpui_component::text::TextView;
 use leon_core::Intent;
-use leon_domain::{CheckState, ConversationId, PrState, PullRequest};
+use leon_domain::{CheckState, ConversationId, Label, PrState, PullRequest};
 
 use crate::left::ago;
 use crate::theme;
@@ -33,21 +33,24 @@ pub(crate) fn check_color(state: CheckState) -> Rgba {
     }
 }
 
-/// Labels as small outlined pills (GH-4).
-pub(crate) fn labels(names: &[String]) -> Div {
+/// Labels as small pills in GitHub's own colors (GH-4), readable on the
+/// dark theme: tinted background, colored border, light text.
+pub(crate) fn labels(labels: &[Label]) -> Div {
     div()
         .flex()
         .flex_wrap()
         .gap(px(5.))
-        .children(names.iter().map(|name| {
+        .children(labels.iter().map(|l| {
+            let color = theme::hex(&l.color).unwrap_or(theme::fg_faint());
             div()
                 .px_2()
                 .rounded_full()
                 .border_1()
-                .border_color(theme::border_strong())
+                .border_color(gpui::Rgba { a: 0.7, ..color })
+                .bg(gpui::Rgba { a: 0.18, ..color })
                 .text_size(px(11.))
-                .text_color(theme::fg_muted())
-                .child(name.clone())
+                .text_color(theme::fg())
+                .child(l.name.clone())
         }))
 }
 

@@ -11,12 +11,10 @@ use gpui_component::input::{InputEvent, TextareaState};
 use leon_core::Intent;
 use leon_domain::{AgentSessionId, ConversationId, ReviewComment, review_message};
 
-use crate::diff_view::{DiffList, DiffSource, DraftAt};
+use crate::diff_view::{DiffList, DiffSource, DraftAt, ListKey};
 use crate::theme;
 use crate::widgets::{button, empty, label, primary};
 use crate::workspace::{Screen, Workspace};
-
-pub(crate) const WIDTH: f32 = 440.;
 
 /// The right pane's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +45,9 @@ pub(crate) struct RightState {
     pub draft: Option<DraftAt>,
     pub comment: Entity<TextareaState>,
     pub pr_comment: Entity<TextareaState>,
-    pub lists: HashMap<(ConversationId, DiffSource), DiffList>,
+    pub lists: HashMap<ListKey, DiffList>,
+    /// The file read large in the drawer, and which diff it is from.
+    pub drawer: Option<(DiffSource, String)>,
 }
 
 impl RightState {
@@ -84,6 +84,7 @@ impl RightState {
             comment,
             pr_comment,
             lists: HashMap::new(),
+            drawer: None,
         };
         (state, subscriptions)
     }
@@ -96,7 +97,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let frame = div()
-            .w(px(WIDTH))
+            .w(px(self.panes.right))
             .h_full()
             .flex_none()
             .flex()
@@ -112,8 +113,8 @@ impl Workspace {
                 .into_any_element();
         };
         let body = match self.right.tab {
-            RightTab::Changes => self.render_diff(id, DiffSource::Changes, cx),
-            RightTab::Branch => self.render_diff(id, DiffSource::Branch, cx),
+            RightTab::Changes => self.render_diff(id, DiffSource::Changes, None, cx),
+            RightTab::Branch => self.render_diff(id, DiffSource::Branch, None, cx),
             RightTab::Pr => self.render_pr(id, cx),
             RightTab::Info => self.render_info(id),
         };
