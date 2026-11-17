@@ -24,6 +24,16 @@ use leon_domain::{AgentSessionId, BackendKind, SessionSettings};
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "runs the real Codex CLI with the user's login"]
 async fn codex_calls_a_leon_tool() {
+    calls_a_leon_tool(BackendKind::Codex).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "runs the real Claude Code CLI with the user's login"]
+async fn claude_calls_a_leon_tool() {
+    calls_a_leon_tool(BackendKind::ClaudeCode).await;
+}
+
+async fn calls_a_leon_tool(backend: BackendKind) {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("tools.sock");
     let (tools_tx, mut requests) = tokio::sync::mpsc::unbounded_channel();
@@ -32,11 +42,11 @@ async fn codex_calls_a_leon_tool() {
     let clis = Clis::default();
     let spec = SessionSpec {
         settings: SessionSettings {
-            backend: BackendKind::Codex,
+            backend,
             agent: None,
             model: None,
             effort: Some("low".into()),
-            permission: clis.options(BackendKind::Codex).permissions[0].clone(),
+            permission: clis.options(backend).permissions[0].clone(),
         },
         agent: None,
         working_dir: dir.path().to_path_buf(),

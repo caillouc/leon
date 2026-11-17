@@ -25,9 +25,9 @@ fn prompt(message: &str) -> String {
     )
 }
 
-/// The command for `backend`. Claude Code: `-p` prints the answer (2.1.288
-/// `--help`; ⚠️ not run, its login had expired). Codex: `exec` prints the
-/// last message on stdout (0.160.0, run on 2026-11-17).
+/// The command for `backend`, both run on 2026-11-17: Claude Code 2.1.288
+/// `-p` prints the answer; Codex 0.160.0 `exec` prints the last message on
+/// stdout.
 fn args(backend: BackendKind, message: &str) -> Option<(&'static str, Vec<String>)> {
     let prompt = prompt(message);
     let list = |items: &[&str]| -> Vec<String> {

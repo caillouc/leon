@@ -16,8 +16,7 @@ How the code is organised. Owned by agents; must follow
   awaited; stopped after an idle timeout, resumed by the CLI's session id. A CLI
   crash sets that agent session to `error`; it never takes the app down.
 - `git` and `gh` spawned per query (P6, P7). GitHub goes through the `gh` CLI,
-  not direct HTTPS calls: the maintainer chose this on 2026-11-17 (P7 in
-  decisions.md still describes the API; the maintainer updates it).
+  not direct HTTPS calls (P7, D6).
 - Every adapter that starts a program gets the user's login-shell `PATH` from
   the binary (`leon_core::ports::SearchPath`), read once on first use: an app
   started from the Finder inherits a `PATH` without `/opt/homebrew/bin`.
@@ -64,7 +63,8 @@ Conversation (working_dir: where an agent said it moved, D3)
 1. Every session's CLI gets Leon's MCP server: Claude Code through
    `--mcp-config` and `--allowedTools mcp__leon`, Codex through `thread/start`
    `config.mcp_servers.leon` with `default_tools_approval_mode = "approve"`
-   (checked live with Codex 0.160.0 on 2026-11-17; Claude ⚠️ not verified).
+   (checked live with Codex 0.160.0 and Claude Code 2.1.288 on 2026-11-17:
+   both call Leon's tools without a prompt).
 2. The planner calls `start_agent(agent, prompt, working_directory?)`. The core
    (`crates/leon-core/src/agents.rs`) creates the coder's session in the same
    conversation with the planner's CLI, model, effort and permission, sends
@@ -102,12 +102,12 @@ ships.
 | Transport | `-p --input-format stream-json --output-format stream-json --include-partial-messages` (local) | `codex app-server` JSON-RPC, marked experimental; schema from `generate-json-schema` (local) | `copilot --acp --stdio` (preview) |
 | Agent | `--agent`, `--agents <json>` (local) | No `--agent` flag (local) → agent's instructions in `thread/start.developerInstructions` (local schema) | instructions in ACP `systemPrompt` when advertised, else before the first prompt |
 | Model / effort | `--model`, `--effort` (local) | `turn/start.model`, `turn/start.effort` — per turn, so switchable mid-conversation (local schema) | `--model=`, `--effort=` flags ⚠️ with `--acp` |
-| Stop (CONV-6) | interrupt over stream-json ⚠️ not verified | `turn/interrupt` (local schema) | ACP `session/cancel` |
+| Stop (CONV-6) | end the process; the next message resumes by session id (I2; run 2026-11-17: context kept) | `turn/interrupt` (local schema) | ACP `session/cancel` |
 | Go back (CONV-7) | no flag in `--help` (local) ⚠️ — fallback: new session carrying the messages up to that point | `thread/revert { beforeTurnId }` (local schema) | ⚠️ |
 | Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ |
 | Suggested replies (CONV-10) | `--prompt-suggestions` → `prompt_suggestion` message (local) | ⚠️ | ⚠️ |
-| Title (NAV-9) | one-off `claude -p --model haiku --output-format text` ⚠️ not run | one-off `codex exec --skip-git-repo-check --ephemeral -s read-only` (run 2026-11-17) | none: the first line stays |
-| Permission | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` (local) | `-a`, `-s`, `--dangerously-bypass-approvals-and-sandbox` (local) | ACP modes | ACP modes |
+| Title (NAV-9) | one-off `claude -p --model haiku --output-format text` (run 2026-11-17) | one-off `codex exec --skip-git-repo-check --ephemeral -s read-only` (run 2026-11-17) | none: the first line stays |
+| Permission | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` (local) | `-a`, `-s`, `--dangerously-bypass-approvals-and-sandbox` (local) | `--allow-all-tools`, `--allow-all` (I3) |
 | MCP list | `--mcp-config` + `--allowedTools mcp__leon` (local) | `thread/start.config.mcp_servers`, Leon's with `default_tools_approval_mode = "approve"` (live, 0.160.0) | ACP `mcpServers`; `--allow-tool=leon` ⚠️ |
 | Resume | `--resume`, `--fork-session` (local) | `thread/resume`, `thread/fork` | ACP `session/resume`, else `session/load`, else a new session with a notice |
 | Usage | `result.total_cost_usd`, `rate_limit_event` | `thread/tokenUsage/updated`, `account/rateLimits/read` | `/usage` |
@@ -138,8 +138,9 @@ same name): the user's standard folders, the source folders listed in
 picker and the `/` list (CONV-11). Each session gets the source folders:
 
 - Claude Code: `--plugin-dir <folder>` each (local `--help`, 2.1.288), so its
-  skills, commands, agents and MCP servers load natively. ⚠️ Not verified
-  without a `.claude-plugin/plugin.json` in the folder.
+  skills, commands, agents and MCP servers load natively. Checked on
+  2026-11-17: a folder's skills load with or without
+  `.claude-plugin/plugin.json`.
 - Codex: the folders' stdio MCP servers in `thread/start.config.mcp_servers`.
   Skills from source folders do not reach Codex (no per-session option found
   in 0.160.0 `--help`).
