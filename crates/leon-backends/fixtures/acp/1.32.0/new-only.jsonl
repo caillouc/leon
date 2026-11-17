@@ -1,0 +1,2 @@
+{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}
+{"jsonrpc":"2.0","id":1,"result":{"sessionId":"sess_abc123def456"}}

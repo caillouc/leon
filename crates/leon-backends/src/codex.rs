@@ -10,14 +10,11 @@ use std::ffi::OsString;
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
 use leon_domain::Usage;
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::mpsc::unbounded_channel;
 
 use crate::options::codex_policy;
-use crate::process::{clip, spawn, stderr_tail};
-use crate::summary::compact;
-
-const OUTPUT_MAX: usize = 8_000;
+use crate::process::clip;
+use crate::rpc::{self, Launch, Protocol};
+use crate::summary::{OUTPUT_MAX, compact};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
@@ -408,67 +405,24 @@ pub(crate) fn start(
     spec: &SessionSpec,
     path: Option<&OsString>,
 ) -> Result<BackendChannel, PortError> {
-    let args = vec!["app-server".to_owned()];
-    let mut child = spawn(path, "codex", &args, &spec.working_dir)
-        .map_err(|e| PortError::new("starting Codex", e))?;
-    let (Some(mut stdin), Some(stdout), Some(stderr)) =
-        (child.stdin.take(), child.stdout.take(), child.stderr.take())
-    else {
-        return Err(PortError::new("starting Codex", "no stdio pipes"));
-    };
     let (session, first) = Session::new(spec);
-    let (commands, mut command_rx) = unbounded_channel();
-    let (events, event_rx) = unbounded_channel();
-    tokio::spawn(async move {
-        let tail = stderr_tail(stderr);
-        let mut session = session;
-        let mut lines = BufReader::new(stdout).lines();
-        let mut exited = false;
-        let mut outgoing = first;
-        loop {
-            for msg in outgoing.drain(..) {
-                let line = format!("{msg}\n");
-                if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
-                    exited = true;
-                }
-            }
-            if exited {
-                break;
-            }
-            tokio::select! {
-                line = lines.next_line() => if let Ok(Some(line)) = line {
-                    let Ok(msg) = serde_json::from_str::<Value>(&line) else { continue };
-                    let (new_events, replies) = session.handle(&msg);
-                    outgoing = replies;
-                    if new_events.into_iter().any(|e| events.send(e).is_err()) {
-                        break;
-                    }
-                } else {
-                    exited = true;
-                    break;
-                },
-                command = command_rx.recv() => match command {
-                    Some(command) => outgoing = session.command(command),
-                    None => break,
-                },
-            }
-        }
-        let _ = child.start_kill();
-        let _ = child.wait().await;
-        let tail = tail.await.unwrap_or_default();
-        if exited {
-            let message = if tail.is_empty() {
-                "Codex stopped".to_owned()
-            } else {
-                tail
-            };
-            let _ = events.send(BackendEvent::Failed(message));
-        }
-    });
-    Ok(BackendChannel {
-        commands,
-        events: event_rx,
-    })
+    let launch = Launch {
+        path,
+        program: "codex",
+        args: &["app-server".to_owned()],
+        cwd: &spec.working_dir,
+        label: "Codex",
+    };
+    rpc::start(&launch, session, first)
+}
+
+impl Protocol for Session {
+    fn handle(&mut self, msg: &Value) -> (Vec<BackendEvent>, Vec<Value>) {
+        Session::handle(self, msg)
+    }
+    fn command(&mut self, command: BackendCommand) -> Vec<Value> {
+        Session::command(self, command)
+    }
 }
 
 #[cfg(test)]

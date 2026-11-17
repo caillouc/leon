@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_789xyz","update":{"sessionUpdate":"user_message_chunk","messageId":"msg_user_8f7a1","content":{"type":"text","text":"What's the capital of France?"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_789xyz","update":{"sessionUpdate":"agent_message_chunk","messageId":"msg_agent_c42b9","content":{"type":"text","text":"The capital of France is Paris."}}}}
+{"jsonrpc":"2.0","id":1,"result":{}}

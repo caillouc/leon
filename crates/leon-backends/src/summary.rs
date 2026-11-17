@@ -4,6 +4,9 @@ use serde_json::Value;
 
 use crate::process::clip;
 
+/// Most characters of a tool's output kept in a transcript.
+pub(crate) const OUTPUT_MAX: usize = 8_000;
+
 /// Verb and detail for a Claude Code tool call, e.g. `("Ran", "cargo test")`.
 pub(crate) fn claude_tool(name: &str, input: &Value) -> (String, String) {
     let field = |key: &str| {

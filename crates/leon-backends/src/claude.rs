@@ -14,9 +14,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::process::{clip, spawn, stderr_tail};
-use crate::summary::{claude_tool, result_text};
-
-const OUTPUT_MAX: usize = 8_000;
+use crate::summary::{OUTPUT_MAX, claude_tool, result_text};
 
 pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
     let s = &spec.settings;

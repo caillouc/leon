@@ -172,6 +172,9 @@ pub enum BackendEvent {
     },
     /// A reply the user may want to send next (CONV-10).
     Suggestion(String),
+    /// Something the user should know that is not the agent's answer, e.g.
+    /// the CLI could not resume its session and started a new one.
+    Notice(String),
     /// Subagents run by the CLI inside this session (CONV-13).
     Subagents {
         /// Started so far in this session.

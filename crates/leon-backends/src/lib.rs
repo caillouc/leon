@@ -3,16 +3,18 @@
 //!
 //! - Claude Code: `claude -p` with stream-json in and out.
 //! - Codex: `codex app-server`, JSON-RPC over stdio.
-//! - Copilot CLI and Antigravity: ACP, not built yet (M8).
+//! - Copilot CLI and Antigravity: ACP (`copilot --acp`, `agy acp`).
 //!
 //! Must not: depend on another adapter or on the UI; let a CLI-specific
 //! field leave this crate.
 
+mod acp;
 mod claude;
 mod codex;
 mod mcp;
 mod options;
 mod process;
+mod rpc;
 mod summary;
 
 use leon_core::ports::{
@@ -45,10 +47,8 @@ impl Backends for Clis {
         match spec.settings.backend {
             BackendKind::ClaudeCode => claude::start(&spec, (self.path)()),
             BackendKind::Codex => codex::start(&spec, (self.path)()),
-            BackendKind::CopilotCli | BackendKind::Antigravity => Err(PortError::new(
-                "starting a session",
-                "this CLI is not supported yet",
-            )),
+            BackendKind::CopilotCli => acp::start(&spec, &acp::copilot(&spec), (self.path)()),
+            BackendKind::Antigravity => acp::start(&spec, &acp::antigravity(&spec), (self.path)()),
         }
     }
 

@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"image":true,"audio":true,"embeddedContext":true},"mcpCapabilities":{"http":true,"sse":true}},"agentInfo":{"name":"my-agent","title":"My Agent","version":"1.0.0"},"authMethods":[]}}
+{"jsonrpc":"2.0","id":1,"result":{"sessionId":"sess_abc123def456"}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123def456","update":{"sessionUpdate":"tool_call","toolCallId":"call_001","title":"Reading configuration file","name":"read_file","kind":"read","status":"pending"}}}
+{"jsonrpc":"2.0","id":5,"method":"session/request_permission","params":{"sessionId":"sess_abc123def456","toolCall":{"toolCallId":"call_001"},"options":[{"optionId":"allow-once","name":"Allow once","kind":"allow_once"},{"optionId":"reject-once","name":"Reject","kind":"reject_once"}]}}
+{"jsonrpc":"2.0","id":2,"result":{"stopReason":"cancelled"}}

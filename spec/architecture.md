@@ -31,7 +31,7 @@ Ports and adapters: dependencies point inward, to the core and the domain.
 |---|---|---|---|---|
 | 1 | `leon-domain` | Pure types and rules: ids, projects, settings; later conversation state, events, status/unread rules, PR badge, fold matching | nothing internal | M0 |
 | 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain | M0 |
-| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json, Codex app-server: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter | M0–M4 |
+| 3 | adapters: `leon-config` (TOML → settings), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json; Codex app-server and ACP for Copilot CLI and Antigravity through one JSON-RPC runner: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter | M0–M4 |
 | 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core | M0 |
 | 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any | M0 |
 | — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate | M0 |
@@ -98,18 +98,18 @@ ships.
 
 | | Claude Code | Codex | Copilot CLI | Antigravity (`agy`) |
 |---|---|---|---|---|
-| Checked on | 2.1.288 local | 0.160.0 local | docs | docs |
-| Transport | `-p --input-format stream-json --output-format stream-json --include-partial-messages` (local) | `codex app-server` JSON-RPC, marked experimental; schema from `generate-json-schema` (local) | `--acp` (preview) | `agy acp` |
-| Agent | `--agent`, `--agents <json>` (local) | No `--agent` flag (local) → agent's instructions in `thread/start.developerInstructions` (local schema) | `--agent` | `--agent` ⚠️ |
-| Model / effort | `--model`, `--effort` (local) | `turn/start.model`, `turn/start.effort` — per turn, so switchable mid-conversation (local schema) | `--model`, `--effort` | `--model`, `--effort` |
+| Checked on | 2.1.288 local | 0.160.0 local | docs + ACP schema v1.32.0, 2026-11-17; not run | docs + ACP schema v1.32.0, 2026-11-17; not run |
+| Transport | `-p --input-format stream-json --output-format stream-json --include-partial-messages` (local) | `codex app-server` JSON-RPC, marked experimental; schema from `generate-json-schema` (local) | `copilot --acp --stdio` (preview) | `agy acp` |
+| Agent | `--agent`, `--agents <json>` (local) | No `--agent` flag (local) → agent's instructions in `thread/start.developerInstructions` (local schema) | instructions in ACP `systemPrompt` when advertised, else before the first prompt | same as Copilot |
+| Model / effort | `--model`, `--effort` (local) | `turn/start.model`, `turn/start.effort` — per turn, so switchable mid-conversation (local schema) | `--model=`, `--effort=` flags ⚠️ with `--acp` | ACP `session/set_config_option` (`model`, `thought_level`), else none |
 | Stop (CONV-6) | interrupt over stream-json ⚠️ not verified | `turn/interrupt` (local schema) | ACP `session/cancel` | ACP `session/cancel` |
 | Go back (CONV-7) | no flag in `--help` (local) ⚠️ — fallback: new session carrying the messages up to that point | `thread/revert { beforeTurnId }` (local schema) | ⚠️ | ⚠️ |
 | Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ | `subagent_info` ⚠️ |
 | Suggested replies (CONV-10) | `--prompt-suggestions` → `prompt_suggestion` message (local) | ⚠️ | ⚠️ | ⚠️ |
 | Title (NAV-9) | ⚠️ | `thread/name/set`, `thread/name/updated` (local schema) | ⚠️ | ⚠️ |
 | Permission | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` (local) | `-a`, `-s`, `--dangerously-bypass-approvals-and-sandbox` (local) | ACP modes | ACP modes |
-| MCP list | `--mcp-config` (local) | `-c mcp_servers.<name>=…` (local) | `--additional-mcp-config`, ACP `mcpServers` | ACP `mcpServers` |
-| Resume | `--resume`, `--fork-session` (local) | `thread/resume`, `thread/fork` | `--resume`, ACP `session/load` | ACP `session/resume` |
+| MCP list | `--mcp-config` + `--allowedTools mcp__leon` (local) | `thread/start.config.mcp_servers`, Leon's with `default_tools_approval_mode = "approve"` (live, 0.160.0) | ACP `mcpServers`; `--allow-tool=leon` ⚠️ | ACP `mcpServers`; Leon's tools ask outside agy's auto mode |
+| Resume | `--resume`, `--fork-session` (local) | `thread/resume`, `thread/fork` | ACP `session/resume`, else `session/load`, else a new session with a notice | same as Copilot |
 | Usage | `result.total_cost_usd`, `rate_limit_event` | `thread/tokenUsage/updated`, `account/rateLimits/read` | `/usage` | `usage` object |
 
 Rules for every adapter:

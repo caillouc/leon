@@ -39,25 +39,15 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
             id: tool,
             name,
             detail,
-        } => {
-            let entry = Entry::Tool {
-                id: tool.clone(),
-                name,
-                detail,
-                output: None,
-                failed: false,
-            };
-            if let Some(index) = core.record_entry(id, entry)
-                && let Some(s) = core.state_mut().sessions.get_mut(&id)
-            {
-                s.pending_tools.insert(tool, index);
-            }
-        }
+        } => tool_started(core, id, tool, name, detail),
         BackendEvent::ToolDone {
             id: tool,
             output,
             failed,
         } => tool_done(core, id, &tool, output, failed),
+        BackendEvent::Notice(text) => {
+            core.record_entry(id, Entry::Notice { text });
+        }
         BackendEvent::Suggestion(text) => {
             if let Some(s) = core.state_mut().sessions.get_mut(&id)
                 && !s.suggestions.contains(&text)
@@ -75,20 +65,16 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
             title,
             detail,
             options,
-        } => {
-            let Some(s) = core.state_mut().sessions.get_mut(&id) else {
-                return;
-            };
-            s.status = Status::NeedsInput;
-            s.question = Some(Question {
+        } => asked(
+            core,
+            id,
+            Question {
                 id: question,
                 title,
                 detail,
                 options,
-            });
-            let conversation = s.session.conversation;
-            core.answered(id, conversation, false);
-        }
+            },
+        ),
         BackendEvent::TurnEnded { stopped, usage } => {
             if stopped {
                 core.record_entry(
@@ -107,6 +93,32 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
             core.record_entry(id, Entry::Error { text });
         }
     }
+}
+
+fn tool_started(core: &mut Core, id: AgentSessionId, tool: String, name: String, detail: String) {
+    let entry = Entry::Tool {
+        id: tool.clone(),
+        name,
+        detail,
+        output: None,
+        failed: false,
+    };
+    if let Some(index) = core.record_entry(id, entry)
+        && let Some(s) = core.state_mut().sessions.get_mut(&id)
+    {
+        s.pending_tools.insert(tool, index);
+    }
+}
+
+/// The CLI waits for the user (CONV-9).
+fn asked(core: &mut Core, id: AgentSessionId, question: Question) {
+    let Some(s) = core.state_mut().sessions.get_mut(&id) else {
+        return;
+    };
+    s.status = Status::NeedsInput;
+    s.question = Some(question);
+    let conversation = s.session.conversation;
+    core.answered(id, conversation, false);
 }
 
 fn tool_done(core: &mut Core, id: AgentSessionId, tool: &str, output: String, failed: bool) {
