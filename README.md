@@ -4,9 +4,14 @@ One native window to run and follow many coding-agent conversations across
 many repositories, on top of the coding CLIs you already use: Claude Code,
 Codex, Copilot CLI and Antigravity.
 
-**Status: milestone M0 (foundations).** The window opens with its three panes;
-no conversation features yet. What Leon does and in which order:
-[spec/features.md](spec/features.md).
+**Status: working towards v1.** Conversations with Claude Code and Codex,
+agents starting other agents (flow view), git changes and branch diff with
+review comments, GitHub pull requests. Copilot CLI and Antigravity are being
+added. What Leon does: [spec/features.md](spec/features.md).
+
+Leon drives the CLIs with your own logins and subscriptions; it never calls a
+model API itself. Install and log in to each CLI you want to use, and to `gh`
+for GitHub.
 
 ## Build and run
 
@@ -41,9 +46,28 @@ Runs formatting, clippy (warnings are errors), tests, the crate layer check and
 
 ## Files Leon uses
 
-- Settings: `~/.config/leon/config.toml` (or `$XDG_CONFIG_HOME/leon/`).
+- Settings: `~/.config/leon/config.toml` (or `$XDG_CONFIG_HOME/leon/`):
+
+  ```toml
+  version = 1
+
+  [defaults]            # prefilled for a new conversation
+  backend = "claude"    # claude, codex, copilot, agy
+  permission = "auto"
+
+  [diff]
+  fold = ["glob:**/*.lock", "re:^generated/"]   # files folded in diffs
+
+  [sources]
+  folders = ["~/my-agent-kit"]   # agents/, skills/, commands/, .mcp.json
+  ```
+
+- Agents, skills and commands are also read from the usual folders:
+  `~/.agents/`, `~/.claude/`, and the project's `.agents/`, `.claude/`,
+  `.github/`.
 - App data: `~/Library/Application Support/leon/` on macOS,
-  `~/.local/share/leon/` on Linux.
+  `~/.local/share/leon/` on Linux: the conversations (`state.db`) and the
+  socket agents use to reach Leon's tools (`tools.sock`).
 
 ## Licence
 
