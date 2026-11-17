@@ -247,6 +247,9 @@ pub trait Backends: Send + Sync + 'static {
     fn start(&self, spec: SessionSpec) -> Result<BackendChannel, PortError>;
     /// What the pickers offer for `backend`.
     fn options(&self, backend: BackendKind) -> BackendOptions;
+    /// A short title for a conversation that starts with `message`, from a
+    /// one-off call to `backend` (NAV-9, D1). Blocks until the CLI answers.
+    fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError>;
 }
 
 /// The `PATH` adapters start programs with: the user's login-shell `PATH`,

@@ -216,6 +216,9 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         fn options(&self, _b: BackendKind) -> BackendOptions {
             BackendOptions::default()
         }
+        fn title(&self, _b: BackendKind, _m: &str) -> Result<String, PortError> {
+            Err(PortError::new("writing a title", "not installed"))
+        }
     }
     let storage = Arc::new(FakeStorage::default());
     storage
@@ -241,5 +244,20 @@ async fn a_cli_that_cannot_start_shows_an_error() {
     let id = s.conversations[0].sessions[0];
     assert!(
         matches!(entries(&s, id).last(), Some(Entry::Error { text }) if text.contains("not installed"))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_cli_writes_the_title() {
+    let h = harness();
+    *h.backends.title.lock().unwrap() = Some("Webhook retry fix".into());
+    new_conversation(&h, BackendKind::Codex).await;
+    until(&h.core, "title", |s| {
+        s.conversations[0].conversation.title == "Webhook retry fix"
+    })
+    .await;
+    assert_eq!(
+        h.storage.list_conversations().unwrap()[0].title,
+        "Webhook retry fix"
     );
 }

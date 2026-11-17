@@ -106,7 +106,7 @@ ships.
 | Go back (CONV-7) | no flag in `--help` (local) ⚠️ — fallback: new session carrying the messages up to that point | `thread/revert { beforeTurnId }` (local schema) | ⚠️ | ⚠️ |
 | Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ | `subagent_info` ⚠️ |
 | Suggested replies (CONV-10) | `--prompt-suggestions` → `prompt_suggestion` message (local) | ⚠️ | ⚠️ | ⚠️ |
-| Title (NAV-9) | ⚠️ | `thread/name/set`, `thread/name/updated` (local schema) | ⚠️ | ⚠️ |
+| Title (NAV-9) | one-off `claude -p --model haiku --output-format text` ⚠️ not run | one-off `codex exec --skip-git-repo-check --ephemeral -s read-only` (run 2026-11-17) | none: the first line stays | none: the first line stays |
 | Permission | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` (local) | `-a`, `-s`, `--dangerously-bypass-approvals-and-sandbox` (local) | ACP modes | ACP modes |
 | MCP list | `--mcp-config` + `--allowedTools mcp__leon` (local) | `thread/start.config.mcp_servers`, Leon's with `default_tools_approval_mode = "approve"` (live, 0.160.0) | ACP `mcpServers`; `--allow-tool=leon` ⚠️ | ACP `mcpServers`; Leon's tools ask outside agy's auto mode |
 | Resume | `--resume`, `--fork-session` (local) | `thread/resume`, `thread/fork` | ACP `session/resume`, else `session/load`, else a new session with a notice | same as Copilot |

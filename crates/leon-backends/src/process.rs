@@ -27,27 +27,38 @@ const HOST_SESSION_VARS: &[&str] = &[
     "CLAUDE_EFFORT",
 ];
 
-/// Starts `program` in `cwd` with piped stdio, and `path` as `PATH` if
-/// given. The process is killed when the returned [`Child`] is dropped.
-pub(crate) fn spawn(
+/// `program` with `args` in `cwd`, as a terminal would start it: `path` as
+/// `PATH` if given, without a host app's session variables.
+pub(crate) fn command(
     path: Option<&OsString>,
     program: &str,
     args: &[String],
     cwd: &Path,
-) -> std::io::Result<Child> {
-    let mut cmd = Command::new(program);
-    cmd.args(args)
-        .current_dir(cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args).current_dir(cwd);
     for var in HOST_SESSION_VARS {
         cmd.env_remove(var);
     }
     if let Some(path) = path {
         cmd.env("PATH", path);
     }
+    cmd
+}
+
+/// Starts `program` in `cwd` with piped stdio (see [`command`]). The process
+/// is killed when the returned [`Child`] is dropped.
+pub(crate) fn spawn(
+    path: Option<&OsString>,
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+) -> std::io::Result<Child> {
+    let mut cmd = Command::from(command(path, program, args, cwd));
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     cmd.spawn()
 }
 

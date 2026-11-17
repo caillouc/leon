@@ -390,6 +390,7 @@ impl Core {
         let storage = Arc::clone(&self.ports.storage);
         let now = self.now();
         let title = title_from(text);
+        let backend = settings.backend;
         let Some(conversation) = Self::report(blocking(|| {
             storage.create_conversation(project, &title, now)
         })) else {
@@ -411,6 +412,20 @@ impl Core {
         self.state.conversations.push(conversation.clone());
         self.viewing = Some(conversation.id);
         self.send(id, text);
+        self.write_title(conversation.id, &conversation.title, backend, text);
+    }
+
+    /// Asks the CLI for a title in the background (NAV-9).
+    fn write_title(&self, id: ConversationId, old: &str, backend: BackendKind, text: &str) {
+        let backends = Arc::clone(&self.ports.backends);
+        let tx = self.internal_tx.clone();
+        let (old, text) = (old.to_owned(), text.to_owned());
+        tokio::task::spawn_blocking(move || match backends.title(backend, &text) {
+            Ok(title) => {
+                let _ = tx.send(Internal::Title(id, old, title));
+            }
+            Err(error) => tracing::debug!(%error, "no title from the CLI"),
+        });
     }
 
     fn record(&mut self, id: AgentSessionId, entry: Entry) -> Option<usize> {

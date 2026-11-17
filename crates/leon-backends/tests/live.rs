@@ -88,3 +88,19 @@ async fn copilot_answers() {
 async fn antigravity_answers() {
     assert_pong(&pong(BackendKind::Antigravity, None).await);
 }
+
+#[test]
+#[ignore = "runs the real Codex CLI with the user's login"]
+fn codex_writes_a_title() {
+    let title = Clis::default()
+        .title(
+            BackendKind::Codex,
+            "webhook retries give up after 30 seconds, make them retry for 15 minutes",
+        )
+        .unwrap();
+    eprintln!("title: {title}");
+    assert!(
+        (2..=8).contains(&title.split_whitespace().count()),
+        "{title}"
+    );
+}

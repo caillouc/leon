@@ -24,6 +24,9 @@ pub(crate) enum Internal {
     Done(ConversationId, String),
     /// Time to refresh pull request badges.
     Tick,
+    /// A title the CLI wrote for a conversation (NAV-9), with the title it
+    /// replaces.
+    Title(ConversationId, String, String),
 }
 
 impl Core {
@@ -152,6 +155,14 @@ impl Core {
             Internal::Done(id, message) => {
                 self.flash(message);
                 self.refresh_pr(id);
+            }
+            Internal::Title(id, old, new) => {
+                // A title the user or an agent already changed stays.
+                self.edit(id, |c| {
+                    if c.title == old {
+                        c.title = new;
+                    }
+                });
             }
             Internal::Tick => {
                 self.stop_idle_clis();

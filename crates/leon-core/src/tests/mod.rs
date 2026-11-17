@@ -144,6 +144,8 @@ struct Started {
 #[derive(Default)]
 struct FakeBackends {
     started: Mutex<Vec<Started>>,
+    /// What `title` answers; `None`: it fails.
+    title: Mutex<Option<String>>,
 }
 
 impl Backends for FakeBackends {
@@ -159,6 +161,13 @@ impl Backends for FakeBackends {
     }
     fn options(&self, _backend: BackendKind) -> BackendOptions {
         BackendOptions::default()
+    }
+    fn title(&self, _backend: BackendKind, _message: &str) -> Result<String, PortError> {
+        self.title
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| PortError::new("writing a title", "no title in this test"))
     }
 }
 

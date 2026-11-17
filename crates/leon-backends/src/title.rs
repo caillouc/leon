@@ -1,0 +1,167 @@
+//! Conversation titles from a one-off CLI call (NAV-9, D1): the conversation's
+//! own CLI, its cheapest settings, run outside any project.
+
+use std::ffi::OsString;
+use std::io::Read;
+use std::process::Stdio;
+use std::time::{Duration, Instant};
+
+use leon_core::ports::PortError;
+use leon_domain::BackendKind;
+
+use crate::process::command;
+
+const CONTEXT: &str = "writing a conversation title";
+
+/// Longest time a title call may take.
+const TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Most characters of the first message given to the CLI.
+const MESSAGE_MAX: usize = 2_000;
+
+fn prompt(message: &str) -> String {
+    let message: String = message.chars().take(MESSAGE_MAX).collect();
+    format!(
+        "Write a title of 3 to 6 words for a coding conversation that starts with the message \
+         below. Reply with the title only, without quotes.\n\nMessage:\n{message}"
+    )
+}
+
+/// The command for `backend`. Claude Code: `-p` prints the answer (2.1.288
+/// `--help`; ⚠️ not run, its login had expired). Codex: `exec` prints the
+/// last message on stdout (0.160.0, run on 2026-11-17).
+fn args(backend: BackendKind, message: &str) -> Option<(&'static str, Vec<String>)> {
+    let prompt = prompt(message);
+    let list = |items: &[&str]| -> Vec<String> {
+        items
+            .iter()
+            .map(|s| (*s).to_owned())
+            .chain(std::iter::once(prompt.clone()))
+            .collect()
+    };
+    match backend {
+        BackendKind::ClaudeCode => Some((
+            "claude",
+            list(&["-p", "--model", "haiku", "--output-format", "text"]),
+        )),
+        BackendKind::Codex => Some((
+            "codex",
+            list(&[
+                "exec",
+                "--skip-git-repo-check",
+                "--ephemeral",
+                "-s",
+                "read-only",
+                "-c",
+                "model_reasoning_effort=\"low\"",
+            ]),
+        )),
+        BackendKind::CopilotCli | BackendKind::Antigravity => None,
+    }
+}
+
+pub(crate) fn title(
+    path: Option<&OsString>,
+    backend: BackendKind,
+    message: &str,
+) -> Result<String, PortError> {
+    let Some((program, args)) = args(backend, message) else {
+        return Err(PortError::new(
+            CONTEXT,
+            "this CLI has no one-off mode Leon uses",
+        ));
+    };
+    let mut child = command(path, program, &args, &std::env::temp_dir())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| PortError::new(CONTEXT, format!("{program}: {e}")))?;
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < TIMEOUT => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(PortError::new(CONTEXT, format!("{program} took too long")));
+            }
+            Err(e) => return Err(PortError::new(CONTEXT, e)),
+        }
+    };
+    let mut out = String::new();
+    if let Some(mut stdout) = child.stdout.take() {
+        stdout
+            .read_to_string(&mut out)
+            .map_err(|e| PortError::new(CONTEXT, e))?;
+    }
+    if !status.success() {
+        return Err(PortError::new(
+            CONTEXT,
+            format!("{program} failed ({status})"),
+        ));
+    }
+    clean(&out).ok_or_else(|| PortError::new(CONTEXT, format!("{program} gave no title")))
+}
+
+/// The title in a CLI's answer: its last non-empty line, without quotes,
+/// markdown or a final period; `None` when that is empty or too long.
+fn clean(out: &str) -> Option<String> {
+    let decoration = |c: char| matches!(c, '"' | '\'' | '`' | '*' | '#') || c.is_whitespace();
+    let line = out.lines().map(str::trim).rfind(|l| !l.is_empty())?;
+    let line = line.trim_matches(decoration);
+    let title = line
+        .strip_prefix("Title:")
+        .unwrap_or(line)
+        .trim_matches(decoration)
+        .trim_end_matches('.')
+        .trim();
+    (!title.is_empty() && title.chars().count() <= 80).then(|| title.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use leon_domain::BackendKind;
+
+    use super::{args, clean};
+
+    #[test]
+    fn titles_are_cleaned() {
+        let cases = [
+            (
+                "Extend Webhook Retries to 15 Minutes\n",
+                Some("Extend Webhook Retries to 15 Minutes"),
+            ),
+            (
+                "Sure!\n\n\"Fix the login test.\"\n",
+                Some("Fix the login test"),
+            ),
+            ("**Title:** Migrate config", Some("Migrate config")),
+            (
+                "Title: Migrate config to TOML",
+                Some("Migrate config to TOML"),
+            ),
+            ("   \n", None),
+        ];
+        for (out, expected) in cases {
+            assert_eq!(clean(out).as_deref(), expected, "{out:?}");
+        }
+        assert_eq!(clean(&"word ".repeat(30)), None);
+    }
+
+    #[test]
+    fn each_cli_gets_its_one_off_command() {
+        let (program, list) = args(BackendKind::Codex, "fix it").unwrap();
+        assert_eq!(program, "codex");
+        assert_eq!(list[0], "exec");
+        assert!(list.last().unwrap().ends_with("Message:\nfix it"));
+        assert_eq!(
+            args(BackendKind::ClaudeCode, "x").unwrap().1[..3],
+            ["-p", "--model", "haiku"]
+        );
+        assert!(args(BackendKind::CopilotCli, "x").is_none());
+    }
+}

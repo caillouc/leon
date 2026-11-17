@@ -16,6 +16,7 @@ mod options;
 mod process;
 mod rpc;
 mod summary;
+mod title;
 
 use leon_core::ports::{
     BackendChannel, BackendOptions, Backends, PortError, SearchPath, SessionSpec, inherited_path,
@@ -54,5 +55,9 @@ impl Backends for Clis {
 
     fn options(&self, backend: BackendKind) -> BackendOptions {
         options::for_backend(backend)
+    }
+
+    fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError> {
+        title::title((self.path)(), backend, message)
     }
 }
