@@ -9,6 +9,7 @@
 
 mod agents;
 mod app;
+mod doctor;
 mod events;
 mod idle;
 mod intent;
@@ -18,6 +19,7 @@ mod snapshot;
 mod state;
 
 pub use app::{CoreHandle, Detached, Ports, detached, start};
+pub use doctor::About;
 pub use intent::Intent;
 pub use snapshot::{
     ConversationView, GitView, Notification, Question, SessionView, Snapshot, TranscriptView,

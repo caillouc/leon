@@ -37,6 +37,8 @@ pub enum Shot {
     Review(ConversationId),
     /// My open pull requests in the main pane.
     MyPullRequests,
+    /// The doctor's report.
+    Doctor,
 }
 
 impl Workspace {
@@ -97,6 +99,7 @@ impl Workspace {
                 self.start_comment(at(14), window, cx);
             }
             Shot::MyPullRequests => self.screen = Screen::GitHub(GhList::PullRequests),
+            Shot::Doctor => self.screen = Screen::Doctor,
         }
         self.core.send(Intent::View(None));
         cx.notify();

@@ -10,6 +10,12 @@ use crate::ports::{Git, GitHub};
 pub(super) struct FakeGit;
 
 impl Git for FakeGit {
+    fn doctor(&self) -> leon_domain::DoctorSection {
+        leon_domain::DoctorSection {
+            title: "git".into(),
+            checks: vec![],
+        }
+    }
     fn branch(&self, _dir: &Path) -> Option<String> {
         Some("fix-retry".into())
     }
@@ -42,6 +48,12 @@ pub(super) struct FakeGitHub {
 }
 
 impl GitHub for FakeGitHub {
+    fn doctor(&self) -> leon_domain::DoctorSection {
+        leon_domain::DoctorSection {
+            title: "GitHub CLI".into(),
+            checks: vec![],
+        }
+    }
     fn pull_request(&self, _dir: &Path, branch: &str) -> Result<Option<PullRequest>, PortError> {
         Ok((branch == "fix-retry").then(|| PullRequest {
             repo: "acme/api".into(),
@@ -118,4 +130,17 @@ async fn requesting_a_copilot_review_says_so() {
         s.flash.as_ref().map(|f| f.1.as_str()),
         Some("Copilot review requested on #7")
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_doctor_runs_at_start_with_every_section() {
+    let h = harness();
+    let s = until(&h.core, "doctor", |s| s.doctor.is_some()).await;
+    let (_, sections) = s.doctor.clone().unwrap();
+    let titles: Vec<&str> = sections.iter().map(|x| x.title.as_str()).collect();
+    assert_eq!(titles, ["Leon", "Codex", "git", "GitHub CLI"]);
+    let leon: Vec<&str> = sections[0].checks.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(leon, ["Version", "Tools for agents"]);
+    assert_eq!(sections[1].health(), leon_domain::Health::Problem);
+    assert!(!s.doctor_running);
 }

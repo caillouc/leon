@@ -47,6 +47,10 @@ pub struct Snapshot {
     /// The latest short message to show the user (an action's result), with
     /// a unique id.
     pub flash: Option<(u64, String)>,
+    /// The last doctor report (sections) and when it was made.
+    pub doctor: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
+    /// The doctor's checks are running.
+    pub doctor_running: bool,
     /// Desktop notifications to show (NOTIF-1), oldest first. Each has a
     /// unique id so the UI shows it once.
     pub notifications: Arc<Vec<Notification>>,

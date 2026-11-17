@@ -2,14 +2,12 @@
 //! own CLI, its cheapest settings, run outside any project.
 
 use std::ffi::OsString;
-use std::io::Read;
-use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use leon_core::ports::PortError;
 use leon_domain::BackendKind;
 
-use crate::process::command;
+use crate::process::{RunError, run};
 
 const CONTEXT: &str = "writing a conversation title";
 
@@ -71,40 +69,20 @@ pub(crate) fn title(
             "this CLI has no one-off mode Leon uses",
         ));
     };
-    let mut child = command(path, program, &args, &std::env::temp_dir())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| PortError::new(CONTEXT, format!("{program}: {e}")))?;
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() < TIMEOUT => {
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(PortError::new(CONTEXT, format!("{program} took too long")));
-            }
-            Err(e) => return Err(PortError::new(CONTEXT, e)),
-        }
-    };
-    let mut out = String::new();
-    if let Some(mut stdout) = child.stdout.take() {
-        stdout
-            .read_to_string(&mut out)
-            .map_err(|e| PortError::new(CONTEXT, e))?;
-    }
-    if !status.success() {
-        return Err(PortError::new(
+    let out = run(path, program, &args, TIMEOUT).map_err(|e| {
+        PortError::new(
             CONTEXT,
-            format!("{program} failed ({status})"),
-        ));
+            match e {
+                RunError::NotFound => format!("{program} is not installed"),
+                RunError::TimedOut => format!("{program} took too long"),
+                RunError::Other(message) => format!("{program}: {message}"),
+            },
+        )
+    })?;
+    if !out.ok {
+        return Err(PortError::new(CONTEXT, format!("{program} failed")));
     }
-    clean(&out).ok_or_else(|| PortError::new(CONTEXT, format!("{program} gave no title")))
+    clean(&out.stdout).ok_or_else(|| PortError::new(CONTEXT, format!("{program} gave no title")))
 }
 
 /// The title in a CLI's answer: its last non-empty line, without quotes,

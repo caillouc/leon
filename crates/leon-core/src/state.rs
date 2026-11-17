@@ -91,6 +91,9 @@ pub(crate) struct State {
     pub github_error: Option<String>,
     pub fold: Arc<Vec<leon_domain::FoldPattern>>,
     pub flash: Option<(u64, String)>,
+    /// The last doctor report and when it was made.
+    pub doctor: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
+    pub doctor_running: bool,
 }
 
 impl State {
@@ -185,6 +188,8 @@ impl State {
             github_error: self.github_error.clone(),
             fold: Arc::clone(&self.fold),
             flash: self.flash.clone(),
+            doctor: self.doctor.clone(),
+            doctor_running: self.doctor_running,
         }
     }
 }

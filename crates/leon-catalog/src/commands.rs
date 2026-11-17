@@ -37,6 +37,11 @@ pub(crate) fn commands(home: &Path, sources: &[PathBuf], project: &Path) -> Vec<
     by_name.into_values().collect()
 }
 
+/// How many skills and commands a source folder holds.
+pub(crate) fn count_in_source(source: &Path) -> usize {
+    skills(&source.join("skills")).len() + command_files(&source.join("commands")).len()
+}
+
 fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
     let mut paths: Vec<_> = std::fs::read_dir(dir)
         .map_or_default(|entries| entries.filter_map(Result::ok).map(|e| e.path()).collect());

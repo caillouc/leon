@@ -230,6 +230,7 @@ fn sample() -> Snapshot {
         my_issues: repo::my_issues(),
         my_prs: repo::my_prs(),
         fold: repo::fold(),
+        doctor: Some(repo::doctor()),
         notifications: Arc::new(Vec::new()),
         ..Snapshot::default()
     }
@@ -270,6 +271,7 @@ fn main() {
         ),
         ("review".to_owned(), Shot::Review(ConversationId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),
+        ("doctor".to_owned(), Shot::Doctor),
     ];
     gpui_platform::application().run(move |cx| capture(&core, shots, out, cx));
 }

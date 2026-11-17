@@ -131,6 +131,13 @@ impl Workspace {
                     )),
             )
             .child(body)
+            .child(
+                div()
+                    .border_t_1()
+                    .border_color(theme::border())
+                    .pt_1()
+                    .child(self.render_doctor_row(cx)),
+            )
             .into_any_element()
     }
 

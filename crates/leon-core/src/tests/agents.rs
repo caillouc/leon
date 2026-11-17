@@ -9,6 +9,9 @@ use crate::ports::{AppToolCall, AppToolRequest, AppTools};
 pub(super) struct FakeTools;
 
 impl AppTools for FakeTools {
+    fn doctor(&self) -> leon_domain::DoctorCheck {
+        leon_domain::DoctorCheck::new(leon_domain::Health::Ok, "Tools for agents", "listening")
+    }
     fn server(&self, session: AgentSessionId) -> McpServer {
         McpServer {
             name: "leon".into(),

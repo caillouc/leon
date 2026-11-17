@@ -6,6 +6,7 @@
 mod backend;
 mod conversation;
 mod diff;
+mod doctor;
 mod github;
 mod mcp;
 mod project;
@@ -18,6 +19,7 @@ pub use conversation::{
     AgentSession, AgentSessionId, Conversation, ConversationId, SessionSettings, Status,
 };
 pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason};
+pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
 pub use github::{Check, CheckState, Comment, Issue, PrState, PullRequest};
 pub use mcp::McpServer;
 pub use project::{Project, ProjectId};

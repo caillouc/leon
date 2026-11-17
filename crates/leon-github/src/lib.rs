@@ -45,6 +45,40 @@ impl Default for GhCli {
 }
 
 impl GitHub for GhCli {
+    fn doctor(&self) -> leon_domain::DoctorSection {
+        use leon_domain::{DoctorCheck, Health, version_check};
+        let path = (self.path)();
+        let args =
+            |list: &[&str]| -> Vec<String> { list.iter().map(|s| (*s).to_owned()).collect() };
+        let mut checks = Vec::new();
+        match gh(path, &args(&["--version"]), None) {
+            Err(GhError::Missing) => checks.push(
+                DoctorCheck::new(Health::Problem, "Installed", "`gh` not found").fix(
+                    "Install the GitHub CLI (`gh`): Leon reads pull requests and issues with it",
+                ),
+            ),
+            Err(error) => checks.push(DoctorCheck::new(
+                Health::Problem,
+                "Installed",
+                error.to_string(),
+            )),
+            Ok(out) => {
+                let found = out.lines().next().unwrap_or_default().trim();
+                checks.push(version_check("Version", found, "2.101.0"));
+                // Exit status 0 when an account is logged in (gh 2.101.0).
+                checks.push(match gh(path, &args(&["auth", "status"]), None) {
+                    Ok(_) => DoctorCheck::new(Health::Ok, "Logged in", "yes"),
+                    Err(_) => DoctorCheck::new(Health::Problem, "Logged in", "no")
+                        .fix("Run `gh auth login` in a terminal"),
+                });
+            }
+        }
+        leon_domain::DoctorSection {
+            title: "GitHub CLI".to_owned(),
+            checks,
+        }
+    }
+
     fn pull_request(&self, dir: &Path, branch: &str) -> Result<Option<PullRequest>, PortError> {
         let error = |cause: &dyn std::fmt::Display| {
             PortError::new(

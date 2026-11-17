@@ -59,6 +59,19 @@ const DIFF_ARGS: [&str; 8] = [
 ];
 
 impl Git for GitCli {
+    fn doctor(&self) -> leon_domain::DoctorSection {
+        use leon_domain::{DoctorCheck, Health};
+        let check = match git_line((self.path)(), &std::env::temp_dir(), &["--version"]) {
+            Ok(version) => DoctorCheck::new(Health::Ok, "Installed", version),
+            Err(error) => DoctorCheck::new(Health::Problem, "Installed", error)
+                .fix("Install git so that `git` is on your PATH: Leon reads changes with it"),
+        };
+        leon_domain::DoctorSection {
+            title: "git".to_owned(),
+            checks: vec![check],
+        }
+    }
+
     fn branch(&self, dir: &Path) -> Option<String> {
         let name = git_line((self.path)(), dir, &["rev-parse", "--abbrev-ref", "HEAD"]).ok()?;
         (!name.is_empty() && name != "HEAD").then_some(name)

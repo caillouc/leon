@@ -62,6 +62,88 @@ pub(crate) fn spawn(
     cmd.spawn()
 }
 
+/// Why a one-off command gave no output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RunError {
+    /// The program is not installed (not on `PATH`).
+    NotFound,
+    /// It took longer than allowed and was stopped.
+    TimedOut,
+    /// Anything else, as the system said it.
+    Other(String),
+}
+
+/// What a one-off command printed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Output {
+    /// It exited with success.
+    pub ok: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Runs a one-off command in the temp folder with no input, and stops it
+/// after `timeout`. Both outputs are read while it runs, so a chatty CLI
+/// cannot fill a pipe and stall.
+pub(crate) fn run(
+    path: Option<&OsString>,
+    program: &str,
+    args: &[String],
+    timeout: std::time::Duration,
+) -> Result<Output, RunError> {
+    use std::io::Read;
+    let mut child = command(path, program, args, &std::env::temp_dir())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => RunError::NotFound,
+            _ => RunError::Other(e.to_string()),
+        })?;
+    let reader = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_string(&mut text);
+            }
+            text
+        })
+    };
+    let stdout = reader(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let stderr = reader(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < timeout => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(RunError::TimedOut);
+            }
+            Err(e) => return Err(RunError::Other(e.to_string())),
+        }
+    };
+    Ok(Output {
+        ok: status.success(),
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+    })
+}
+
 /// Keeps the last lines the CLI wrote on stderr, for error messages.
 pub(crate) fn stderr_tail(stderr: ChildStderr) -> JoinHandle<String> {
     tokio::spawn(async move {

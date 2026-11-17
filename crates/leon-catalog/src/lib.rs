@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use leon_core::ports::{AgentDefinition, Catalog, SlashCommand, Source};
+use leon_domain::{DoctorCheck, Health};
 
 use crate::frontmatter::split;
 
@@ -62,6 +63,40 @@ impl Catalog for AgentFiles {
 
     fn sources(&self) -> Vec<Source> {
         self.sources.iter().map(|dir| sources::read(dir)).collect()
+    }
+
+    fn doctor(&self) -> Vec<DoctorCheck> {
+        if self.sources.is_empty() {
+            return vec![DoctorCheck::new(
+                Health::Info,
+                "Source folders",
+                "none (`[sources] folders` in the config)",
+            )];
+        }
+        self.sources
+            .iter()
+            .map(|dir| {
+                if !dir.is_dir() {
+                    return DoctorCheck::new(
+                        Health::Problem,
+                        "Source folder",
+                        format!("{} does not exist", dir.display()),
+                    )
+                    .fix("Fix `[sources] folders` in Leon's config file");
+                }
+                let agents = read_folder(&dir.join("agents")).len();
+                let skills = commands::count_in_source(dir);
+                let servers = sources::read(dir).mcp_servers.len();
+                DoctorCheck::new(
+                    Health::Ok,
+                    "Source folder",
+                    format!(
+                        "{}: {agents} agents, {skills} skills and commands, {servers} MCP servers",
+                        dir.display()
+                    ),
+                )
+            })
+            .collect()
     }
 }
 

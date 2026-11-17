@@ -39,6 +39,8 @@ pub struct Ports {
     pub app_tools: Option<Arc<dyn AppTools>>,
     /// Current time, Unix milliseconds.
     pub clock: fn() -> i64,
+    /// Leon's own facts for the doctor.
+    pub about: crate::doctor::About,
 }
 
 /// The UI's handle on the core.
@@ -177,6 +179,7 @@ impl Core {
         self.publish();
         self.refresh_all_git();
         self.refresh_lists();
+        self.run_doctor();
         loop {
             tokio::select! {
                 intent = intents.recv() => match intent {
@@ -203,6 +206,10 @@ impl Core {
 
     fn now(&self) -> i64 {
         (self.ports.clock)()
+    }
+
+    pub(crate) fn now_ms(&self) -> i64 {
+        self.now()
     }
 
     fn report<T>(result: Result<T, crate::ports::PortError>) -> Option<T> {
@@ -299,6 +306,7 @@ impl Core {
             Intent::Delete(id) => self.delete(id),
             Intent::RefreshGit(id) => self.refresh_git(id),
             Intent::RefreshGitHub => self.refresh_lists(),
+            Intent::RunDoctor => self.run_doctor(),
             Intent::RequestCopilotReview(id) => self.request_review(id),
             Intent::CommentOnPr(id, body) => self.comment(id, body),
         }

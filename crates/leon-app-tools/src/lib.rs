@@ -57,6 +57,24 @@ impl LocalTools {
 }
 
 impl AppTools for LocalTools {
+    fn doctor(&self) -> leon_domain::DoctorCheck {
+        use leon_domain::{DoctorCheck, Health};
+        let name = "Tools for agents";
+        match std::os::unix::net::UnixStream::connect(&self.socket) {
+            Ok(_) => DoctorCheck::new(
+                Health::Ok,
+                name,
+                format!("listening on {}", self.socket.display()),
+            ),
+            Err(error) => DoctorCheck::new(
+                Health::Problem,
+                name,
+                format!("{}: {error}", self.socket.display()),
+            )
+            .fix("Agents cannot start other agents. Quit every Leon and open it again"),
+        }
+    }
+
     fn server(&self, session: AgentSessionId) -> McpServer {
         McpServer {
             name: SERVER_NAME.to_owned(),

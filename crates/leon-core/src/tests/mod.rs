@@ -169,6 +169,16 @@ impl Backends for FakeBackends {
             .clone()
             .ok_or_else(|| PortError::new("writing a title", "no title in this test"))
     }
+    fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
+        vec![leon_domain::DoctorSection {
+            title: "Codex".into(),
+            checks: vec![leon_domain::DoctorCheck::new(
+                leon_domain::Health::Problem,
+                "Logged in",
+                "no",
+            )],
+        }]
+    }
 }
 
 struct FakeCatalog;
@@ -178,6 +188,9 @@ impl Catalog for FakeCatalog {
         Vec::new()
     }
     fn sources(&self) -> Vec<crate::ports::Source> {
+        Vec::new()
+    }
+    fn doctor(&self) -> Vec<leon_domain::DoctorCheck> {
         Vec::new()
     }
     fn agents(&self, _project: &Path) -> Vec<AgentDefinition> {
@@ -206,6 +219,13 @@ fn ports(storage: Arc<dyn Storage>, backends: Arc<dyn Backends>) -> Ports {
         github: Arc::new(repo::FakeGitHub::default()),
         app_tools: Some(Arc::new(agents::FakeTools)),
         clock: || 1_000,
+        about: Arc::new(|| {
+            vec![leon_domain::DoctorCheck::new(
+                leon_domain::Health::Info,
+                "Version",
+                "Leon 0.1.0",
+            )]
+        }),
     }
 }
 

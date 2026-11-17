@@ -11,6 +11,7 @@
 mod acp;
 mod claude;
 mod codex;
+mod doctor;
 mod mcp;
 mod options;
 mod process;
@@ -21,7 +22,7 @@ mod title;
 use leon_core::ports::{
     BackendChannel, BackendOptions, Backends, PortError, SearchPath, SessionSpec, inherited_path,
 };
-use leon_domain::BackendKind;
+use leon_domain::{BackendKind, DoctorSection};
 
 /// The real CLIs on this machine.
 #[derive(Debug, Clone)]
@@ -58,5 +59,12 @@ impl Backends for Clis {
 
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError> {
         title::title((self.path)(), backend, message)
+    }
+
+    fn doctor(&self) -> Vec<DoctorSection> {
+        BackendKind::ALL
+            .into_iter()
+            .map(|b| doctor::section((self.path)(), b))
+            .collect()
     }
 }

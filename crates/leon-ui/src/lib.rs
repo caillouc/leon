@@ -13,6 +13,7 @@
 mod composer;
 mod conversation;
 mod diff_view;
+mod doctor;
 mod flow;
 mod flow_model;
 mod form;

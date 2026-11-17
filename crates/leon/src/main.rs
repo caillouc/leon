@@ -1,6 +1,8 @@
 //! Leon's entry point: builds the adapters, starts the core on tokio (P8) and
 //! hands the UI a handle on it. No logic lives here.
 
+mod about;
+
 use std::ffi::OsString;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
@@ -16,11 +18,18 @@ fn main() -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("mcp") {
         return leon_app_tools::bridge().context("running the MCP bridge for Leon's tools");
     }
-    let settings = load_settings();
+    let (settings, config, config_warnings) = load_settings();
     let data = data_dir()?;
     let store = open_store(&data)?;
     let socket = data.join("tools.sock");
     let exe = std::env::current_exe().context("finding Leon's own program")?;
+    let about = about::about(about::Facts {
+        config,
+        config_warnings,
+        data: data.clone(),
+        exe: exe.clone(),
+        login_path,
+    });
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_name("leon-core")
@@ -43,6 +52,7 @@ fn main() -> anyhow::Result<()> {
             socket.clone(),
         ))),
         clock: now_ms,
+        about,
     };
     let core = leon_core::start(runtime.handle(), ports, settings);
     match leon_app_tools::serve(runtime.handle(), &socket, core.app_tools()) {
@@ -88,17 +98,19 @@ fn init_tracing() {
         .init();
 }
 
-/// User settings (P9). Problems are logged; the app always starts.
-fn load_settings() -> Settings {
+/// User settings (P9), the config file's path and its problems. Problems are
+/// logged too; the app always starts.
+fn load_settings() -> (Settings, Option<std::path::PathBuf>, Vec<String>) {
     let Some(path) = leon_config::user_config_path() else {
         tracing::warn!("no home directory: using default settings");
-        return Settings::default();
+        return (Settings::default(), None, Vec::new());
     };
     let loaded = leon_config::load(&path);
     for warning in &loaded.warnings {
         tracing::warn!(file = %path.display(), "config: {warning}");
     }
-    loaded.settings
+    let warnings = loaded.warnings.iter().map(ToString::to_string).collect();
+    (loaded.settings, Some(path), warnings)
 }
 
 /// App data lives in the platform data folder (P9): `~/Library/Application

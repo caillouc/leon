@@ -71,6 +71,8 @@ pub enum Intent {
     RefreshGit(ConversationId),
     /// Re-read my issues and pull requests (GH-2, GH-3).
     RefreshGitHub,
+    /// Run the doctor's checks again.
+    RunDoctor,
     /// Ask Copilot to review the conversation's pull request (GH-5).
     RequestCopilotReview(ConversationId),
     /// Comment on the conversation's pull request (GH-6).

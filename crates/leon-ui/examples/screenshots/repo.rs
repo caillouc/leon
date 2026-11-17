@@ -166,3 +166,82 @@ pub fn my_issues() -> Arc<Vec<Issue>> {
         updated_at: 0,
     }])
 }
+
+pub fn doctor() -> (i64, Arc<Vec<leon_domain::DoctorSection>>) {
+    use leon_domain::{DoctorCheck as C, DoctorSection as S, Health as H};
+    let sections = vec![
+        S {
+            title: "Leon".into(),
+            checks: vec![
+                C::new(H::Info, "Version", "Leon 0.1.0 (macos, aarch64)"),
+                C::new(H::Ok, "Config", "~/.config/leon/config.toml"),
+                C::new(H::Info, "Data folder", "~/Library/Application Support/leon"),
+                C::new(H::Ok, "PATH", "read from your login shell"),
+                C::new(
+                    H::Warning,
+                    "Notifications",
+                    "off: Leon is not running as an app (Leon.app)",
+                )
+                .fix("Run Leon from its app bundle to get desktop notifications"),
+                C::new(
+                    H::Ok,
+                    "Tools for agents",
+                    "listening on ~/Library/Application Support/leon/tools.sock",
+                ),
+                C::new(
+                    H::Info,
+                    "Source folders",
+                    "none (`[sources] folders` in the config)",
+                ),
+            ],
+        },
+        S {
+            title: "Claude Code".into(),
+            checks: vec![
+                C::new(
+                    H::Ok,
+                    "Version",
+                    "2.1.288 (Claude Code) (Leon was checked with 2.1.288)",
+                ),
+                C::new(H::Problem, "Logged in", "no").fix("Run `claude auth login` in a terminal"),
+            ],
+        },
+        S {
+            title: "Codex".into(),
+            checks: vec![
+                C::new(
+                    H::Ok,
+                    "Version",
+                    "codex-cli 0.160.0 (Leon was checked with 0.160.0)",
+                ),
+                C::new(H::Ok, "Logged in", "yes"),
+            ],
+        },
+        S {
+            title: "Copilot CLI".into(),
+            checks: vec![C::new(H::Problem, "Installed", "`copilot` not found").fix(
+                "Install Copilot CLI so that `copilot` is on your PATH, then run the doctor again",
+            )],
+        },
+        S {
+            title: "git".into(),
+            checks: vec![C::new(
+                H::Ok,
+                "Installed",
+                "git version 2.54.0 (Apple Git-157)",
+            )],
+        },
+        S {
+            title: "GitHub CLI".into(),
+            checks: vec![
+                C::new(
+                    H::Ok,
+                    "Version",
+                    "gh version 2.101.0 (2026-09-15) (Leon was checked with 2.101.0)",
+                ),
+                C::new(H::Ok, "Logged in", "yes"),
+            ],
+        },
+    ];
+    (0, Arc::new(sections))
+}

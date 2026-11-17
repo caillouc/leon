@@ -26,6 +26,8 @@ pub(crate) enum Screen {
     NewConversation,
     /// My issues or my pull requests (GH-2, GH-3).
     GitHub(GhList),
+    /// What works and what needs setting up.
+    Doctor,
 }
 
 /// The tab shown for a conversation (FLOW-3): the flow, or one agent session.
@@ -337,6 +339,7 @@ impl Render for Workspace {
             Screen::Conversation(id) => self.render_conversation(id, window, cx),
             Screen::NewConversation => self.render_new_conversation(window, cx),
             Screen::GitHub(list) => self.render_github_list(list, cx),
+            Screen::Doctor => self.render_doctor(cx),
         };
         let flash = self.flash.as_ref().map(|(_, text)| {
             div()

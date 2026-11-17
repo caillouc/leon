@@ -27,6 +27,8 @@ pub(crate) enum Internal {
     /// A title the CLI wrote for a conversation (NAV-9), with the title it
     /// replaces.
     Title(ConversationId, String, String),
+    /// The doctor's report.
+    Doctor(Vec<leon_domain::DoctorSection>),
 }
 
 impl Core {
@@ -164,6 +166,7 @@ impl Core {
                     }
                 });
             }
+            Internal::Doctor(sections) => self.doctor_done(sections),
             Internal::Tick => {
                 self.stop_idle_clis();
                 let ids: Vec<ConversationId> = self

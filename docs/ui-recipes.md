@@ -22,6 +22,7 @@ from Leon's own code instead of guessing the API. Pinned versions:
 | Focus an input | `entity.focus_handle(cx).focus(window, cx)` (trait `Focusable`), in `diff_view.rs` → `start_comment` |
 | A short message that disappears | `Workspace::show_flash` (timer with `cx.spawn` + `background_executor().timer`) |
 | Canvas with pan, zoom, drag and painted arrows | `crates/leon-ui/src/flow.rs` (`canvas` + `PathBuilder`, mouse and `on_scroll` / `on_pinch` listeners) |
+| A footer row pinned under a scrolling list | `crates/leon-ui/src/left.rs` (`render_doctor_row` after the list) |
 | Look at the UI without a screen | `cargo run -p leon-ui --example screenshots --features preview -- <folder>` writes PNGs of the main screens |
 
 Rules:

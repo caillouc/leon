@@ -219,6 +219,9 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         fn title(&self, _b: BackendKind, _m: &str) -> Result<String, PortError> {
             Err(PortError::new("writing a title", "not installed"))
         }
+        fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
+            Vec::new()
+        }
     }
     let storage = Arc::new(FakeStorage::default());
     storage

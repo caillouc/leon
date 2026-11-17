@@ -3,8 +3,9 @@
 use std::path::{Path, PathBuf};
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, FileDiff, Issue,
-    McpServer, Project, ProjectId, PullRequest, SessionSettings, TimedEntry, Usage,
+    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, DoctorCheck,
+    DoctorSection, FileDiff, Issue, McpServer, Project, ProjectId, PullRequest, SessionSettings,
+    TimedEntry, Usage,
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -121,6 +122,8 @@ pub trait Catalog: Send + Sync + 'static {
     fn commands(&self, project: &Path) -> Vec<SlashCommand>;
     /// The user's source folders, with their MCP servers (EXT-2).
     fn sources(&self) -> Vec<Source>;
+    /// Doctor: the source folders and what was found in them.
+    fn doctor(&self) -> Vec<DoctorCheck>;
 }
 
 /// What a backend needs to start a CLI session.
@@ -250,6 +253,8 @@ pub trait Backends: Send + Sync + 'static {
     /// A short title for a conversation that starts with `message`, from a
     /// one-off call to `backend` (NAV-9, D1). Blocks until the CLI answers.
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError>;
+    /// Doctor: one section per CLI (installed, version, logged in). Blocks.
+    fn doctor(&self) -> Vec<DoctorSection>;
 }
 
 /// The `PATH` adapters start programs with: the user's login-shell `PATH`,
@@ -277,6 +282,8 @@ pub trait Git: Send + Sync + 'static {
     /// What the branch changed since it left `base`, as a PR shows it:
     /// `merge-base(base, HEAD)..HEAD` (GIT-3).
     fn branch_diff(&self, dir: &Path, base: &str) -> Result<Vec<FileDiff>, PortError>;
+    /// Doctor: git installed and its version. Blocks.
+    fn doctor(&self) -> DoctorSection;
 }
 
 /// Talks to GitHub with the user's own login (P7). Calls may block.
@@ -292,6 +299,8 @@ pub trait GitHub: Send + Sync + 'static {
     fn request_copilot_review(&self, repo: &str, number: u64) -> Result<(), PortError>;
     /// Posts a comment on a pull request or an issue (GH-6).
     fn comment(&self, repo: &str, number: u64, body: &str) -> Result<(), PortError>;
+    /// Doctor: `gh` installed, its version, logged in. Blocks.
+    fn doctor(&self) -> DoctorSection;
 }
 
 /// A call to one of the tools the app gives every agent session (P10, P15),
@@ -345,6 +354,8 @@ pub trait AppTools: Send + Sync + 'static {
     /// The MCP server to give one agent session; its tool calls arrive as
     /// [`AppToolRequest`]s from that session.
     fn server(&self, session: AgentSessionId) -> McpServer;
+    /// Doctor: whether agents can reach the app's tools. Blocks.
+    fn doctor(&self) -> DoctorCheck;
 }
 
 /// Where the app's MCP server sends tool calls to the core.
