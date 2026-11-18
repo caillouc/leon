@@ -13,7 +13,7 @@ coding-agent conversations across many repositories, on top of the coding CLIs
 |---|---|---|
 | `AGENTS.md` | Maintainer | Follow it |
 | [spec/features.md](spec/features.md) — what the app does | Maintainer | Read it; add or update a feature only when the maintainer explicitly asks for it |
-| [spec/decisions.md](spec/decisions.md) — technical and product choices | Maintainer | Read it, never edit it |
+| [spec/decisions.md](spec/decisions.md) — technical and product choices | Maintainer | Read it; record a decision only when the maintainer states it, in their words, never one of your own |
 | [spec/architecture.md](spec/architecture.md) — how the code is organised | Agents | Keep it true to the code, within decisions.md |
 | Code, tests, CI | Agents | |
 

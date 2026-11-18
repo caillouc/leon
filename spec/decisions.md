@@ -70,7 +70,8 @@ need per-CLI code anyway. Codex marks app-server as experimental; accepted
 (see I13).
 Alternatives: ACP everywhere through adapters; each CLI's native protocol only.
 
-**P3 — Agents, skills and MCP defined once.**
+**P3 — Agents, skills and MCP defined once.** (extended 2026-11-18: generic
+files in `~/.agents/`, I15)
 The user registers source folders in the plugin layout (`agents/`, `skills/`,
 `.mcp.json`, optional `.claude-plugin/plugin.json`). Each CLI reads natively
 what it can (skills in `~/.agents/skills`, plugin manifests). The app passes the
@@ -172,8 +173,11 @@ the first line of the first message.
 `--allowedTools mcp__leon`, Codex per-server approval, Copilot CLI
 `--allow-tool`. The user's own MCP servers keep their usual prompts.
 
-**I7 — A started agent's settings.** An agent started by another uses the
-caller's CLI, model, effort and permission.
+**I7 — A started agent's settings.** (changed 2026-11-18) An agent started by
+another runs on the CLI and model its file's `model` picks (I17); without
+one, or with a model no CLI offers, on the caller's CLI, model, effort and
+permission. On another CLI than the caller's, the effort stays when that CLI
+has it and the permission becomes that CLI's "auto".
 
 **I8 — No notification for answers between agents.** NOTIF-1 fires when an
 answer is for the user.
@@ -181,9 +185,9 @@ answer is for the user.
 **I9 — Idle CLIs.** A CLI process idle for 10 minutes is stopped and resumed
 by its session id on the next message.
 
-**I10 — Source folders per CLI (P3).** Claude Code loads each folder with
-`--plugin-dir`; Codex and Copilot CLI get the folders' `.mcp.json` stdio
-servers only (skills from source folders do not reach them).
+**I10 — Source folders per CLI (P3).** (changed 2026-11-18) Claude Code loads
+each folder with `--plugin-dir`; Codex and Copilot CLI get the folders'
+`.mcp.json` stdio servers, and their skills through the skills bridge (I15).
 
 **I11 — `PATH`.** Read once from the user's login shell and given to every
 program the app starts, so an app started from the Finder finds the CLIs.
@@ -199,4 +203,26 @@ Leon, and reach every CLI's sessions: Claude Code through `--mcp-config`,
 Codex through its thread config, Copilot CLI through ACP. Local (stdio)
 servers only. Each CLI's own servers are shown read-only and changed in the
 CLI. Chosen by the maintainer on 2026-11-17 (P3 unchanged).
+
+**I15 — Generic agent and skill files (EXT-4, EXT-5).** Leon's home for them
+is `~/.agents/` (`agents/<name>.md`, `skills/<name>.md`) and a project's
+`.agents/`; a skill may also be a `<name>/SKILL.md` folder. Leon also reads
+`.claude/agents/` and `.github/agents/`; on a name clash `.agents/` wins.
+Leon bridges the files to each CLI: the skills a CLI does not read itself are
+copied at each session start into Leon's data folder (`skills/<cli>/…`, never
+the CLIs' own folders, P3) and handed over with `--add-dir` (Claude Code),
+`skills/extraRoots/set` (Codex), `--plugin-dir` (Copilot CLI). Every CLI
+still loads a skill only when the agent needs it; there is no skills field,
+an agent names a skill in its text. Chosen by the maintainer on 2026-11-18.
+
+**I16 — An agent's `tools` (EXT-7).** In GitHub's custom-agent words (`read`,
+`search`, `edit`, `execute`, `web`, `agent`, `todo`; Claude Code's tool names
+understood too). They only take built-in abilities away, mapped per CLI as
+`docs/agent-files.md` lists; without `tools` the agent has every tool its CLI
+has, and MCP tools are never limited. Chosen by the maintainer on 2026-11-18.
+
+**I17 — An agent's `model` picks the CLI (EXT-6).** The first CLI that offers
+it, in an order the user sets in Settings (`[agents] cli_order`, default
+Claude Code, Codex, Copilot CLI), for the new-conversation form and for an
+agent another agent starts (I7). Chosen by the maintainer on 2026-11-18.
 
