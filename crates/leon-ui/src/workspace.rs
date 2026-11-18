@@ -92,10 +92,8 @@ pub struct Workspace {
     flash: Option<(u64, String)>,
     /// Open the next new conversation when it shows up.
     pub(crate) pending_open: bool,
-    /// The loader's step, while an agent works (NAV-5).
-    pub(crate) spin: u8,
-    /// Ticks `spin` while an agent works.
-    pub(crate) spinner: Option<gpui::Task<()>>,
+    /// The conversation last said to be read (an agent's tab on screen).
+    pub(crate) reading: Option<ConversationId>,
     shown_notifications: u64,
     started: Option<Instant>,
     _updates: Task<()>,
@@ -210,8 +208,7 @@ impl Workspace {
             settings_form,
             flash: None,
             pending_open: false,
-            spin: 0,
-            spinner: None,
+            reading: None,
             shown_notifications: 0,
             started: Some(started),
             _updates: updates,
@@ -227,7 +224,6 @@ impl Workspace {
             .map(|c| c.conversation.id)
             .find(|id| self.snapshot.conversation(*id).is_none());
         self.snapshot = next;
-        self.keep_spinning(cx);
         if let Some(id) = new_conversation.filter(|_| self.pending_open) {
             self.pending_open = false;
             self.select(id, cx);
@@ -410,6 +406,16 @@ impl Render for Workspace {
             window.on_next_frame(move |_window, _cx| {
                 tracing::info!(startup_ms = started.elapsed().as_millis(), "first frame");
             });
+        }
+        // An answer is read on an agent's tab, not on the Flow (NAV-4).
+        let shown = match self.screen {
+            Screen::Conversation(id) => Some(id),
+            _ => None,
+        };
+        let reading = self.current_session().and(shown);
+        if reading != self.reading {
+            self.reading = reading;
+            self.core.send(Intent::Read(reading));
         }
         let main: AnyElement = match self.screen {
             Screen::Nothing => crate::widgets::empty("Select a conversation, or start a new one."),

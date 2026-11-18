@@ -2,11 +2,12 @@
 //! this moment — which commands it runs and for how long, its subagents, the
 //! answer it waits for — so a quiet agent is never a mystery.
 
-use gpui::{Div, FontWeight, div, prelude::*, px};
+use gpui::{Div, FontWeight, SharedString, div, prelude::*, px};
 use leon_core::SessionView;
 use leon_domain::{RunningTool, Status, running_tools};
 
 use crate::left::ago;
+use crate::spinner::{spinner, status_mark};
 use crate::theme;
 use crate::workspace::Workspace;
 
@@ -34,6 +35,7 @@ impl Workspace {
     }
 
     fn now_session(&self, s: &SessionView) -> Div {
+        let id = s.session.id.0;
         let (state, color) = match s.status {
             Status::Running => ("Working", theme::accent()),
             Status::NeedsInput => ("Waiting for your answer", theme::warn()),
@@ -60,7 +62,10 @@ impl Workspace {
                     .items_center()
                     .gap_2()
                     .text_size(px(12.5))
-                    .child(self.status_mark(s.status))
+                    .child(status_mark(
+                        SharedString::from(format!("spin-now-{id}")),
+                        s.status,
+                    ))
                     .child(
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
@@ -68,14 +73,27 @@ impl Workspace {
                     )
                     .child(div().text_color(color).child(state)),
             )
-            .children(tools.into_iter().map(|tool| self.running_line(&tool)))
+            .children(
+                tools
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ix, tool)| running_line(&format!("spin-tool-{id}-{ix}"), &tool)),
+            )
             .when(running > 0, |d| {
-                d.child(self.activity(format!(
-                    "{running} subagent{} running · {started} started",
-                    if running == 1 { "" } else { "s" }
-                )))
+                d.child(activity(
+                    &format!("spin-sub-{id}"),
+                    format!(
+                        "{running} subagent{} running · {started} started",
+                        if running == 1 { "" } else { "s" }
+                    ),
+                ))
             })
-            .when(thinking, |d| d.child(self.activity("Thinking…".to_owned())))
+            .when(thinking, |d| {
+                d.child(activity(
+                    &format!("spin-think-{id}"),
+                    "Thinking…".to_owned(),
+                ))
+            })
             .children(s.question.as_ref().map(|q| {
                 div()
                     .pl(px(20.))
@@ -84,47 +102,55 @@ impl Workspace {
                     .child(format!("“{}”", q.title))
             }))
     }
+}
 
-    /// A command or edit still running, with how long it has run.
-    fn running_line(&self, tool: &RunningTool) -> Div {
-        div()
-            .pl(px(20.))
-            .flex()
-            .items_center()
-            .gap_2()
-            .text_size(px(12.))
-            .child(self.spinner(theme::accent(), 11.))
-            .child(div().flex_none().child(tool.name.clone()))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .font_family(theme::MONO)
-                    .text_size(px(11.5))
-                    .text_color(theme::fg_muted())
-                    .child(tool.detail.clone()),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .text_color(theme::fg_faint())
-                    .child(ago(tool.since)),
-            )
-    }
+/// A command or edit still running, with how long it has run.
+fn running_line(key: &str, tool: &RunningTool) -> Div {
+    div()
+        .pl(px(20.))
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_size(px(12.))
+        .child(spinner(
+            SharedString::from(key.to_owned()),
+            theme::accent(),
+            11.,
+        ))
+        .child(div().flex_none().child(tool.name.clone()))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .font_family(theme::MONO)
+                .text_size(px(11.5))
+                .text_color(theme::fg_muted())
+                .child(tool.detail.clone()),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_color(theme::fg_faint())
+                .child(ago(tool.since)),
+        )
+}
 
-    /// A line of activity under an agent, with the turning loader.
-    fn activity(&self, text: String) -> Div {
-        div()
-            .pl(px(20.))
-            .flex()
-            .items_center()
-            .gap_2()
-            .text_size(px(12.))
-            .text_color(theme::fg_muted())
-            .child(self.spinner(theme::accent(), 11.))
-            .child(text)
-    }
+/// A line of activity under an agent, with the turning loader.
+fn activity(key: &str, text: String) -> Div {
+    div()
+        .pl(px(20.))
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_size(px(12.))
+        .text_color(theme::fg_muted())
+        .child(spinner(
+            SharedString::from(key.to_owned()),
+            theme::accent(),
+            11.,
+        ))
+        .child(text)
 }

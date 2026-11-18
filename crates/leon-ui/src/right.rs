@@ -16,6 +16,7 @@ use crate::diff_rows::{DiffList, counts};
 use crate::diff_view::{DiffSource, DraftAt};
 use crate::github::pr_icon;
 use crate::icons::{Icon, icon};
+use crate::spinner::status_mark;
 use crate::theme;
 use crate::widgets::{HEADER_HEIGHT, button, empty, label, primary};
 use crate::workspace::{Screen, Workspace};
@@ -368,7 +369,10 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(self.status_mark(s.status))
+                    .child(status_mark(
+                        SharedString::from(format!("spin-info-{}", s.session.id.0)),
+                        s.status,
+                    ))
                     .child(
                         div()
                             .flex_1()

@@ -108,6 +108,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         live: HashMap::new(),
         idle_since: HashMap::new(),
         viewing: None,
+        reading: None,
         window_active: true,
         event_tx,
         internal_tx,
@@ -161,6 +162,8 @@ pub(crate) struct Core {
     /// When each live CLI finished its last turn.
     pub(crate) idle_since: HashMap<AgentSessionId, i64>,
     viewing: Option<ConversationId>,
+    /// The conversation whose agent messages are on screen.
+    reading: Option<ConversationId>,
     /// Leon's window is the active one.
     window_active: bool,
     event_tx: UnboundedSender<SessionEvent>,
@@ -322,6 +325,7 @@ impl Core {
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
             Intent::WindowActive(active) => self.window_active = active,
+            Intent::Read(id) => self.read(id),
             Intent::Delete(id) => self.delete(id),
             Intent::RefreshGit(id) => self.refresh_git(id),
             Intent::RefreshGitHub => self.refresh_lists(),
@@ -363,8 +367,9 @@ impl Core {
         }
     }
 
-    fn view(&mut self, id: Option<ConversationId>) {
-        self.viewing = id;
+    /// The user reads conversation `id`'s agent messages: it is read.
+    fn read(&mut self, id: Option<ConversationId>) {
+        self.reading = id;
         let Some(id) = id else { return };
         if self
             .state
@@ -374,6 +379,11 @@ impl Core {
         {
             self.edit(id, |c| c.unread = false);
         }
+    }
+
+    fn view(&mut self, id: Option<ConversationId>) {
+        self.viewing = id;
+        let Some(id) = id else { return };
         self.refresh_git(id);
         self.refresh_pr(id);
         for session in self.state.sessions_of(id) {
@@ -414,9 +424,10 @@ impl Core {
         Self::report(blocking(|| storage.update_conversation(&saved)));
     }
 
-    /// Whether the user sees conversation `id`: shown, in the active window.
+    /// Whether the user sees conversation `id`'s messages: one of its
+    /// agents' tabs, in the active window.
     fn on_screen(&self, id: ConversationId) -> bool {
-        self.window_active && self.viewing == Some(id)
+        self.window_active && self.reading == Some(id)
     }
 
     fn touch(&mut self, id: ConversationId, mark_unread: bool) {

@@ -11,9 +11,13 @@ pub enum Intent {
     AddProject(PathBuf),
     /// Remove a project from Leon with its conversations; the folder stays.
     RemoveProject(ProjectId),
-    /// The conversation shown in the main pane (`None`: none). Marks it read
-    /// and loads its transcripts (NAV-4).
+    /// The conversation shown in the main pane (`None`: none): loads its
+    /// transcripts and git state.
     View(Option<ConversationId>),
+    /// The conversation whose agent messages are on screen — one of its
+    /// agents' tabs, not its Flow (`None`: none). Marks it read; an answer
+    /// that arrives while it is read stays read (NAV-4).
+    Read(Option<ConversationId>),
     /// Leon's window became active (`true`) or went behind another app: an
     /// answer counts as seen only in the active window (NAV-4, NOTIF-1).
     WindowActive(bool),

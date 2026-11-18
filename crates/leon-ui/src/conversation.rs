@@ -8,6 +8,7 @@ use leon_core::SessionView;
 use leon_domain::{ConversationId, Status};
 
 use crate::icons::{Icon, icon};
+use crate::spinner::status_mark;
 use crate::theme;
 use crate::widgets::{HEADER_HEIGHT, empty};
 use crate::workspace::{Tab, Workspace};
@@ -115,7 +116,10 @@ impl Workspace {
                 tabs = tabs.child(Self::tab_button(
                     &format!("tab-{}", sid.0),
                     text,
-                    Some(self.status_mark(s.status)),
+                    Some(status_mark(
+                        SharedString::from(format!("spin-tab-{}", sid.0)),
+                        s.status,
+                    )),
                     selected,
                     id,
                     Tab::Session(*sid),

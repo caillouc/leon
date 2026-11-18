@@ -11,6 +11,7 @@ use crate::icons::{Icon, icon};
 use crate::left::{ago, since};
 use crate::pr_view::pr_badge;
 use crate::row_menu::MenuFor;
+use crate::spinner::spinner;
 use crate::theme;
 use crate::workspace::{Screen, Workspace};
 
@@ -142,9 +143,13 @@ impl Workspace {
                     .items_center()
                     .gap_2()
                     .child(if attention == Attention::Working {
-                        self.spinner(theme::accent(), 14.)
+                        spinner(
+                            SharedString::from(format!("spin-conv-{}", id.0)),
+                            theme::accent(),
+                            14.,
+                        )
                     } else {
-                        attention_icon(attention)
+                        attention_icon(attention).into_any_element()
                     })
                     .child(title)
                     .children(attention_pill(attention))

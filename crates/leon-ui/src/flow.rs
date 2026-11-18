@@ -20,6 +20,7 @@ use crate::flow_model::{
     self, Edge, EdgeKind, Node, Pt, Rect, View, label_at, layout, rect, route, status_text,
 };
 use crate::flow_paint::{Arrow, legend};
+use crate::spinner::status_mark;
 use crate::theme;
 use crate::widgets::button;
 use crate::workspace::{Tab, Workspace};
@@ -342,11 +343,11 @@ impl Workspace {
             .iter()
             .find(|x| x.session.started_by == Some(sid) && x.status == leon_domain::Status::Running)
             .map(|x| self.session_name(x));
+        // Working shows as the turning loader, not as the border.
         let border = match session.status {
-            leon_domain::Status::Running => theme::accent(),
             leon_domain::Status::NeedsInput => theme::warn(),
             leon_domain::Status::Error => theme::err(),
-            leon_domain::Status::Idle => theme::border_strong(),
+            leon_domain::Status::Running | leon_domain::Status::Idle => theme::border_strong(),
         };
         let (messages, tools) = self.snapshot.transcripts.get(&sid).map_or((0, 0), |t| {
             t.entries.iter().fold((0, 0), |(m, k), e| match e.entry {
@@ -391,7 +392,10 @@ impl Workspace {
                     .gap(px(6. * s))
                     .text_size(px(13. * s))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(self.status_mark(session.status))
+                    .child(status_mark(
+                        SharedString::from(format!("spin-flow-{}", sid.0)),
+                        session.status,
+                    ))
                     .child(
                         div()
                             .flex_1()

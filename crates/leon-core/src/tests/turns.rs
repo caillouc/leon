@@ -89,10 +89,31 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
         Some("thread-1")
     );
     assert_eq!(h.storage.entries.lock().unwrap()[&id].len(), 4);
-    assert!(
-        !s.conversations[0].conversation.unread,
-        "the conversation is on screen"
+    // Shown on its Flow only: the answer was not read.
+    assert!(s.conversations[0].conversation.unread);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_answer_read_on_its_agents_tab_is_read() {
+    let h = harness();
+    // The user reads the agent's messages (intents reach the core in order).
+    h.core.send(Intent::Read(Some(ConversationId(1))));
+    new_conversation(&h, BackendKind::Codex).await;
+    emit(&h, 0, BackendEvent::Text("Done.".into()));
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: false,
+            usage: None,
+        },
     );
+    let s = until(&h.core, "answered", |s| {
+        s.conversations[0].status == Status::Idle && !s.transcripts.is_empty()
+    })
+    .await;
+    assert!(!s.conversations[0].conversation.unread);
+    assert!(s.notifications.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -115,8 +136,10 @@ async fn an_answer_off_screen_marks_unread_and_notifies() {
     .await;
     assert_eq!(s.notifications.len(), 1);
     assert_eq!(s.notifications[0].title, "planner answered");
-    h.core
-        .send(Intent::View(Some(s.conversations[0].conversation.id)));
+    let conversation = s.conversations[0].conversation.id;
+    // Showing it (its Flow) does not read it; opening an agent's tab does.
+    h.core.send(Intent::View(Some(conversation)));
+    h.core.send(Intent::Read(Some(conversation)));
     until(&h.core, "read", |s| !s.conversations[0].conversation.unread).await;
     assert_eq!(entries(&s, id).len(), 3);
 }
