@@ -39,7 +39,7 @@ fn claude_and_codex_listings_are_read() {
             |out| Some(claude_servers(out)),
             include_str!("../../../fixtures/claude/2.1.288/mcp-list.txt"),
             &[
-                (Account, On, 15),
+                (Account, On, 12),
                 (Account, NeedsLogin, 20),
                 (Account, Failed, 1),
             ],
@@ -217,6 +217,15 @@ fn claude_status_lines_are_read() {
         (
             "claude.ai Slack: https://mcp.slack.com/mcp - ✔ Connected",
             Some(("Slack", Account, On, "https://mcp.slack.com/mcp")),
+        ),
+        // Provided by Anthropic itself: left out, unless the user added it.
+        (
+            "claude.ai Claude Docs: https://api.anthropic.com/v1/pages/mcp - ✔ Connected",
+            None,
+        ),
+        (
+            "docs: https://api.anthropic.com/v1/pages/mcp - ✔ Connected",
+            Some(("docs", Server, On, "https://api.anthropic.com/v1/pages/mcp")),
         ),
         (
             "local: npx -y server - x - ✔ Connected",

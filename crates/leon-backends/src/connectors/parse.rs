@@ -183,9 +183,18 @@ const CLAUDE_STATUSES: [(&str, ConnectorState); 9] = [
     ("Disabled", ConnectorState::Off),
 ];
 
+/// Where the account connectors Anthropic provides itself live. Claude Code's
+/// docs: "Anthropic also provides some connectors itself, without you or an
+/// admin adding them", e.g. Claude Docs (code.claude.com/docs/en/mcp, read on
+/// 2026-11-18). Recorded that day, the three on this host were Claude Docs,
+/// Claude Data and Meetings; every connector the user added is on its
+/// vendor's host.
+const ANTHROPIC_CONNECTORS: &str = "https://api.anthropic.com/";
+
 /// `claude mcp list` (text only): one `name: target - <mark> status` line
 /// per server, the status sometimes followed by ` — <error>`. Names starting
-/// with `claude.ai ` are the account's connectors. Other lines are ignored.
+/// with `claude.ai ` are the account's connectors; the ones Anthropic provides
+/// itself are left out. Other lines are ignored.
 pub(super) fn claude_servers(out: &str) -> Vec<Connector> {
     out.lines().filter_map(claude_server).collect()
 }
@@ -204,6 +213,7 @@ fn claude_server(line: &str) -> Option<Connector> {
         Some((&rest[..at], status, *state))
     })?;
     let (kind, name) = match name.strip_prefix("claude.ai ") {
+        Some(_) if target.starts_with(ANTHROPIC_CONNECTORS) => return None,
         Some(name) => (ConnectorKind::Account, name),
         None => (ConnectorKind::Server, name),
     };
