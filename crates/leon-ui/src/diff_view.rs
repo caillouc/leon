@@ -9,7 +9,7 @@ use gpui::{
     px,
 };
 use leon_domain::{
-    ConversationId, FileDiff, FoldPattern, LineKind, ReviewComment, fold_reason, folded_last,
+    FileDiff, FlowId, FoldPattern, LineKind, ReviewComment, fold_reason, folded_last,
 };
 
 use crate::diff_rows::{counts, path_text, status_letter};
@@ -18,7 +18,7 @@ use crate::theme;
 use crate::widgets::empty;
 use crate::workspace::{Workspace, text_of};
 
-/// Which diff of a conversation.
+/// Which diff of a flow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum DiffSource {
     /// Uncommitted changes against `HEAD` (GIT-1, GIT-2).
@@ -30,7 +30,7 @@ pub(crate) enum DiffSource {
 /// The lines a comment is being written on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DraftAt {
-    pub conversation: ConversationId,
+    pub flow: FlowId,
     pub source: DiffSource,
     pub path: String,
     /// First and last line numbers (equal for one line).
@@ -51,11 +51,7 @@ pub(crate) struct DiffFiles {
 
 impl Workspace {
     /// The files of a diff, or why there is nothing to show.
-    pub(crate) fn diff_files(
-        &self,
-        id: ConversationId,
-        source: DiffSource,
-    ) -> Result<DiffFiles, String> {
+    pub(crate) fn diff_files(&self, id: FlowId, source: DiffSource) -> Result<DiffFiles, String> {
         let Some(git) = self.folder_git(id) else {
             return Err("Reading git…".to_owned());
         };
@@ -88,7 +84,7 @@ impl Workspace {
     /// The tab: totals, the fold rule, and one row per file.
     pub(crate) fn render_diff(
         &mut self,
-        id: ConversationId,
+        id: FlowId,
         source: DiffSource,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -215,23 +211,19 @@ impl Workspace {
             return;
         };
         if !text.trim().is_empty() {
-            let folder = self.folder(at.conversation);
-            self.right
-                .review
-                .entry(at.conversation)
-                .or_default()
-                .push(Pending {
-                    source: at.source,
-                    folder,
-                    comment: ReviewComment {
-                        path: at.path,
-                        line: at.line,
-                        end: at.end,
-                        kind: at.kind,
-                        code: at.code,
-                        text: text.trim().to_owned(),
-                    },
-                });
+            let folder = self.folder(at.flow);
+            self.right.review.entry(at.flow).or_default().push(Pending {
+                source: at.source,
+                folder,
+                comment: ReviewComment {
+                    path: at.path,
+                    line: at.line,
+                    end: at.end,
+                    kind: at.kind,
+                    code: at.code,
+                    text: text.trim().to_owned(),
+                },
+            });
         }
         self.right
             .comment

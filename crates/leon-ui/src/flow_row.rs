@@ -1,10 +1,10 @@
-//! A conversation's row in the left pane (NAV-4, NAV-5, NAV-6): what it asks
+//! A flow's row in the left pane (NAV-4, NAV-5, NAV-6): what it asks
 //! of the user at a glance — working, needs you, to review, failed — its pull
 //! request, and the issue it works on, which opens in Leon's issue view.
 
 use gpui::{AnyElement, Context, Div, IntoElement, Rgba, SharedString, div, prelude::*, px};
 use gpui_component::input::Input;
-use leon_core::{ConversationView, Intent};
+use leon_core::{FlowView, Intent};
 use leon_domain::{Attention, GhRef};
 
 use crate::icons::{Icon, icon};
@@ -15,7 +15,7 @@ use crate::spinner::spinner;
 use crate::theme;
 use crate::workspace::{Screen, Workspace};
 
-/// The colour of what a conversation asks; `None` when it asks nothing.
+/// The colour of what a flow asks; `None` when it asks nothing.
 pub(crate) fn attention_color(attention: Attention) -> Option<Rgba> {
     match attention {
         Attention::Nothing => None,
@@ -33,7 +33,7 @@ fn attention_icon(attention: Attention) -> gpui::Svg {
         Attention::Nothing => Icon::Pending,
         Attention::Working => Icon::Working,
         Attention::Review => Icon::Passed,
-        Attention::NeedsYou => Icon::Conversation,
+        Attention::NeedsYou => Icon::Chat,
         Attention::Failed => Icon::Failed,
     };
     icon(glyph, color, 14.)
@@ -88,13 +88,13 @@ fn issue_chip(issue: &GhRef, cx: &mut Context<Workspace>) -> AnyElement {
 impl Workspace {
     pub(crate) fn row(
         &self,
-        c: &ConversationView,
+        c: &FlowView,
         show_project: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let id = c.conversation.id;
-        let selected = self.screen == Screen::Conversation(id);
-        let attention = Attention::of(c.status, c.conversation.unread);
+        let id = c.flow.id;
+        let selected = self.screen == Screen::Flow(id);
+        let attention = Attention::of(c.status, c.flow.unread);
         let edge = match attention {
             Attention::NeedsYou | Attention::Review | Attention::Failed => {
                 attention_color(attention)
@@ -116,7 +116,7 @@ impl Workspace {
                 .when(attention != Attention::Nothing, |s| {
                     s.font_weight(gpui::FontWeight::SEMIBOLD)
                 })
-                .child(c.conversation.title.clone())
+                .child(c.flow.title.clone())
                 .into_any_element(),
         };
         div()
@@ -161,7 +161,7 @@ impl Workspace {
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
-                    this.row_menu = Some((MenuFor::Conversation(id), e.position));
+                    this.row_menu = Some((MenuFor::Flow(id), e.position));
                     cx.notify();
                 }),
             )
@@ -172,7 +172,7 @@ impl Workspace {
     /// issue it works on.
     fn row_meta(
         &self,
-        c: &ConversationView,
+        c: &FlowView,
         attention: Attention,
         show_project: bool,
         cx: &mut Context<Self>,
@@ -181,12 +181,12 @@ impl Workspace {
             self.snapshot
                 .projects
                 .iter()
-                .find(|p| p.id == c.conversation.project)
+                .find(|p| p.id == c.flow.project)
                 .map_or_default(|p| format!("{} · ", p.name))
         } else {
             String::new()
         };
-        let agents = match c.sessions.len() {
+        let agents = match c.conversations.len() {
             0 | 1 => String::new(),
             n => format!("{n} agents · "),
         };
@@ -194,8 +194,8 @@ impl Workspace {
             Attention::Working => "Working…".to_owned(),
             Attention::NeedsYou => "Waiting for your answer".to_owned(),
             Attention::Failed => "Stopped with an error".to_owned(),
-            Attention::Review => format!("Done {}", since(c.conversation.updated_at)),
-            Attention::Nothing => ago(c.conversation.updated_at),
+            Attention::Review => format!("Done {}", since(c.flow.updated_at)),
+            Attention::Nothing => ago(c.flow.updated_at),
         };
         let color = match attention {
             Attention::Nothing | Attention::Review => theme::fg_muted(),

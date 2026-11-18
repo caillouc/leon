@@ -1,59 +1,59 @@
 //! Agents working together (FLOW-1, FLOW-2, P15): tool calls from the app's
-//! MCP server, messages between agent sessions, answers sent back to the
-//! session that asked.
+//! MCP server, messages between conversations, answers sent back to the
+//! conversation that asked.
 
 use std::path::{Path, PathBuf};
 
-use leon_domain::{AgentSessionId, ConversationId, Entry, Status};
+use leon_domain::{ConversationId, Entry, FlowId, Status};
 
 use crate::app::Core;
-use crate::ports::{AppToolCall, AppToolRequest, NewSession};
-use crate::state::{SessionState, Waiting};
+use crate::ports::{AppToolCall, AppToolRequest, NewConversation};
+use crate::state::{ConversationState, Waiting};
 
 impl Core {
     pub(crate) fn on_tool(&mut self, request: AppToolRequest) {
         let AppToolRequest {
-            session,
+            conversation,
             call,
             reply,
         } = request;
-        let result = self.tool(session, call);
+        let result = self.tool(conversation, call);
         if reply.send(result).is_err() {
             tracing::debug!(
-                session = session.0,
+                conversation = conversation.0,
                 "the agent left before its tool call ended"
             );
         }
     }
 
-    fn tool(&mut self, caller: AgentSessionId, call: AppToolCall) -> Result<String, String> {
-        let conversation = self
+    fn tool(&mut self, caller: ConversationId, call: AppToolCall) -> Result<String, String> {
+        let flow = self
             .state
-            .sessions
+            .conversations
             .get(&caller)
-            .map(|s| s.session.conversation)
+            .map(|s| s.conversation.flow)
             .ok_or_else(|| "Leon does not know this conversation.".to_owned())?;
         match call {
             AppToolCall::StartAgent {
                 agent,
                 prompt,
                 working_directory,
-            } => self.start_agent(caller, conversation, &agent, &prompt, working_directory),
-            AppToolCall::MessageAgent { session, text } => {
-                self.message_agent(caller, conversation, session, &text)
+            } => self.start_agent(caller, flow, &agent, &prompt, working_directory),
+            AppToolCall::MessageAgent { conversation, text } => {
+                self.message_agent(caller, flow, conversation, &text)
             }
-            AppToolCall::RenameConversation { title } => {
+            AppToolCall::RenameFlow { title } => {
                 let title = title.trim().to_owned();
                 if title.is_empty() {
                     return Err("The title is empty.".to_owned());
                 }
-                self.edit(conversation, |c| c.title = title);
+                self.edit(flow, |c| c.title = title);
                 Ok("Renamed the flow.".to_owned())
             }
             AppToolCall::SetWorkingDirectory { path } => {
                 check_dir(&path)?;
                 let shown = path.display().to_string();
-                self.find_working_tree(conversation, path, true);
+                self.find_working_tree(flow, path, true);
                 Ok(format!("Leon now shows the changes in {shown}."))
             }
         }
@@ -61,8 +61,8 @@ impl Core {
 
     fn start_agent(
         &mut self,
-        caller: AgentSessionId,
-        conversation: ConversationId,
+        caller: ConversationId,
+        flow: FlowId,
         agent: &str,
         prompt: &str,
         working_directory: Option<PathBuf>,
@@ -72,9 +72,9 @@ impl Core {
         }
         let project = self
             .state
-            .conversations
+            .flows
             .iter()
-            .find(|c| c.id == conversation)
+            .find(|c| c.id == flow)
             .map(|c| c.project)
             .ok_or_else(|| "This flow no longer exists.".to_owned())?;
         let names: Vec<String> = self
@@ -96,16 +96,16 @@ impl Core {
             }
             None => self
                 .state
-                .sessions
+                .conversations
                 .get(&caller)
-                .map(|s| s.session.working_dir.clone())
+                .map(|s| s.conversation.working_dir.clone())
                 .ok_or_else(|| "Leon does not know this conversation.".to_owned())?,
         };
         let mut settings = self
             .state
-            .sessions
+            .conversations
             .get(&caller)
-            .map(|s| s.session.settings.clone())
+            .map(|s| s.conversation.settings.clone())
             .ok_or_else(|| "Leon does not know this conversation.".to_owned())?;
         settings.agent = Some(agent.to_owned());
         // Its file's model picks its CLI (EXT-6); else the caller's (I7).
@@ -123,13 +123,13 @@ impl Core {
         ) {
             settings = next;
         }
-        let new = NewSession {
-            conversation,
+        let new = NewConversation {
+            flow,
             started_by: Some(caller),
             settings,
             working_dir,
         };
-        let id = self.add_session(&new).map_err(|e| e.to_string())?;
+        let id = self.add_conversation(&new).map_err(|e| e.to_string())?;
         self.message(caller, id, prompt.to_owned(), true);
         Ok(format!(
             "Started {agent} as conversation {n}. Its answer will arrive here as a new message \
@@ -141,9 +141,9 @@ impl Core {
 
     fn message_agent(
         &mut self,
-        caller: AgentSessionId,
-        conversation: ConversationId,
-        target: AgentSessionId,
+        caller: ConversationId,
+        flow: FlowId,
+        target: ConversationId,
         text: &str,
     ) -> Result<String, String> {
         if target == caller {
@@ -154,12 +154,12 @@ impl Core {
         }
         let busy = self
             .state
-            .sessions
+            .conversations
             .get(&target)
-            .filter(|s| s.session.conversation == conversation)
+            .filter(|s| s.conversation.flow == flow)
             .map(|s| !ready(s.status))
             .ok_or_else(|| format!("Conversation {} is not in this flow.", target.0))?;
-        let name = self.session_label(target);
+        let name = self.conversation_label(target);
         self.message(caller, target, text.to_owned(), true);
         Ok(if busy {
             format!(
@@ -175,22 +175,22 @@ impl Core {
         })
     }
 
-    /// Sends `text` from session `from` to session `to`: now if `to` is ready,
+    /// Sends `text` from conversation `from` to conversation `to`: now if `to` is ready,
     /// else after its current turn. For a request, `to`'s answer goes back to
     /// `from`.
     fn message(
         &mut self,
-        from: AgentSessionId,
-        to: AgentSessionId,
+        from: ConversationId,
+        to: ConversationId,
         text: String,
         expects_answer: bool,
     ) {
         let header = format!(
             "[From {} · conversation {}]",
-            self.session_label(from),
+            self.conversation_label(from),
             from.0
         );
-        let Some(s) = self.state.sessions.get_mut(&to) else {
+        let Some(s) = self.state.conversations.get_mut(&to) else {
             return;
         };
         if !ready(s.status) {
@@ -216,11 +216,11 @@ impl Core {
         }
     }
 
-    /// After a turn: the answer goes back to the session that asked, then the
+    /// After a turn: the answer goes back to the conversation that asked, then the
     /// next waiting message is sent. `true` when the answer went to another
-    /// session rather than to the user.
-    pub(crate) fn after_turn(&mut self, id: AgentSessionId, failed: bool) -> bool {
-        let Some(s) = self.state.sessions.get_mut(&id) else {
+    /// conversation rather than to the user.
+    pub(crate) fn after_turn(&mut self, id: ConversationId, failed: bool) -> bool {
+        let Some(s) = self.state.conversations.get_mut(&id) else {
             return false;
         };
         let reply_to = s.reply_to.take();
@@ -236,28 +236,28 @@ impl Core {
     }
 
     /// The agent's name, or its CLI's when it has no agent.
-    pub(crate) fn session_label(&self, id: AgentSessionId) -> String {
-        self.state.sessions.get(&id).map_or_else(
+    pub(crate) fn conversation_label(&self, id: ConversationId) -> String {
+        self.state.conversations.get(&id).map_or_else(
             || format!("conversation {}", id.0),
             |s| {
-                s.session
+                s.conversation
                     .settings
                     .agent
                     .clone()
-                    .unwrap_or_else(|| s.session.settings.backend.display_name().to_owned())
+                    .unwrap_or_else(|| s.conversation.settings.backend.display_name().to_owned())
             },
         )
     }
 }
 
-/// A session can take a message now: it is not in a turn.
+/// A conversation can take a message now: it is not in a turn.
 fn ready(status: Status) -> bool {
     matches!(status, Status::Idle | Status::Error)
 }
 
 /// The answer of the turn that just ended: its agent messages after the last
 /// message it received, plus its error when it failed.
-fn last_answer(s: &SessionState, failed: bool) -> String {
+fn last_answer(s: &ConversationState, failed: bool) -> String {
     let entries = s
         .transcript
         .as_ref()

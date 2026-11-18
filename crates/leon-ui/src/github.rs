@@ -2,7 +2,7 @@
 //! the left pane, each opening its list in the main pane. Issues are grouped
 //! by board column (each column foldable), sorted by priority, and can be
 //! filtered by sprint. A row opens the item's details in the drawer; an
-//! issue starts a conversation in the project whose repository it belongs
+//! issue starts a flow in the project whose repository it belongs
 //! to, or opens the one already started for it.
 
 use gpui::{
@@ -12,7 +12,7 @@ use gpui::{
 use gpui_component::input::TextareaState;
 use leon_core::Intent;
 use leon_domain::{
-    BoardOption, CheckState, ConversationId, GhRef, Issue, PrState, ProjectId, PullRequest,
+    BoardOption, CheckState, FlowId, GhRef, Issue, PrState, ProjectId, PullRequest,
     issues_by_status,
 };
 
@@ -295,10 +295,10 @@ impl Workspace {
             .children(board_chips(issue))
             .child(labels(&issue.labels));
         let item = GhRef::issue(&issue.repo, issue.number);
-        // A linked conversation is a link in the details line; otherwise
+        // A linked flow is a link in the details line; otherwise
         // "Start flow" floats over the row's end on hover.
-        let linked = self.conversation_for_issue(&item);
-        let meta = meta.children(linked.map(|c| conversation_link(&item, c, cx)));
+        let linked = self.flow_for_issue(&item);
+        let meta = meta.children(linked.map(|c| flow_link(&item, c, cx)));
         Row {
             hover: linked.is_none().then(|| self.issue_action(issue, cx)),
             item,
@@ -311,12 +311,12 @@ impl Workspace {
     }
 
     /// "Open flow" when one was started for the issue, else "Start
-    /// conversation" in the project whose repository it belongs to.
+    /// flow" in the project whose repository it belongs to.
     pub(crate) fn issue_action(&self, issue: &Issue, cx: &mut Context<Self>) -> AnyElement {
         let item = GhRef::issue(&issue.repo, issue.number);
         let id = SharedString::from(format!("gh-act-{}", item.text()));
-        if let Some(conversation) = self.conversation_for_issue(&item) {
-            return open_conversation(id, conversation, cx);
+        if let Some(flow) = self.flow_for_issue(&item) {
+            return open_flow(id, flow, cx);
         }
         let project = self.project_for_repo(&issue.repo);
         button(
@@ -325,7 +325,7 @@ impl Workspace {
             cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
                 this.core.send(Intent::ShowDetail(None));
-                this.open_new_conversation(project, Some(item.clone()), window, cx);
+                this.open_new_flow(project, Some(item.clone()), window, cx);
             }),
         )
         .into_any_element()
@@ -347,10 +347,7 @@ impl Workspace {
             .children(pr.checks_state().map(checks))
             .child(labels(&pr.labels));
         let item = GhRef::pull_request(&pr.repo, pr.number);
-        let meta = meta.children(
-            self.conversation_for_pr(pr)
-                .map(|c| conversation_link(&item, c, cx)),
-        );
+        let meta = meta.children(self.flow_for_pr(pr).map(|c| flow_link(&item, c, cx)));
         Row {
             hover: None,
             item,
@@ -364,10 +361,10 @@ impl Workspace {
 
     /// "Open flow" when a conversation works on the pull request.
     pub(crate) fn pr_action(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
-        match self.conversation_for_pr(pr) {
-            Some(conversation) => open_conversation(
+        match self.flow_for_pr(pr) {
+            Some(flow) => open_flow(
                 SharedString::from(format!("gh-open-{}-{}", pr.repo, pr.number)),
-                conversation,
+                flow,
                 cx,
             ),
             None => div().into_any_element(),
@@ -383,17 +380,17 @@ impl Workspace {
             .map(|(id, _)| *id)
     }
 
-    fn conversation_for_issue(&self, item: &GhRef) -> Option<ConversationId> {
+    fn flow_for_issue(&self, item: &GhRef) -> Option<FlowId> {
         self.snapshot
-            .conversations
+            .flows
             .iter()
             .find(|c| c.issues.contains(item))
-            .map(|c| c.conversation.id)
+            .map(|c| c.flow.id)
     }
 
-    fn conversation_for_pr(&self, pr: &PullRequest) -> Option<ConversationId> {
+    fn flow_for_pr(&self, pr: &PullRequest) -> Option<FlowId> {
         self.snapshot
-            .conversations
+            .flows
             .iter()
             .find(|c| {
                 self.snapshot
@@ -401,22 +398,18 @@ impl Workspace {
                     .iter()
                     .any(|p| p.repo == pr.repo && p.number == pr.number)
             })
-            .map(|c| c.conversation.id)
+            .map(|c| c.flow.id)
     }
 }
 
-fn open_conversation(
-    id: SharedString,
-    conversation: ConversationId,
-    cx: &mut Context<Workspace>,
-) -> AnyElement {
+fn open_flow(id: SharedString, flow: FlowId, cx: &mut Context<Workspace>) -> AnyElement {
     button(
         id,
         "Open flow",
         cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
             this.core.send(Intent::ShowDetail(None));
-            this.select(conversation, cx);
+            this.select(flow, cx);
         }),
     )
     .into_any_element()
@@ -565,11 +558,7 @@ fn repo_text(repo: &str) -> Div {
 }
 
 /// "Open flow" as a link in a row's details line.
-fn conversation_link(
-    item: &GhRef,
-    conversation: ConversationId,
-    cx: &mut Context<Workspace>,
-) -> AnyElement {
+fn flow_link(item: &GhRef, flow: FlowId, cx: &mut Context<Workspace>) -> AnyElement {
     div()
         .id(SharedString::from(format!("gh-link-{}", item.text())))
         .flex()
@@ -578,11 +567,11 @@ fn conversation_link(
         .text_color(theme::accent())
         .cursor_pointer()
         .hover(|s| s.opacity(0.8))
-        .child(icon(Icon::Conversation, theme::accent(), 12.))
+        .child(icon(Icon::Chat, theme::accent(), 12.))
         .child("Open flow")
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
-            this.select(conversation, cx);
+            this.select(flow, cx);
         }))
         .into_any_element()
 }

@@ -1,4 +1,4 @@
-//! SQLite storage for Leon's own data (P5): projects now, conversations and
+//! SQLite storage for Leon's own data (P5): projects now, flows and
 //! their events later.
 //!
 //! Owns the schema and its migrations. Implements the core's storage ports.

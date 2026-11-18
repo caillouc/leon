@@ -28,7 +28,7 @@ pub(crate) enum Side {
 pub(crate) struct Panes {
     pub left: f32,
     pub right: f32,
-    /// The right pane shows; closed, a button in the conversation's header
+    /// The right pane shows; closed, a button in the flow's header
     /// opens it again.
     pub right_open: bool,
     pub resizing: Option<Side>,

@@ -1,9 +1,9 @@
-//! The Info tab's "Now" (CTX-1): what each agent of the conversation is doing
+//! The Info tab's "Now" (CTX-1): what each agent of the flow is doing
 //! this moment — which commands it runs and for how long, its subagents, the
 //! answer it waits for — so a quiet agent is never a mystery.
 
 use gpui::{Div, FontWeight, SharedString, div, prelude::*, px};
-use leon_core::SessionView;
+use leon_core::ConversationView;
 use leon_domain::{RunningTool, Status, running_tools};
 
 use crate::left::ago;
@@ -12,8 +12,8 @@ use crate::theme;
 use crate::workspace::Workspace;
 
 impl Workspace {
-    /// One block per agent session: its state, then what it is running.
-    pub(crate) fn now_card(&self, sessions: &[&SessionView]) -> Div {
+    /// One block per conversation: its state, then what it is running.
+    pub(crate) fn now_card(&self, conversations: &[&ConversationView]) -> Div {
         div()
             .mx_3()
             .px_3()
@@ -31,11 +31,11 @@ impl Workspace {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("Now"),
             )
-            .children(sessions.iter().map(|s| self.now_session(s)))
+            .children(conversations.iter().map(|s| self.now_conversation(s)))
     }
 
-    fn now_session(&self, s: &SessionView) -> Div {
-        let id = s.session.id.0;
+    fn now_conversation(&self, s: &ConversationView) -> Div {
+        let id = s.conversation.id.0;
         let (state, color) = match s.status {
             Status::Running => ("Working", theme::accent()),
             Status::NeedsInput => ("Waiting for your answer", theme::warn()),
@@ -47,7 +47,7 @@ impl Workspace {
         let tools: Vec<RunningTool> = self
             .snapshot
             .transcripts
-            .get(&s.session.id)
+            .get(&s.conversation.id)
             .filter(|_| live)
             .map_or_default(|t| running_tools(&t.entries));
         let (started, running) = s.subagents;
@@ -70,7 +70,7 @@ impl Workspace {
                         div()
                             .flex_none()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(self.session_name(s)),
+                            .child(self.conversation_name(s)),
                     )
                     // A narrow pane cuts it short rather than overflow.
                     .child(

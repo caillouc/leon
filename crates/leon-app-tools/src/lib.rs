@@ -1,11 +1,11 @@
-//! The app's local MCP server (P10, P15): the tools every agent session gets
-//! to start and message other agents, rename its conversation and say it
+//! The app's local MCP server (P10, P15): the tools every conversation gets
+//! to start and message other agents, rename its flow and say it
 //! moved to another folder.
 //!
-//! How it is wired: each agent session's CLI starts `leon mcp` (the app's own
+//! How it is wired: each conversation's CLI starts `leon mcp` (the app's own
 //! binary) as a stdio MCP server. That process runs [`bridge`], which pipes
 //! bytes between its stdin/stdout and the Unix socket the app listens on with
-//! [`serve`]. The app side reads one `{"session": <id>}` line written by the
+//! [`serve`]. The app side reads one `{"conversation": <id>}` line written by the
 //! bridge, then speaks MCP and sends each tool call to the core as an
 //! [`AppToolRequest`](leon_core::ports::AppToolRequest).
 //!
@@ -28,7 +28,7 @@ mod tools;
 use std::path::PathBuf;
 
 use leon_core::ports::AppTools;
-use leon_domain::{AgentSessionId, McpServer};
+use leon_domain::{ConversationId, McpServer};
 
 pub use bridge::bridge;
 pub use server::serve;
@@ -38,10 +38,10 @@ pub const SERVER_NAME: &str = "leon";
 
 /// Environment variable telling the bridge where the app's socket is.
 const SOCKET_VAR: &str = "LEON_SOCKET";
-/// Environment variable telling the bridge which agent session it serves.
-const SESSION_VAR: &str = "LEON_SESSION";
+/// Environment variable telling the bridge which conversation it serves.
+const CONVERSATION_VAR: &str = "LEON_SESSION";
 
-/// The [`AppTools`] port: every session's CLI starts `<command> mcp`, which
+/// The [`AppTools`] port: every conversation's CLI starts `<command> mcp`, which
 /// reaches the app through `socket`.
 #[derive(Debug, Clone)]
 pub struct LocalTools {
@@ -75,7 +75,7 @@ impl AppTools for LocalTools {
         }
     }
 
-    fn server(&self, session: AgentSessionId) -> McpServer {
+    fn server(&self, conversation: ConversationId) -> McpServer {
         McpServer {
             name: SERVER_NAME.to_owned(),
             command: self.command.clone(),
@@ -85,7 +85,7 @@ impl AppTools for LocalTools {
                     SOCKET_VAR.to_owned(),
                     self.socket.to_string_lossy().into_owned(),
                 ),
-                (SESSION_VAR.to_owned(), session.0.to_string()),
+                (CONVERSATION_VAR.to_owned(), conversation.0.to_string()),
             ],
             trusted: true,
         }
@@ -102,9 +102,9 @@ pub enum Error {
     /// The bridge was started without one of its variables.
     #[error("{0} is not set: `leon mcp` is started by a coding CLI inside Leon")]
     MissingVariable(&'static str),
-    /// `LEON_SESSION` is not a session id.
-    #[error("{SESSION_VAR} is not a session id: {0:?}")]
-    BadSession(String),
+    /// `LEON_SESSION` is not a conversation id.
+    #[error("{CONVERSATION_VAR} is not a conversation id: {0:?}")]
+    BadConversation(String),
     /// The folder for the socket could not be created.
     #[error("could not create {}", .dir.display())]
     CreateDir {
@@ -136,20 +136,20 @@ pub enum Error {
         source: std::io::Error,
     },
     /// The bridge could not reach the app.
-    #[error("session {session}: could not connect to Leon at {}", .socket.display())]
+    #[error("conversation {conversation}: could not connect to Leon at {}", .socket.display())]
     Connect {
-        /// The calling session.
-        session: i64,
+        /// The calling conversation.
+        conversation: i64,
         /// The socket path.
         socket: PathBuf,
         /// Why.
         source: std::io::Error,
     },
     /// The bridge lost its stdin, stdout or socket.
-    #[error("session {session}: the MCP bridge failed")]
+    #[error("conversation {conversation}: the MCP bridge failed")]
     Pipe {
-        /// The calling session.
-        session: i64,
+        /// The calling conversation.
+        conversation: i64,
         /// Why.
         source: std::io::Error,
     },
@@ -160,15 +160,15 @@ mod tests {
     use std::path::PathBuf;
 
     use leon_core::ports::AppTools;
-    use leon_domain::{AgentSessionId, McpServer};
+    use leon_domain::{ConversationId, McpServer};
 
     use super::LocalTools;
 
     #[test]
-    fn server_runs_the_bridge_with_socket_and_session() {
+    fn server_runs_the_bridge_with_socket_and_conversation() {
         let tools = LocalTools::new(PathBuf::from("/app/leon"), PathBuf::from("/run/leon.sock"));
         assert_eq!(
-            tools.server(AgentSessionId(42)),
+            tools.server(ConversationId(42)),
             McpServer {
                 name: "leon".to_owned(),
                 command: PathBuf::from("/app/leon"),

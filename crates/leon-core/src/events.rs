@@ -1,23 +1,23 @@
-//! How a CLI event changes an agent session.
+//! How a CLI event changes an conversation.
 
-use leon_domain::{AgentSessionId, Entry, Status};
+use leon_domain::{ConversationId, Entry, Status};
 
 use crate::app::Core;
 use crate::ports::BackendEvent;
 use crate::snapshot::Question;
 
-pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
+pub(crate) fn apply(core: &mut Core, id: ConversationId, event: BackendEvent) {
     match event {
         BackendEvent::Ready { cli_session } => {
-            if let Some(s) = core.state_mut().sessions.get_mut(&id) {
-                s.session.cli_session = Some(cli_session);
+            if let Some(s) = core.state_mut().conversations.get_mut(&id) {
+                s.conversation.cli_session = Some(cli_session);
             }
-            core.save_session(id);
+            core.save_conversation(id);
         }
         BackendEvent::TextDelta(delta) => {
             if let Some(t) = core
                 .state_mut()
-                .sessions
+                .conversations
                 .get_mut(&id)
                 .and_then(|s| s.transcript.as_mut())
             {
@@ -27,7 +27,7 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
         BackendEvent::Text(text) => {
             if let Some(t) = core
                 .state_mut()
-                .sessions
+                .conversations
                 .get_mut(&id)
                 .and_then(|s| s.transcript.as_mut())
             {
@@ -50,19 +50,19 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
             core.record_entry(id, Entry::Notice { text });
         }
         BackendEvent::Suggestion(text) => {
-            if let Some(s) = core.state_mut().sessions.get_mut(&id)
+            if let Some(s) = core.state_mut().conversations.get_mut(&id)
                 && !s.suggestions.contains(&text)
             {
                 s.suggestions.push(text);
             }
         }
         BackendEvent::Plan(steps) => {
-            if let Some(s) = core.state_mut().sessions.get_mut(&id) {
+            if let Some(s) = core.state_mut().conversations.get_mut(&id) {
                 s.plan = steps;
             }
         }
         BackendEvent::Subagents { started, running } => {
-            if let Some(s) = core.state_mut().sessions.get_mut(&id) {
+            if let Some(s) = core.state_mut().conversations.get_mut(&id) {
                 s.subagents = (started, running);
             }
         }
@@ -93,7 +93,7 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
             core.finish_turn(id, usage, None);
         }
         BackendEvent::Failed(text) => {
-            if let Some(s) = core.state_mut().sessions.get_mut(&id) {
+            if let Some(s) = core.state_mut().conversations.get_mut(&id) {
                 s.status = Status::Error;
             }
             core.record_entry(id, Entry::Error { text });
@@ -101,7 +101,7 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
     }
 }
 
-fn tool_started(core: &mut Core, id: AgentSessionId, tool: String, name: String, detail: String) {
+fn tool_started(core: &mut Core, id: ConversationId, tool: String, name: String, detail: String) {
     let entry = Entry::Tool {
         id: tool.clone(),
         name,
@@ -110,25 +110,25 @@ fn tool_started(core: &mut Core, id: AgentSessionId, tool: String, name: String,
         failed: false,
     };
     if let Some(index) = core.record_entry(id, entry)
-        && let Some(s) = core.state_mut().sessions.get_mut(&id)
+        && let Some(s) = core.state_mut().conversations.get_mut(&id)
     {
         s.pending_tools.insert(tool, index);
     }
 }
 
 /// The CLI waits for the user (CONV-9).
-fn asked(core: &mut Core, id: AgentSessionId, question: Question) {
-    let Some(s) = core.state_mut().sessions.get_mut(&id) else {
+fn asked(core: &mut Core, id: ConversationId, question: Question) {
+    let Some(s) = core.state_mut().conversations.get_mut(&id) else {
         return;
     };
     s.status = Status::NeedsInput;
     s.question = Some(question);
-    let conversation = s.session.conversation;
-    core.answered(id, conversation, false);
+    let flow = s.conversation.flow;
+    core.answered(id, flow, false);
 }
 
-fn tool_done(core: &mut Core, id: AgentSessionId, tool: &str, output: String, failed: bool) {
-    let Some(s) = core.state_mut().sessions.get_mut(&id) else {
+fn tool_done(core: &mut Core, id: ConversationId, tool: &str, output: String, failed: bool) {
+    let Some(s) = core.state_mut().conversations.get_mut(&id) else {
         return;
     };
     let Some(index) = s.pending_tools.remove(tool) else {
@@ -151,11 +151,11 @@ fn tool_done(core: &mut Core, id: AgentSessionId, tool: &str, output: String, fa
         *f = failed;
     }
     let done = timed.clone();
-    let conversation = s.session.conversation;
+    let flow = s.conversation.flow;
     core.save_entry(id, &done);
     if let leon_domain::Entry::Tool { name, .. } = &done.entry
         && matches!(name.as_str(), "Edited" | "Wrote" | "Ran")
     {
-        core.refresh_git(conversation);
+        core.refresh_git(flow);
     }
 }

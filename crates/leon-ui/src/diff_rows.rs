@@ -11,7 +11,7 @@ use gpui::{
     prelude::*, px, relative,
 };
 use gpui_component::input::{Textarea, TextareaState};
-use leon_domain::{ConversationId, DiffLine, FileDiff, FileStatus, LineKind, fold_reason};
+use leon_domain::{DiffLine, FileDiff, FileStatus, FlowId, LineKind, fold_reason};
 
 use crate::diff_view::{DiffSource, DraftAt};
 use crate::icons::chevron;
@@ -28,7 +28,7 @@ enum Row {
     Line(usize, usize, usize),
     /// Side by side: the old line on the left, the new on the right.
     Pair(usize, usize, Option<usize>, Option<usize>),
-    /// A pending comment, by index in the conversation's review.
+    /// A pending comment, by index in the flow's review.
     Comment(usize),
     Draft,
 }
@@ -37,7 +37,7 @@ enum Row {
 /// and current line, each as (hunk, line) in the file's diff.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Selecting {
-    pub conversation: ConversationId,
+    pub flow: FlowId,
     pub source: DiffSource,
     pub path: String,
     pub from: (usize, usize),
@@ -73,7 +73,7 @@ fn draft_for(file: &FileDiff, selecting: &Selecting) -> Option<DraftAt> {
         .collect();
     let (first, last) = (lines.first()?, lines.last()?);
     Some(DraftAt {
-        conversation: selecting.conversation,
+        flow: selecting.flow,
         source: selecting.source,
         path: file.path.clone(),
         line: line_number(first),
@@ -95,7 +95,7 @@ pub(crate) struct DiffList {
 
 /// Everything a row needs to render, shared by the list's rows.
 struct Data {
-    conversation: ConversationId,
+    flow: FlowId,
     source: DiffSource,
     files: Arc<Vec<FileDiff>>,
     rows: Arc<Vec<Row>>,
@@ -113,7 +113,7 @@ impl Workspace {
     /// scrolled to the file `scroll_to` once, when given.
     pub(crate) fn diff_rows(
         &mut self,
-        id: ConversationId,
+        id: FlowId,
         source: DiffSource,
         scroll_to: Option<&str>,
         cx: &mut Context<Self>,
@@ -148,7 +148,7 @@ impl Workspace {
             .right
             .draft
             .clone()
-            .filter(|d| d.conversation == id && d.source == source);
+            .filter(|d| d.flow == id && d.source == source);
         let split = self.right.split;
         let rows = build_rows(&files, &opened, source, &review, draft.as_ref(), split);
         let (state, rows) = self.diff_list((id, source), rows);
@@ -163,7 +163,7 @@ impl Workspace {
             });
         }
         let data = Rc::new(Data {
-            conversation: id,
+            flow: id,
             source,
             files,
             rows: Arc::clone(&rows),
@@ -175,7 +175,7 @@ impl Workspace {
                 .right
                 .selecting
                 .clone()
-                .filter(|s| s.conversation == id && s.source == source),
+                .filter(|s| s.flow == id && s.source == source),
             view: cx.entity().downgrade(),
         });
         let rows = list(state, move |ix, _window, cx| {
@@ -207,7 +207,7 @@ impl Workspace {
     /// rows change.
     fn diff_list(
         &mut self,
-        key: (ConversationId, DiffSource),
+        key: (FlowId, DiffSource),
         rows: Vec<Row>,
     ) -> (ListState, Arc<Vec<Row>>) {
         let list = self.right.lists.entry(key).or_insert_with(|| DiffList {
@@ -223,7 +223,7 @@ impl Workspace {
         (list.state.clone(), Arc::clone(&list.rows))
     }
 
-    fn toggle_file(&mut self, id: ConversationId, source: DiffSource, path: String, open: bool) {
+    fn toggle_file(&mut self, id: FlowId, source: DiffSource, path: String, open: bool) {
         self.right.open.insert((id, source, path), !open);
     }
 
@@ -233,7 +233,7 @@ impl Workspace {
             return;
         };
         let draft = self
-            .diff_files(selecting.conversation, selecting.source)
+            .diff_files(selecting.flow, selecting.source)
             .ok()
             .and_then(|diff| {
                 let file = diff.files.iter().find(|f| f.path == selecting.path)?;
@@ -415,12 +415,7 @@ pub(crate) fn path_text(path: &str) -> gpui::Div {
 fn file_header(data: &Rc<Data>, f: usize) -> AnyElement {
     let file = &data.files[f];
     let open = data.opened[f];
-    let (id, source, path, view) = (
-        data.conversation,
-        data.source,
-        file.path.clone(),
-        data.view.clone(),
-    );
+    let (id, source, path, view) = (data.flow, data.source, file.path.clone(), data.view.clone());
     let tag = |text: String| {
         div()
             .flex_none()
@@ -504,7 +499,7 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
             .child(n.map_or_default(|n| n.to_string()))
     };
     let start = Selecting {
-        conversation: data.conversation,
+        flow: data.flow,
         source: data.source,
         path: path.clone(),
         from: (h, l),
@@ -582,7 +577,7 @@ fn pending_comment(data: &Rc<Data>, ix: usize) -> AnyElement {
     let Some(pending) = data.review.get(ix) else {
         return div().into_any_element();
     };
-    let (id, view) = (data.conversation, data.view.clone());
+    let (id, view) = (data.flow, data.view.clone());
     div()
         .my_1()
         .ml(px(84.))
@@ -719,7 +714,7 @@ mod tests {
     fn rows_follow_folds_comments_and_the_draft() {
         let files = [file("a.rs"), file("Cargo.lock")];
         let draft = DraftAt {
-            conversation: leon_domain::ConversationId(1),
+            flow: leon_domain::FlowId(1),
             source: DiffSource::Changes,
             path: "a.rs".into(),
             line: 2,
@@ -759,7 +754,7 @@ mod tests {
     #[test]
     fn dragged_lines_make_one_comment_place() {
         let selecting = super::Selecting {
-            conversation: leon_domain::ConversationId(1),
+            flow: leon_domain::FlowId(1),
             source: DiffSource::Changes,
             path: "a.rs".into(),
             // Dragged upwards: from the last line to the first.

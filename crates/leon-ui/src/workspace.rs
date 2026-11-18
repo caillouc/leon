@@ -11,7 +11,7 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
 use leon_core::{CoreHandle, Intent, Snapshot};
-use leon_domain::{AgentSessionId, BackendKind, ConversationId, ProjectId, SessionSettings};
+use leon_domain::{BackendKind, ConversationId, ConversationSettings, FlowId, ProjectId};
 
 use crate::flow::FlowState;
 use crate::github::GhList;
@@ -23,8 +23,8 @@ use crate::theme;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Screen {
     Nothing,
-    Conversation(ConversationId),
-    NewConversation,
+    Flow(FlowId),
+    NewFlow,
     /// My issues or my pull requests (GH-2, GH-3).
     GitHub(GhList),
     /// What works and what needs setting up.
@@ -35,21 +35,22 @@ pub(crate) enum Screen {
     Settings,
 }
 
-/// The tab shown for a conversation (FLOW-3): the flow, or one agent session.
+/// The tab shown for a flow (FLOW-3): its diagram, one of its conversations,
+/// or the form starting another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tab {
     Flow,
-    Session(AgentSessionId),
+    Conversation(ConversationId),
     /// The form starting another conversation in the flow (FLOW-7).
     New,
 }
 
-/// Choices in the new-conversation form.
+/// Choices in the new-flow form.
 #[derive(Debug, Clone)]
 pub(crate) struct NewForm {
     pub project: Option<ProjectId>,
-    pub settings: SessionSettings,
-    /// The issue the conversation is started for (GH-2).
+    pub settings: ConversationSettings,
+    /// The issue the flow is started for (GH-2).
     pub issue: Option<leon_domain::GhRef>,
     /// In a flow: the folder picked for the new conversation (FLOW-7).
     pub folder: Option<std::path::PathBuf>,
@@ -60,7 +61,7 @@ pub struct Workspace {
     pub(crate) core: CoreHandle,
     pub(crate) snapshot: Arc<Snapshot>,
     pub(crate) screen: Screen,
-    pub(crate) tabs: HashMap<ConversationId, Tab>,
+    pub(crate) tabs: HashMap<FlowId, Tab>,
     pub(crate) composer: Entity<TextareaState>,
     /// The workspace's own focus, so shortcuts work with no text box focused.
     pub(crate) focus: gpui::FocusHandle,
@@ -68,22 +69,22 @@ pub struct Workspace {
     pub(crate) composer_placeholder: SharedString,
     pub(crate) form_text: Entity<TextareaState>,
     pub(crate) search: Entity<InputState>,
-    /// The conversation being renamed in the left pane, its input, and the
+    /// The flow being renamed in the left pane, its input, and the
     /// subscription that saves on Enter.
-    pub(crate) rename: Option<(ConversationId, Entity<InputState>, Subscription)>,
+    pub(crate) rename: Option<(FlowId, Entity<InputState>, Subscription)>,
     /// The left-pane row whose right-click menu is open, and where.
     pub(crate) row_menu: Option<(crate::row_menu::MenuFor, gpui::Point<gpui::Pixels>)>,
     pub(crate) form: NewForm,
     pub(crate) open_picker: Option<SharedString>,
     pub(crate) show_archived: bool,
     /// Tool calls and long messages the user unfolded.
-    pub(crate) expanded: HashSet<(AgentSessionId, usize)>,
+    pub(crate) expanded: HashSet<(ConversationId, usize)>,
     /// Long pastes waiting in the message box (CONV-12).
     pub(crate) pasted: Vec<String>,
     /// The user's message being edited: sending goes back to before it
     /// (CONV-7, CONV-8).
-    pub(crate) rewind: Option<(AgentSessionId, usize)>,
-    pub(crate) lists: HashMap<AgentSessionId, (ListState, usize)>,
+    pub(crate) rewind: Option<(ConversationId, usize)>,
+    pub(crate) lists: HashMap<ConversationId, (ListState, usize)>,
     pub(crate) right: RightState,
     pub(crate) flow: FlowState,
     pub(crate) panes: crate::panes::Panes,
@@ -94,13 +95,13 @@ pub struct Workspace {
     pub(crate) settings_form: crate::settings_view::SettingsForm,
     /// The flash message shown, by id (an action's result).
     flash: Option<(u64, String)>,
-    /// Open the next new conversation when it shows up.
+    /// Open the next new flow when it shows up.
     pub(crate) pending_open: bool,
     /// A flow and how many conversations it had when the user started one
     /// in it: its tab opens when it shows up (FLOW-7).
-    pub(crate) pending_session: Option<(ConversationId, usize)>,
-    /// The conversation last said to be read (an agent's tab on screen).
-    pub(crate) reading: Option<AgentSessionId>,
+    pub(crate) pending_conversation: Option<(FlowId, usize)>,
+    /// The flow last said to be read (an agent's tab on screen).
+    pub(crate) reading: Option<ConversationId>,
     shown_notifications: u64,
     started: Option<Instant>,
     _updates: Task<()>,
@@ -191,7 +192,7 @@ impl Workspace {
             row_menu: None,
             form: NewForm {
                 project: None,
-                settings: SessionSettings {
+                settings: ConversationSettings {
                     backend: defaults.backend,
                     agent: None,
                     model: defaults.model,
@@ -216,7 +217,7 @@ impl Workspace {
             settings_form,
             flash: None,
             pending_open: false,
-            pending_session: None,
+            pending_conversation: None,
             reading: None,
             shown_notifications: 0,
             started: Some(started),
@@ -227,23 +228,23 @@ impl Workspace {
 
     fn on_snapshot(&mut self, next: Arc<Snapshot>, cx: &mut Context<Self>) {
         let first_load = !self.snapshot.loaded && next.loaded;
-        let new_conversation = next
-            .conversations
+        let new_flow = next
+            .flows
             .iter()
-            .map(|c| c.conversation.id)
-            .find(|id| self.snapshot.conversation(*id).is_none());
+            .map(|c| c.flow.id)
+            .find(|id| self.snapshot.flow(*id).is_none());
         self.snapshot = next;
-        if let Some(id) = new_conversation.filter(|_| self.pending_open) {
+        if let Some(id) = new_flow.filter(|_| self.pending_open) {
             self.pending_open = false;
             self.select(id, cx);
         }
-        if let Some((flow, before)) = self.pending_session
-            && let Some(view) = self.snapshot.conversation(flow)
-            && view.sessions.len() > before
+        if let Some((flow, before)) = self.pending_conversation
+            && let Some(view) = self.snapshot.flow(flow)
+            && view.conversations.len() > before
         {
-            self.pending_session = None;
-            if let Some(newest) = view.sessions.last() {
-                self.tabs.insert(flow, Tab::Session(*newest));
+            self.pending_conversation = None;
+            if let Some(newest) = view.conversations.last() {
+                self.tabs.insert(flow, Tab::Conversation(*newest));
             }
         }
         if first_load {
@@ -257,7 +258,7 @@ impl Workspace {
             .filter(|n| n.id > self.shown_notifications)
         {
             cx.show_system_notification(SystemNotification {
-                tag: format!("conversation-{}", n.conversation.0).into(),
+                tag: format!("conversation-{}", n.flow.0).into(),
                 title: n.title.clone().into(),
                 body: n.body.clone().into(),
                 actions: Vec::new(),
@@ -269,8 +270,8 @@ impl Workspace {
             .last()
             .map_or(self.shown_notifications, |n| n.id);
         self.show_flash(cx);
-        if let Screen::Conversation(id) = self.screen
-            && self.snapshot.conversation(id).is_none()
+        if let Screen::Flow(id) = self.screen
+            && self.snapshot.flow(id).is_none()
         {
             self.screen = Screen::Nothing;
         }
@@ -299,9 +300,9 @@ impl Workspace {
         .detach();
     }
 
-    /// Shows a conversation on its Flow tab (NAV-7, FLOW-4).
-    pub(crate) fn select(&mut self, id: ConversationId, cx: &mut Context<Self>) {
-        self.screen = Screen::Conversation(id);
+    /// Shows a flow on its Flow tab (NAV-7, FLOW-4).
+    pub(crate) fn select(&mut self, id: FlowId, cx: &mut Context<Self>) {
+        self.screen = Screen::Flow(id);
         self.tabs.remove(&id);
         self.close_detail();
         self.open_picker = None;
@@ -311,15 +312,15 @@ impl Workspace {
         cx.notify();
     }
 
-    /// The agent session shown for the selected conversation; `None` when
-    /// the Flow tab shows, which is where a conversation opens (FLOW-4).
-    pub(crate) fn current_session(&self) -> Option<AgentSessionId> {
-        let Screen::Conversation(id) = self.screen else {
+    /// The conversation shown for the selected flow; `None` when
+    /// the Flow tab shows, which is where a flow opens (FLOW-4).
+    pub(crate) fn current_conversation(&self) -> Option<ConversationId> {
+        let Screen::Flow(id) = self.screen else {
             return None;
         };
-        let conversation = self.snapshot.conversation(id)?;
+        let flow = self.snapshot.flow(id)?;
         match self.tabs.get(&id) {
-            Some(Tab::Session(s)) if conversation.sessions.contains(s) => Some(*s),
+            Some(Tab::Conversation(s)) if flow.conversations.contains(s) => Some(*s),
             _ => None,
         }
     }
@@ -331,9 +332,9 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn show_new_conversation(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn show_new_flow(&mut self, cx: &mut Context<Self>) {
         self.close_detail();
-        self.screen = Screen::NewConversation;
+        self.screen = Screen::NewFlow;
         self.open_picker = None;
         if self.form.project.is_none() {
             self.form.project = self.snapshot.projects.first().map(|p| p.id);
@@ -343,10 +344,10 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Opens the new-conversation form on `project` (when known). For an
-    /// issue, the conversation is linked to it and the message starts with
+    /// Opens the new-flow form on `project` (when known). For an
+    /// issue, the flow is linked to it and the message starts with
     /// `owner/name#12` and a blank line, the caret on it.
-    pub(crate) fn open_new_conversation(
+    pub(crate) fn open_new_flow(
         &mut self,
         project: Option<ProjectId>,
         issue: Option<leon_domain::GhRef>,
@@ -357,7 +358,7 @@ impl Workspace {
             self.form.project = project;
             self.form.settings.agent = None;
         }
-        self.show_new_conversation(cx);
+        self.show_new_flow(cx);
         if let Some(issue) = issue {
             let message = format!("{}\n\n", issue.text());
             crate::message_input::write_in(&self.form_text, message, window, cx);
@@ -384,14 +385,14 @@ impl Workspace {
         .detach();
     }
 
-    /// The transcript list of a session, kept in sync with its item count.
+    /// The transcript list of a conversation, kept in sync with its item count.
     pub(crate) fn list_for(
         &mut self,
-        session: AgentSessionId,
+        conversation: ConversationId,
         count: usize,
         streaming: bool,
     ) -> ListState {
-        let entry = self.lists.entry(session).or_insert_with(|| {
+        let entry = self.lists.entry(conversation).or_insert_with(|| {
             let state = ListState::new(0, ListAlignment::Bottom, px(400.));
             state.set_follow_mode(FollowMode::Tail);
             (state, 0)
@@ -426,15 +427,15 @@ impl Render for Workspace {
             });
         }
         // An answer is read on its agent's tab, not on the Flow (NAV-4).
-        let reading = self.current_session();
+        let reading = self.current_conversation();
         if reading != self.reading {
             self.reading = reading;
             self.core.send(Intent::Read(reading));
         }
         let main: AnyElement = match self.screen {
             Screen::Nothing => crate::widgets::empty("Select a flow, or start a new one."),
-            Screen::Conversation(id) => self.render_conversation(id, window, cx),
-            Screen::NewConversation => self.render_new_conversation(None, window, cx),
+            Screen::Flow(id) => self.render_flow_pane(id, window, cx),
+            Screen::NewFlow => self.render_new_flow(None, window, cx),
             Screen::GitHub(list) => self.render_github_list(list, cx),
             Screen::Doctor => self.render_doctor(cx),
             Screen::Tools => self.render_tools(cx),

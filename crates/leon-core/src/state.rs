@@ -5,19 +5,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, GhRef, Project,
-    ProjectId, Settings, Status, TimedEntry,
+    BackendKind, Conversation, ConversationId, Flow, FlowId, GhRef, Project, ProjectId, Settings,
+    Status, TimedEntry,
 };
 
 use crate::ports::{AgentDefinition, BackendOptions};
 use crate::snapshot::{
-    ConversationView, Notification, Question, SessionView, Snapshot, TranscriptView,
+    ConversationView, FlowView, Notification, Question, Snapshot, TranscriptView,
 };
 
-/// Live state of one agent session.
+/// Live state of one conversation.
 #[derive(Debug)]
-pub(crate) struct SessionState {
-    pub session: AgentSession,
+pub(crate) struct ConversationState {
+    pub conversation: Conversation,
     pub status: Status,
     pub subagents: (u32, u32),
     /// The agent's plan (CONV-14); kept while Leon runs.
@@ -29,29 +29,29 @@ pub(crate) struct SessionState {
     pub transcript: Option<TranscriptView>,
     /// Tool calls without a result yet: id → index in the transcript.
     pub pending_tools: HashMap<String, usize>,
-    /// The next message must carry the conversation so far (backend changed,
+    /// The next message must carry the flow so far (backend changed,
     /// CONV-5).
     pub carry_context: bool,
-    /// The session whose request this session is answering (P15); its
+    /// The conversation whose request this conversation is answering (P15); its
     /// answer goes there instead of to the user.
-    pub reply_to: Option<AgentSessionId>,
-    /// Messages from other sessions waiting for this one to finish its turn.
+    pub reply_to: Option<ConversationId>,
+    /// Messages from other conversations waiting for this one to finish its turn.
     pub inbox: VecDeque<Waiting>,
 }
 
-/// A message from another agent session, not sent yet.
+/// A message from another conversation, not sent yet.
 #[derive(Debug, Clone)]
 pub(crate) struct Waiting {
-    pub from: AgentSessionId,
+    pub from: ConversationId,
     pub text: String,
     /// A request: the answer goes back to `from`.
     pub expects_answer: bool,
 }
 
-impl SessionState {
-    pub(crate) fn new(session: AgentSession) -> Self {
+impl ConversationState {
+    pub(crate) fn new(conversation: Conversation) -> Self {
         Self {
-            session,
+            conversation,
             status: Status::Idle,
             subagents: (0, 0),
             plan: Vec::new(),
@@ -79,11 +79,11 @@ pub(crate) struct State {
     pub loaded: bool,
     pub settings: Settings,
     pub projects: Arc<Vec<Project>>,
-    pub conversations: Vec<Conversation>,
-    pub sessions: BTreeMap<AgentSessionId, SessionState>,
+    pub flows: Vec<Flow>,
+    pub conversations: BTreeMap<ConversationId, ConversationState>,
     pub agents: Arc<HashMap<ProjectId, Vec<AgentDefinition>>>,
     pub commands: Arc<HashMap<ProjectId, Vec<crate::ports::SlashCommand>>>,
-    /// The user's source folders (EXT-2), given to every session.
+    /// The user's source folders (EXT-2), given to every conversation.
     pub sources: Arc<Vec<crate::ports::Source>>,
     /// The user-level folders of agents and skills (SETTINGS-1).
     pub folders: Arc<Vec<crate::ports::AgentFolder>>,
@@ -120,31 +120,31 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(crate) fn conversation_mut(&mut self, id: ConversationId) -> Option<&mut Conversation> {
-        self.conversations.iter_mut().find(|c| c.id == id)
+    pub(crate) fn flow_mut(&mut self, id: FlowId) -> Option<&mut Flow> {
+        self.flows.iter_mut().find(|c| c.id == id)
     }
 
     pub(crate) fn project(&self, id: ProjectId) -> Option<&Project> {
         self.projects.iter().find(|p| p.id == id)
     }
 
-    /// The folders a conversation works in (CTX-2): those its agents
-    /// worked in, else the folder of the session the user started.
-    pub(crate) fn folders_of(&self, id: ConversationId) -> Vec<PathBuf> {
-        match self.conversations.iter().find(|c| c.id == id) {
+    /// The folders a flow works in (CTX-2): those its agents
+    /// worked in, else the folder of the conversation the user started.
+    pub(crate) fn folders_of(&self, id: FlowId) -> Vec<PathBuf> {
+        match self.flows.iter().find(|c| c.id == id) {
             Some(c) if !c.folders.is_empty() => c.folders.clone(),
             Some(_) => self
-                .sessions
+                .conversations
                 .values()
-                .find(|s| s.session.conversation == id && s.session.started_by.is_none())
-                .map_or_default(|s| vec![s.session.working_dir.clone()]),
+                .find(|s| s.conversation.flow == id && s.conversation.started_by.is_none())
+                .map_or_default(|s| vec![s.conversation.working_dir.clone()]),
             None => Vec::new(),
         }
     }
 
-    /// The issues a conversation is linked to (CTX-2): the one it was
+    /// The issues a flow is linked to (CTX-2): the one it was
     /// started for, then those its folders' pull requests close.
-    fn issues_of(&self, c: &Conversation, folders: &[PathBuf]) -> Vec<GhRef> {
+    fn issues_of(&self, c: &Flow, folders: &[PathBuf]) -> Vec<GhRef> {
         let mut issues: Vec<GhRef> = c.issue.iter().cloned().collect();
         let closed = folders
             .iter()
@@ -158,20 +158,20 @@ impl State {
         issues
     }
 
-    pub(crate) fn sessions_of(&self, conversation: ConversationId) -> Vec<AgentSessionId> {
-        self.sessions
+    pub(crate) fn conversations_of(&self, flow: FlowId) -> Vec<ConversationId> {
+        self.conversations
             .values()
-            .filter(|s| s.session.conversation == conversation)
-            .map(|s| s.session.id)
+            .filter(|s| s.conversation.flow == flow)
+            .map(|s| s.conversation.id)
             .collect()
     }
 
-    pub(crate) fn notify(&mut self, conversation: ConversationId, title: String, body: String) {
+    pub(crate) fn notify(&mut self, flow: FlowId, title: String, body: String) {
         self.next_notification += 1;
         let list = Arc::make_mut(&mut self.notifications);
         list.push(Notification {
             id: self.next_notification,
-            conversation,
+            flow,
             title,
             body,
         });
@@ -181,58 +181,58 @@ impl State {
     }
 
     pub(crate) fn snapshot(&self) -> Snapshot {
-        let mut conversations: Vec<ConversationView> = self
-            .conversations
+        let mut flows: Vec<FlowView> = self
+            .flows
             .iter()
             .map(|c| {
-                let sessions = self.sessions_of(c.id);
-                let status = Status::of_conversation(
-                    sessions
+                let conversations = self.conversations_of(c.id);
+                let status = Status::of_flow(
+                    conversations
                         .iter()
-                        .filter_map(|id| self.sessions.get(id))
+                        .filter_map(|id| self.conversations.get(id))
                         .map(|s| s.status),
                 );
                 let folders = self.folders_of(c.id);
-                ConversationView {
-                    conversation: c.clone(),
+                FlowView {
+                    flow: c.clone(),
                     status,
-                    sessions,
+                    conversations,
                     issues: self.issues_of(c, &folders),
                     folders,
                 }
             })
             .collect();
-        conversations.sort_by_key(|c| std::cmp::Reverse(c.conversation.updated_at));
-        let sessions = self
-            .sessions
+        flows.sort_by_key(|c| std::cmp::Reverse(c.flow.updated_at));
+        let conversations = self
+            .conversations
             .values()
             .map(|s| {
-                let view = SessionView {
-                    session: s.session.clone(),
+                let view = ConversationView {
+                    conversation: s.conversation.clone(),
                     status: s.status,
                     subagents: s.subagents,
                     plan: s.plan.clone(),
                     question: s.question.clone(),
                     suggestions: s.suggestions.clone(),
                 };
-                (s.session.id, view)
+                (s.conversation.id, view)
             })
             .collect();
         let transcripts = self
-            .sessions
+            .conversations
             .values()
             .filter_map(|s| {
                 s.transcript
                     .as_ref()
-                    .map(|t| (s.session.id, Arc::new(t.clone())))
+                    .map(|t| (s.conversation.id, Arc::new(t.clone())))
             })
             .collect();
         Snapshot {
             loaded: self.loaded,
             settings: self.settings.clone(),
             projects: Arc::clone(&self.projects),
+            flows: Arc::new(flows),
             conversations: Arc::new(conversations),
-            sessions: Arc::new(sessions),
             transcripts,
             agents: Arc::clone(&self.agents),
             commands: Arc::clone(&self.commands),

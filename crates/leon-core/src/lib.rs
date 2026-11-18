@@ -27,8 +27,7 @@ pub use doctor::About;
 pub use intent::Intent;
 pub use model_pick::settings_for_agent;
 pub use snapshot::{
-    ConversationView, Detail, GitView, Notification, Question, SessionView, Snapshot,
-    TranscriptView,
+    ConversationView, Detail, FlowView, GitView, Notification, Question, Snapshot, TranscriptView,
 };
 
 #[cfg(test)]

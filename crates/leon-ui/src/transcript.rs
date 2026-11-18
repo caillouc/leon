@@ -1,4 +1,4 @@
-//! An agent session's transcript, virtualised (only visible entries are
+//! An conversation's transcript, virtualised (only visible entries are
 //! laid out), following the end while the agent writes.
 
 use std::collections::HashMap;
@@ -9,7 +9,7 @@ use gpui::{
     px,
 };
 use leon_core::TranscriptView;
-use leon_domain::{AgentSessionId, Entry, TimedEntry};
+use leon_domain::{ConversationId, Entry, TimedEntry};
 
 use crate::icons::chevron;
 use crate::markdown::markdown;
@@ -20,10 +20,10 @@ use crate::workspace::Workspace;
 impl Workspace {
     pub(crate) fn render_transcript(
         &mut self,
-        session: AgentSessionId,
+        conversation: ConversationId,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(transcript) = self.snapshot.transcripts.get(&session).cloned() else {
+        let Some(transcript) = self.snapshot.transcripts.get(&conversation).cloned() else {
             return div().flex_1().child(empty("Loading…")).into_any_element();
         };
         let streaming = transcript.partial.is_some();
@@ -34,13 +34,13 @@ impl Workspace {
                 .child(empty("No messages yet."))
                 .into_any_element();
         }
-        let state = self.list_for(session, count, streaming);
+        let state = self.list_for(conversation, count, streaming);
         let view = cx.entity().downgrade();
-        let names: Arc<HashMap<AgentSessionId, String>> = Arc::new(
+        let names: Arc<HashMap<ConversationId, String>> = Arc::new(
             self.snapshot
-                .sessions
+                .conversations
                 .values()
-                .map(|s| (s.session.id, self.session_name(s)))
+                .map(|s| (s.conversation.id, self.conversation_name(s)))
                 .collect(),
         );
         let expanded = self.expanded.clone();
@@ -80,14 +80,14 @@ impl Workspace {
         let list = list(state, move |ix, _window, _cx| {
             let item = match transcript.entries.get(ix) {
                 Some(entry) => entry_view(
-                    session,
+                    conversation,
                     ix,
                     entry,
-                    expanded.contains(&(session, ix)),
+                    expanded.contains(&(conversation, ix)),
                     &view,
                     &names,
                 ),
-                None => partial_view(session, &transcript),
+                None => partial_view(conversation, &transcript),
             };
             // A list item is laid out alone, so `mx_auto` cannot centre it:
             // a full-width row centres the column instead.
@@ -120,25 +120,25 @@ impl Workspace {
     }
 }
 
-fn partial_view(session: AgentSessionId, t: &Arc<TranscriptView>) -> AnyElement {
+fn partial_view(conversation: ConversationId, t: &Arc<TranscriptView>) -> AnyElement {
     let text = t.partial.clone().unwrap_or_default();
     div()
         .child(markdown(
-            ElementId::Name(format!("partial-{}", session.0).into()),
+            ElementId::Name(format!("partial-{}", conversation.0).into()),
             &text,
         ))
         .into_any_element()
 }
 
 fn entry_view(
-    session: AgentSessionId,
+    conversation: ConversationId,
     ix: usize,
     timed: &TimedEntry,
     expanded: bool,
     view: &gpui::WeakEntity<Workspace>,
-    names: &HashMap<AgentSessionId, String>,
+    names: &HashMap<ConversationId, String>,
 ) -> AnyElement {
-    let id = |kind: &str| ElementId::Name(format!("{kind}-{}-{ix}", session.0).into());
+    let id = |kind: &str| ElementId::Name(format!("{kind}-{}-{ix}", conversation.0).into());
     match &timed.entry {
         Entry::User { text } => {
             let (view_edit, text_edit) = (view.clone(), text.clone());
@@ -167,7 +167,14 @@ fn entry_view(
                         .text_color(theme::accent())
                         .child("You"),
                 )
-                .child(long_text(session, ix, id("user"), text, expanded, view))
+                .child(long_text(
+                    conversation,
+                    ix,
+                    id("user"),
+                    text,
+                    expanded,
+                    view,
+                ))
                 .child(
                     div()
                         .id(id("edit"))
@@ -187,7 +194,7 @@ fn entry_view(
                         .on_click(move |_, window, cx| {
                             let text = text_edit.clone();
                             let _ = view_edit.update(cx, |this, cx| {
-                                this.start_edit(session, ix, &text, window, cx);
+                                this.start_edit(conversation, ix, &text, window, cx);
                             });
                         }),
                 )
@@ -219,7 +226,7 @@ fn entry_view(
                         .child(format!("{what} {name}")),
                 )
                 .child(long_text(
-                    session,
+                    conversation,
                     ix,
                     id("from-agent"),
                     text,
@@ -269,8 +276,8 @@ fn entry_view(
                 )
                 .on_click(move |_, _, cx| {
                     let _ = view.update(cx, |this, cx| {
-                        if !this.expanded.remove(&(session, ix)) {
-                            this.expanded.insert((session, ix));
+                        if !this.expanded.remove(&(conversation, ix)) {
+                            this.expanded.insert((conversation, ix));
                         }
                         cx.notify();
                     });
@@ -333,7 +340,7 @@ fn entry_view(
 const FOLD_LINES: usize = 12;
 
 fn long_text(
-    session: AgentSessionId,
+    conversation: ConversationId,
     ix: usize,
     id: ElementId,
     text: &str,
@@ -366,8 +373,8 @@ fn long_text(
                 })
                 .on_click(move |_, _, cx| {
                     let _ = view.update(cx, |this, cx| {
-                        if !this.expanded.remove(&(session, ix)) {
-                            this.expanded.insert((session, ix));
+                        if !this.expanded.remove(&(conversation, ix)) {
+                            this.expanded.insert((conversation, ix));
                         }
                         cx.notify();
                     });

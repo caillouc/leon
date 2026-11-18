@@ -6,10 +6,10 @@
 mod agent_file;
 mod backend;
 mod connectors;
-mod conversation;
 mod date;
 mod diff;
 mod doctor;
+mod flow;
 mod github;
 mod mcp;
 mod plan;
@@ -25,14 +25,14 @@ pub use connectors::{
     CliConnectors, Connector, ConnectorKind, ConnectorRow, ConnectorState, connector_key,
     connector_table,
 };
-pub use conversation::{
-    AgentSession, AgentSessionId, Attention, Conversation, ConversationId, SessionSettings, Status,
-};
 pub use date::Day;
 pub use diff::{
     DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason, folded_last,
 };
 pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
+pub use flow::{
+    Attention, Conversation, ConversationId, ConversationSettings, Flow, FlowId, Status,
+};
 pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,
     ReviewThread, issues_by_status, prs_by_repo,
@@ -41,6 +41,6 @@ pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
-pub use settings::{SessionDefaults, Settings};
+pub use settings::{ConversationDefaults, Settings};
 pub use sprint::{Iteration, current_sprint};
 pub use transcript::{Entry, RunningTool, TimedEntry, Usage, running_tools};

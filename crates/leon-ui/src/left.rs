@@ -1,9 +1,9 @@
-//! Left pane (NAV-*): new conversation, search, pinned conversations, one
+//! Left pane (NAV-*): new flow, search, pinned flows, one
 //! group per project, the archive.
 
 use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*, px};
 use gpui_component::input::Input;
-use leon_core::{ConversationView, Intent};
+use leon_core::{FlowView, Intent};
 use leon_domain::Attention;
 
 use crate::icons::{Icon, chevron, icon};
@@ -20,9 +20,8 @@ impl Workspace {
     ) -> AnyElement {
         let query = value_of(&self.search, cx).to_lowercase();
         let snapshot = std::sync::Arc::clone(&self.snapshot);
-        let matches = |c: &&ConversationView| {
-            query.is_empty() || c.conversation.title.to_lowercase().contains(&query)
-        };
+        let matches =
+            |c: &&FlowView| query.is_empty() || c.flow.title.to_lowercase().contains(&query);
         let mut body = div()
             .id("left-list")
             .flex_1()
@@ -35,7 +34,7 @@ impl Workspace {
             .child(self.render_github_rows(cx));
 
         let pinned: Vec<_> = snapshot
-            .conversations
+            .flows
             .iter()
             .filter(|c| is_pinned(c))
             .filter(matches)
@@ -48,25 +47,25 @@ impl Workspace {
         body = body.child(Self::projects_header(cx));
         for project in snapshot.projects.iter() {
             let rows: Vec<_> = snapshot
-                .conversations
+                .flows
                 .iter()
                 .filter(|c| in_project(c, project.id))
                 .filter(matches)
                 .collect();
             // A search shows matches even in a folded project, and a folded
-            // project still shows the open conversation.
+            // project still shows the open flow.
             let folded = project.collapsed && query.is_empty();
-            // A folded project shows its most pressing conversation's colour.
+            // A folded project shows its most pressing flow's colour.
             let attention = rows
                 .iter()
-                .map(|c| Attention::of(c.status, c.conversation.unread))
+                .map(|c| Attention::of(c.status, c.flow.unread))
                 .max()
-                .and_then(crate::conv_row::attention_color);
+                .and_then(crate::flow_row::attention_color);
             body = body.child(Self::project_header(project, rows.len(), attention, cx));
             if folded {
                 let open = rows
                     .into_iter()
-                    .filter(|c| self.screen == Screen::Conversation(c.conversation.id));
+                    .filter(|c| self.screen == Screen::Flow(c.flow.id));
                 body = body.children(open.map(|c| self.row(c, false, cx)));
                 continue;
             }
@@ -83,9 +82,9 @@ impl Workspace {
             body = body.child(empty("Add a project folder to start."));
         }
         let archived: Vec<_> = snapshot
-            .conversations
+            .flows
             .iter()
-            .filter(|c| c.conversation.archived)
+            .filter(|c| c.flow.archived)
             .filter(matches)
             .collect();
         if !archived.is_empty() {
@@ -151,8 +150,8 @@ impl Workspace {
                             .bg(theme::accent())
                             .cursor_pointer()
                             .hover(|s| s.opacity(0.9))
-                            .child(icon(Icon::NewConversation, theme::on_accent(), 16.))
-                            .on_click(cx.listener(|this, _, _, cx| this.show_new_conversation(cx))),
+                            .child(icon(Icon::NewFlow, theme::on_accent(), 16.))
+                            .on_click(cx.listener(|this, _, _, cx| this.show_new_flow(cx))),
                     ),
             )
             .child(body)
@@ -161,16 +160,16 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// Conversations in the left pane's order: pinned, then each project's.
-    pub(crate) fn left_order(&self) -> Vec<leon_domain::ConversationId> {
-        let all = &self.snapshot.conversations;
+    /// Flows in the left pane's order: pinned, then each project's.
+    pub(crate) fn left_order(&self) -> Vec<leon_domain::FlowId> {
+        let all = &self.snapshot.flows;
         let pinned = all.iter().filter(|c| is_pinned(c));
         let projects = self
             .snapshot
             .projects
             .iter()
             .flat_map(|p| all.iter().filter(move |c| in_project(c, p.id)));
-        pinned.chain(projects).map(|c| c.conversation.id).collect()
+        pinned.chain(projects).map(|c| c.flow.id).collect()
     }
 
     /// "Projects" and its own button to add one (NAV-1).
@@ -197,8 +196,8 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// A project's row: click to fold or unfold its conversations (NAV-2);
-    /// chevron, name, count, a dot when a folded conversation needs you, +
+    /// A project's row: click to fold or unfold its flows (NAV-2);
+    /// chevron, name, count, a dot when a folded flow needs you, +
     /// (on hover) to start one in it (NAV-10); right-click to remove it.
     fn project_header(
         project: &leon_domain::Project,
@@ -265,7 +264,7 @@ impl Workspace {
                     .child(icon(Icon::Plus, theme::fg_muted(), 14.))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         cx.stop_propagation();
-                        this.open_new_conversation(Some(id), None, window, cx);
+                        this.open_new_flow(Some(id), None, window, cx);
                     })),
             )
             .into_any_element()
@@ -300,11 +299,11 @@ pub(crate) fn now_ms() -> i64 {
 }
 
 /// Shown under Pinned.
-fn is_pinned(c: &ConversationView) -> bool {
-    c.conversation.pinned && !c.conversation.archived
+fn is_pinned(c: &FlowView) -> bool {
+    c.flow.pinned && !c.flow.archived
 }
 
 /// Shown under its project.
-fn in_project(c: &ConversationView, project: leon_domain::ProjectId) -> bool {
-    c.conversation.project == project && !c.conversation.pinned && !c.conversation.archived
+fn in_project(c: &FlowView, project: leon_domain::ProjectId) -> bool {
+    c.flow.project == project && !c.flow.pinned && !c.flow.archived
 }

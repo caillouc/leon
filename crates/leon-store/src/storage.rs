@@ -2,10 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
-use leon_core::ports::{NewSession, PortError, Storage};
+use leon_core::ports::{NewConversation, PortError, Storage};
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, GhRef, Project,
-    ProjectId, SessionSettings, TimedEntry,
+    BackendKind, Conversation, ConversationId, ConversationSettings, Flow, FlowId, GhRef, Project,
+    ProjectId, TimedEntry,
 };
 use rusqlite::{Row, params};
 
@@ -34,9 +34,9 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
     })
 }
 
-fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
-    Ok(Conversation {
-        id: ConversationId(row.get(0)?),
+fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
+    Ok(Flow {
+        id: FlowId(row.get(0)?),
         project: ProjectId(row.get(1)?),
         title: row.get(2)?,
         pinned: row.get(3)?,
@@ -51,15 +51,15 @@ fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
     })
 }
 
-const SESSION_COLUMNS: &str = "id, conversation_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session, unread";
+const CONVERSATION_COLUMNS: &str = "id, flow_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session, unread";
 
-fn session_row(row: &Row<'_>) -> rusqlite::Result<AgentSession> {
+fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
     let backend: String = row.get(3)?;
-    Ok(AgentSession {
-        id: AgentSessionId(row.get(0)?),
-        conversation: ConversationId(row.get(1)?),
-        started_by: row.get::<_, Option<i64>>(2)?.map(AgentSessionId),
-        settings: SessionSettings {
+    Ok(Conversation {
+        id: ConversationId(row.get(0)?),
+        flow: FlowId(row.get(1)?),
+        started_by: row.get::<_, Option<i64>>(2)?.map(ConversationId),
+        settings: ConversationSettings {
             backend: BackendKind::from_id(&backend).unwrap_or(BackendKind::ClaudeCode),
             agent: row.get(4)?,
             model: row.get(5)?,
@@ -111,46 +111,41 @@ impl Storage for Store {
             .map_err(err("folding a project"))
     }
 
+    fn list_flows(&self) -> Result<Vec<Flow>, PortError> {
+        const C: &str = "listing flows";
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders, issue FROM flows
+                 ORDER BY updated_at DESC, id DESC",
+            )
+            .map_err(err(C))?;
+        let rows = stmt.query_map([], flow_row).map_err(err(C))?;
+        rows.collect::<Result<_, _>>().map_err(err(C))
+    }
+
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError> {
         const C: &str = "listing conversations";
         let conn = self.lock();
         let mut stmt = conn
-            .prepare_cached(
-                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders, issue FROM conversations
-                 ORDER BY updated_at DESC, id DESC",
-            )
+            .prepare_cached(&format!(
+                "SELECT {CONVERSATION_COLUMNS} FROM conversations ORDER BY id"
+            ))
             .map_err(err(C))?;
         let rows = stmt.query_map([], conversation_row).map_err(err(C))?;
         rows.collect::<Result<_, _>>().map_err(err(C))
     }
 
-    fn list_sessions(&self) -> Result<Vec<AgentSession>, PortError> {
-        const C: &str = "listing agent sessions";
-        let conn = self.lock();
-        let mut stmt = conn
-            .prepare_cached(&format!(
-                "SELECT {SESSION_COLUMNS} FROM agent_sessions ORDER BY id"
-            ))
-            .map_err(err(C))?;
-        let rows = stmt.query_map([], session_row).map_err(err(C))?;
-        rows.collect::<Result<_, _>>().map_err(err(C))
-    }
-
-    fn create_conversation(
-        &self,
-        project: ProjectId,
-        title: &str,
-        now: i64,
-    ) -> Result<Conversation, PortError> {
-        const C: &str = "creating a conversation";
+    fn create_flow(&self, project: ProjectId, title: &str, now: i64) -> Result<Flow, PortError> {
+        const C: &str = "creating a flow";
         let conn = self.lock();
         conn.execute(
-            "INSERT INTO conversations (project_id, title, updated_at) VALUES (?1, ?2, ?3)",
+            "INSERT INTO flows (project_id, title, updated_at) VALUES (?1, ?2, ?3)",
             params![project.0, title, now],
         )
         .map_err(err(C))?;
-        Ok(Conversation {
-            id: ConversationId(conn.last_insert_rowid()),
+        Ok(Flow {
+            id: FlowId(conn.last_insert_rowid()),
             project,
             title: title.to_owned(),
             pinned: false,
@@ -162,10 +157,10 @@ impl Storage for Store {
         })
     }
 
-    fn update_conversation(&self, c: &Conversation) -> Result<(), PortError> {
+    fn update_flow(&self, c: &Flow) -> Result<(), PortError> {
         self.lock()
             .execute(
-                "UPDATE conversations SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
+                "UPDATE flows SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
                  folders = ?7, issue = ?8 WHERE id = ?1",
                 params![
                     c.id.0,
@@ -182,7 +177,7 @@ impl Storage for Store {
                 ],
             )
             .map(drop)
-            .map_err(err("saving a conversation"))
+            .map_err(err("saving a flow"))
     }
 
     fn folded_groups(&self) -> Result<Vec<String>, PortError> {
@@ -210,29 +205,29 @@ impl Storage for Store {
     }
 
     fn remove_project(&self, id: ProjectId) -> Result<(), PortError> {
-        // Its conversations, sessions and entries go with it (ON DELETE CASCADE).
+        // Its flows, conversations and entries go with it (ON DELETE CASCADE).
         self.lock()
             .execute("DELETE FROM projects WHERE id = ?1", [id.0])
             .map(drop)
             .map_err(err("removing a project"))
     }
 
-    fn delete_conversation(&self, id: ConversationId) -> Result<(), PortError> {
+    fn delete_flow(&self, id: FlowId) -> Result<(), PortError> {
         self.lock()
-            .execute("DELETE FROM conversations WHERE id = ?1", [id.0])
+            .execute("DELETE FROM flows WHERE id = ?1", [id.0])
             .map(drop)
-            .map_err(err("deleting a conversation"))
+            .map_err(err("deleting a flow"))
     }
 
-    fn create_session(&self, new: &NewSession) -> Result<AgentSession, PortError> {
-        const C: &str = "creating an agent session";
+    fn create_conversation(&self, new: &NewConversation) -> Result<Conversation, PortError> {
+        const C: &str = "creating a conversation";
         let conn = self.lock();
         let s = &new.settings;
         conn.execute(
-            "INSERT INTO agent_sessions (conversation_id, started_by, backend, agent, model, effort, permission, working_dir)
+            "INSERT INTO conversations (flow_id, started_by, backend, agent, model, effort, permission, working_dir)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
-                new.conversation.0,
+                new.flow.0,
                 new.started_by.map(|id| id.0),
                 s.backend.id(),
                 s.agent,
@@ -243,9 +238,9 @@ impl Storage for Store {
             ],
         )
         .map_err(err(C))?;
-        Ok(AgentSession {
-            id: AgentSessionId(conn.last_insert_rowid()),
-            conversation: new.conversation,
+        Ok(Conversation {
+            id: ConversationId(conn.last_insert_rowid()),
+            flow: new.flow,
             started_by: new.started_by,
             settings: new.settings.clone(),
             working_dir: new.working_dir.clone(),
@@ -254,32 +249,36 @@ impl Storage for Store {
         })
     }
 
-    fn update_session(&self, a: &AgentSession) -> Result<(), PortError> {
+    fn update_conversation(&self, a: &Conversation) -> Result<(), PortError> {
         let s = &a.settings;
         self.lock()
             .execute(
-                "UPDATE agent_sessions SET backend = ?2, agent = ?3, model = ?4, effort = ?5, permission = ?6,
+                "UPDATE conversations SET backend = ?2, agent = ?3, model = ?4, effort = ?5, permission = ?6,
                  working_dir = ?7, cli_session = ?8, unread = ?9 WHERE id = ?1",
                 params![a.id.0, s.backend.id(), s.agent, s.model, s.effort, s.permission, path_text(&a.working_dir), a.cli_session, a.unread],
             )
             .map(drop)
-            .map_err(err("saving an agent session"))
+            .map_err(err("saving a conversation"))
     }
 
-    fn append_entry(&self, session: AgentSessionId, entry: &TimedEntry) -> Result<(), PortError> {
+    fn append_entry(
+        &self,
+        conversation: ConversationId,
+        entry: &TimedEntry,
+    ) -> Result<(), PortError> {
         const C: &str = "saving a transcript entry";
         let json = serde_json::to_string(&entry.entry).map_err(|e| PortError::new(C, e))?;
         let conn = self.lock();
         let next: i64 = conn
             .query_row(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM entries WHERE session_id = ?1",
-                [session.0],
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM entries WHERE conversation_id = ?1",
+                [conversation.0],
                 |r| r.get(0),
             )
             .map_err(err(C))?;
         conn.execute(
-            "INSERT INTO entries (session_id, seq, at, entry) VALUES (?1, ?2, ?3, ?4)",
-            params![session.0, next, entry.at, json],
+            "INSERT INTO entries (conversation_id, seq, at, entry) VALUES (?1, ?2, ?3, ?4)",
+            params![conversation.0, next, entry.at, json],
         )
         .map(drop)
         .map_err(err(C))
@@ -287,33 +286,36 @@ impl Storage for Store {
 
     fn replace_entries(
         &self,
-        session: AgentSessionId,
+        conversation: ConversationId,
         entries: &[TimedEntry],
     ) -> Result<(), PortError> {
         const C: &str = "rewriting a transcript";
         let mut conn = self.lock();
         let tx = conn.transaction().map_err(err(C))?;
-        tx.execute("DELETE FROM entries WHERE session_id = ?1", [session.0])
-            .map_err(err(C))?;
+        tx.execute(
+            "DELETE FROM entries WHERE conversation_id = ?1",
+            [conversation.0],
+        )
+        .map_err(err(C))?;
         for (seq, entry) in (1i64..).zip(entries) {
             let json = serde_json::to_string(&entry.entry).map_err(|e| PortError::new(C, e))?;
             tx.execute(
-                "INSERT INTO entries (session_id, seq, at, entry) VALUES (?1, ?2, ?3, ?4)",
-                params![session.0, seq, entry.at, json],
+                "INSERT INTO entries (conversation_id, seq, at, entry) VALUES (?1, ?2, ?3, ?4)",
+                params![conversation.0, seq, entry.at, json],
             )
             .map_err(err(C))?;
         }
         tx.commit().map_err(err(C))
     }
 
-    fn entries(&self, session: AgentSessionId) -> Result<Vec<TimedEntry>, PortError> {
+    fn entries(&self, conversation: ConversationId) -> Result<Vec<TimedEntry>, PortError> {
         const C: &str = "reading a transcript";
         let conn = self.lock();
         let mut stmt = conn
-            .prepare_cached("SELECT at, entry FROM entries WHERE session_id = ?1 ORDER BY seq")
+            .prepare_cached("SELECT at, entry FROM entries WHERE conversation_id = ?1 ORDER BY seq")
             .map_err(err(C))?;
         let rows = stmt
-            .query_map([session.0], |row| {
+            .query_map([conversation.0], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(err(C))?;
@@ -331,14 +333,12 @@ impl Storage for Store {
 }
 
 impl Store {
-    /// Whether a conversation exists (used by tests and checks).
+    /// Whether a flow exists (used by tests and checks).
     #[cfg(test)]
-    fn has_conversation(&self, id: ConversationId) -> bool {
+    fn has_flow(&self, id: FlowId) -> bool {
         use rusqlite::OptionalExtension as _;
         self.lock()
-            .query_row("SELECT 1 FROM conversations WHERE id = ?1", [id.0], |_| {
-                Ok(())
-            })
+            .query_row("SELECT 1 FROM flows WHERE id = ?1", [id.0], |_| Ok(()))
             .optional()
             .ok()
             .flatten()
@@ -350,13 +350,13 @@ impl Store {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use leon_core::ports::{NewSession, Storage};
-    use leon_domain::{BackendKind, Entry, SessionSettings, TimedEntry};
+    use leon_core::ports::{NewConversation, Storage};
+    use leon_domain::{BackendKind, ConversationSettings, Entry, TimedEntry};
 
     use crate::Store;
 
-    fn settings() -> SessionSettings {
-        SessionSettings {
+    fn settings() -> ConversationSettings {
+        ConversationSettings {
             backend: BackendKind::Codex,
             agent: Some("planner".into()),
             model: None,
@@ -392,33 +392,31 @@ mod tests {
     }
 
     #[test]
-    fn conversation_session_and_entries_round_trip() {
+    fn flow_conversation_and_entries_round_trip() {
         let store = Store::open_in_memory().unwrap();
         let project = store.add_project("api", Path::new("/code/api"), 1).unwrap();
-        let mut conv = store
-            .create_conversation(project.id, "Fix retry", 10)
-            .unwrap();
-        let mut session = store
-            .create_session(&NewSession {
-                conversation: conv.id,
+        let mut conv = store.create_flow(project.id, "Fix retry", 10).unwrap();
+        let mut conversation = store
+            .create_conversation(&NewConversation {
+                flow: conv.id,
                 started_by: None,
                 settings: settings(),
                 working_dir: PathBuf::from("/code/api"),
             })
             .unwrap();
-        session.cli_session = Some("thread-1".into());
-        session.unread = true;
-        store.update_session(&session).unwrap();
+        conversation.cli_session = Some("thread-1".into());
+        conversation.unread = true;
+        store.update_conversation(&conversation).unwrap();
         conv.pinned = true;
         conv.folders = vec![
             PathBuf::from("/code/api/.worktrees/fix"),
             PathBuf::from("/code/web/.worktrees/fix"),
         ];
         conv.issue = Some(leon_domain::GhRef::issue("acme/api", 12));
-        store.update_conversation(&conv).unwrap();
+        store.update_flow(&conv).unwrap();
         store
             .append_entry(
-                session.id,
+                conversation.id,
                 &TimedEntry {
                     at: 11,
                     entry: Entry::User { text: "hi".into() },
@@ -427,7 +425,7 @@ mod tests {
             .unwrap();
         store
             .append_entry(
-                session.id,
+                conversation.id,
                 &TimedEntry {
                     at: 12,
                     entry: Entry::Agent {
@@ -438,11 +436,11 @@ mod tests {
             .unwrap();
         store
             .append_entry(
-                session.id,
+                conversation.id,
                 &TimedEntry {
                     at: 13,
                     entry: Entry::FromAgent {
-                        from: session.id,
+                        from: conversation.id,
                         text: "done".into(),
                         answer: true,
                     },
@@ -450,9 +448,12 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(store.list_conversations().unwrap(), vec![conv.clone()]);
-        assert_eq!(store.list_sessions().unwrap(), vec![session.clone()]);
-        let entries = store.entries(session.id).unwrap();
+        assert_eq!(store.list_flows().unwrap(), vec![conv.clone()]);
+        assert_eq!(
+            store.list_conversations().unwrap(),
+            vec![conversation.clone()]
+        );
+        let entries = store.entries(conversation.id).unwrap();
         assert_eq!(entries.len(), 3);
         assert_eq!(
             entries[1].entry,
@@ -463,32 +464,37 @@ mod tests {
         assert_eq!(
             entries[2].entry,
             Entry::FromAgent {
-                from: session.id,
+                from: conversation.id,
                 text: "done".into(),
                 answer: true,
             }
         );
 
-        store.replace_entries(session.id, &entries[..1]).unwrap();
-        assert_eq!(store.entries(session.id).unwrap(), entries[..1].to_vec());
-        store.append_entry(session.id, &entries[2]).unwrap();
-        assert_eq!(store.entries(session.id).unwrap().len(), 2);
+        store
+            .replace_entries(conversation.id, &entries[..1])
+            .unwrap();
+        assert_eq!(
+            store.entries(conversation.id).unwrap(),
+            entries[..1].to_vec()
+        );
+        store.append_entry(conversation.id, &entries[2]).unwrap();
+        assert_eq!(store.entries(conversation.id).unwrap().len(), 2);
 
-        store.delete_conversation(conv.id).unwrap();
-        assert!(!store.has_conversation(conv.id));
-        assert_eq!(store.entries(session.id).unwrap(), Vec::new());
+        store.delete_flow(conv.id).unwrap();
+        assert!(!store.has_flow(conv.id));
+        assert_eq!(store.entries(conversation.id).unwrap(), Vec::new());
     }
 
     #[test]
-    fn removing_a_project_removes_its_conversations_not_others() {
+    fn removing_a_project_removes_its_flows_not_others() {
         let store = Store::open_in_memory().unwrap();
         let api = store.add_project("api", Path::new("/code/api"), 1).unwrap();
         let web = store.add_project("web", Path::new("/code/web"), 1).unwrap();
-        let gone = store.create_conversation(api.id, "Fix", 2).unwrap();
-        let kept = store.create_conversation(web.id, "Keep", 2).unwrap();
-        let session = store
-            .create_session(&NewSession {
-                conversation: gone.id,
+        let gone = store.create_flow(api.id, "Fix", 2).unwrap();
+        let kept = store.create_flow(web.id, "Keep", 2).unwrap();
+        let conversation = store
+            .create_conversation(&NewConversation {
+                flow: gone.id,
                 started_by: None,
                 settings: settings(),
                 working_dir: PathBuf::from("/code/api"),
@@ -498,7 +504,7 @@ mod tests {
             at: 3,
             entry: Entry::User { text: "hi".into() },
         };
-        store.append_entry(session.id, &entry).unwrap();
+        store.append_entry(conversation.id, &entry).unwrap();
 
         store.remove_project(api.id).unwrap();
         let names: Vec<_> = store
@@ -508,9 +514,9 @@ mod tests {
             .map(|p| p.name)
             .collect();
         assert_eq!(names, ["web"]);
-        assert!(!store.has_conversation(gone.id));
-        assert!(store.has_conversation(kept.id));
-        assert_eq!(store.entries(session.id).unwrap(), Vec::new());
+        assert!(!store.has_flow(gone.id));
+        assert!(store.has_flow(kept.id));
+        assert_eq!(store.entries(conversation.id).unwrap(), Vec::new());
     }
 
     #[test]

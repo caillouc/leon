@@ -40,7 +40,7 @@ impl Workspace {
                     .bg(theme::surface_2())
                     .border_b_1()
                     .border_color(theme::border())
-                    .child(icon(Icon::Conversation, theme::warn(), 13.))
+                    .child(icon(Icon::Chat, theme::warn(), 13.))
                     .child(
                         div()
                             .min_w_0()

@@ -1,11 +1,11 @@
-//! Main pane for a conversation: header (title, branch), tabs (the flow and
-//! each agent session), transcript and composer.
+//! Main pane for a flow: header (title, branch), tabs (the flow and
+//! each conversation), transcript and composer.
 
 use gpui::{
     AnyElement, ClipboardItem, Context, IntoElement, SharedString, Window, div, prelude::*, px,
 };
-use leon_core::SessionView;
-use leon_domain::{ConversationId, Status};
+use leon_core::ConversationView;
+use leon_domain::{FlowId, Status};
 
 use crate::icons::{Icon, icon};
 use crate::spinner::status_mark;
@@ -14,31 +14,31 @@ use crate::widgets::{HEADER_HEIGHT, empty};
 use crate::workspace::{Tab, Workspace};
 
 impl Workspace {
-    pub(crate) fn render_conversation(
+    pub(crate) fn render_flow_pane(
         &mut self,
-        id: ConversationId,
+        id: FlowId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(view) = self.snapshot.conversation(id).cloned() else {
+        let Some(view) = self.snapshot.flow(id).cloned() else {
             return empty("This flow no longer exists.");
         };
-        let session = self.current_session();
-        let body = match session {
+        let conversation = self.current_conversation();
+        let body = match conversation {
             None if self.tabs.get(&id) == Some(&Tab::New) => {
-                self.render_new_conversation(Some(id), window, cx)
+                self.render_new_flow(Some(id), window, cx)
             }
-            None if view.sessions.is_empty() => empty("No conversation yet."),
+            None if view.conversations.is_empty() => empty("No conversation yet."),
             None => self.render_flow(id, window, cx),
-            Some(session) => {
-                let transcript = self.render_transcript(session, cx);
+            Some(conversation) => {
+                let transcript = self.render_transcript(conversation, cx);
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
                     .flex_col()
                     .child(transcript)
-                    .child(self.render_composer(session, window, cx))
+                    .child(self.render_composer(conversation, window, cx))
                     .into_any_element()
             }
         };
@@ -53,12 +53,12 @@ impl Workspace {
 
     fn render_header(
         &mut self,
-        view: &leon_core::ConversationView,
+        view: &leon_core::FlowView,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let id = view.conversation.id;
-        let c = &view.conversation;
+        let id = view.flow.id;
+        let c = &view.flow;
         let title = div()
             .text_size(px(15.))
             .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -67,10 +67,10 @@ impl Workspace {
             .text_ellipsis()
             .child(c.title.clone());
         let folder = view
-            .sessions
+            .conversations
             .first()
-            .and_then(|s| self.snapshot.sessions.get(s))
-            .map(|s| s.session.working_dir.clone());
+            .and_then(|s| self.snapshot.conversations.get(s))
+            .map(|s| s.conversation.working_dir.clone());
         let branch = self.folder_git(id).and_then(|g| g.branch.clone());
         let chip_text: SharedString = branch
             .clone()
@@ -100,7 +100,7 @@ impl Workspace {
                 cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
             });
 
-        let current = self.current_session();
+        let current = self.current_conversation();
         let adding = self.tabs.get(&id) == Some(&Tab::New);
         let mut tabs = div().flex().gap_1().child(Self::tab_button(
             "tab-flow",
@@ -111,12 +111,15 @@ impl Workspace {
             Tab::Flow,
             cx,
         ));
-        for sid in &view.sessions {
-            if let Some(s) = self.snapshot.sessions.get(sid).cloned() {
+        for sid in &view.conversations {
+            if let Some(s) = self.snapshot.conversations.get(sid).cloned() {
                 let selected = current == Some(*sid);
-                let name = self.session_name(&s);
-                let text: SharedString =
-                    format!("{name} · {}", s.session.settings.backend.display_name()).into();
+                let name = self.conversation_name(&s);
+                let text: SharedString = format!(
+                    "{name} · {}",
+                    s.conversation.settings.backend.display_name()
+                )
+                .into();
                 tabs = tabs.child(Self::tab_button(
                     &format!("tab-{}", sid.0),
                     text,
@@ -126,7 +129,7 @@ impl Workspace {
                     )),
                     selected,
                     id,
-                    Tab::Session(*sid),
+                    Tab::Conversation(*sid),
                     cx,
                 ));
             }
@@ -210,7 +213,7 @@ impl Workspace {
         text: SharedString,
         mark: Option<AnyElement>,
         selected: bool,
-        conversation: ConversationId,
+        flow: FlowId,
         tab: Tab,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -238,35 +241,35 @@ impl Workspace {
             .children(mark)
             .child(text)
             .on_click(cx.listener(move |this, _, _, cx| {
-                this.tabs.insert(conversation, tab);
+                this.tabs.insert(flow, tab);
                 cx.notify();
             }))
             .into_any_element()
     }
 
-    pub(crate) fn session_name(&self, s: &SessionView) -> String {
+    pub(crate) fn conversation_name(&self, s: &ConversationView) -> String {
         let name = s
-            .session
+            .conversation
             .settings
             .agent
             .clone()
             .unwrap_or_else(|| "Agent".to_owned());
-        let conversation = self.snapshot.conversation(s.session.conversation);
-        let same: Vec<_> = conversation.map_or_default(|c| {
-            c.sessions
+        let flow = self.snapshot.flow(s.conversation.flow);
+        let same: Vec<_> = flow.map_or_default(|c| {
+            c.conversations
                 .iter()
-                .filter_map(|id| self.snapshot.sessions.get(id))
-                .filter(|o| o.session.settings.agent == s.session.settings.agent)
-                .map(|o| o.session.id)
+                .filter_map(|id| self.snapshot.conversations.get(id))
+                .filter(|o| o.conversation.settings.agent == s.conversation.settings.agent)
+                .map(|o| o.conversation.id)
                 .collect()
         });
-        match same.iter().position(|id| *id == s.session.id) {
+        match same.iter().position(|id| *id == s.conversation.id) {
             Some(ix) if same.len() > 1 => format!("{name} {}", ix + 1),
             _ => name,
         }
     }
 
-    pub(crate) fn status_line(s: &SessionView) -> Option<String> {
+    pub(crate) fn status_line(s: &ConversationView) -> Option<String> {
         let (started, running) = s.subagents;
         let sub = (started > 0).then(|| format!("Subagents: {started} started, {running} running"));
         let state = match s.status {

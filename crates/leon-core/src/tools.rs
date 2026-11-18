@@ -1,5 +1,5 @@
 //! The Tools view (TOOLS-1): Leon's shared MCP list, edited here and given
-//! to every session (I14), and what each CLI has on its own.
+//! to every conversation (I14), and what each CLI has on its own.
 
 use std::sync::Arc;
 
@@ -75,9 +75,9 @@ impl Core {
         self.state.tools = Some((self.now_ms(), Arc::new(clis)));
     }
 
-    /// The MCP servers a session gets: Leon's own tools, then the shared
+    /// The MCP servers a conversation gets: Leon's own tools, then the shared
     /// list (a shared server never replaces Leon's).
-    pub(crate) fn session_servers(&self, own: Option<McpServer>) -> Vec<McpServer> {
+    pub(crate) fn conversation_servers(&self, own: Option<McpServer>) -> Vec<McpServer> {
         let mut servers: Vec<McpServer> = own.into_iter().collect();
         for s in self.state.shared.iter() {
             if !servers.iter().any(|o| o.name == s.name) {

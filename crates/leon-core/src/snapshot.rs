@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, FileDiff, FoldPattern,
-    GhRef, Issue, Project, ProjectId, PullRequest, Settings, Status, TimedEntry,
+    BackendKind, Conversation, ConversationId, FileDiff, Flow, FlowId, FoldPattern, GhRef, Issue,
+    Project, ProjectId, PullRequest, Settings, Status, TimedEntry,
 };
 
 use crate::ports::{AgentDefinition, BackendOptions};
@@ -21,12 +21,12 @@ pub struct Snapshot {
     pub settings: Settings,
     /// Projects, sorted by name (NAV-2).
     pub projects: Arc<Vec<Project>>,
-    /// Conversations, most recent activity first.
-    pub conversations: Arc<Vec<ConversationView>>,
-    /// Every agent session, by id.
-    pub sessions: Arc<HashMap<AgentSessionId, SessionView>>,
-    /// Transcripts loaded so far (those of conversations the user opened).
-    pub transcripts: HashMap<AgentSessionId, Arc<TranscriptView>>,
+    /// Flows, most recent activity first.
+    pub flows: Arc<Vec<FlowView>>,
+    /// Every conversation, by id.
+    pub conversations: Arc<HashMap<ConversationId, ConversationView>>,
+    /// Transcripts loaded so far (those of flows the user opened).
+    pub transcripts: HashMap<ConversationId, Arc<TranscriptView>>,
     /// Agents available per project (CONV-2).
     pub agents: Arc<HashMap<ProjectId, Vec<AgentDefinition>>>,
     /// Skills and commands per project, for the `/` list (CONV-11).
@@ -38,7 +38,7 @@ pub struct Snapshot {
     pub folded_groups: Arc<std::collections::HashSet<String>>,
     /// What each backend's pickers offer (CONV-4).
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
-    /// Git state of each folder of a conversation (GIT-*, CONV-14, CTX-2).
+    /// Git state of each folder of a flow (GIT-*, CONV-14, CTX-2).
     pub git: Arc<HashMap<PathBuf, GitView>>,
     /// Pull request of each folder's branch (NAV-6, GH-1, CTX-2).
     pub prs: Arc<HashMap<PathBuf, PullRequest>>,
@@ -73,7 +73,7 @@ pub struct Snapshot {
     /// The CLIs still being asked: their columns show that they are loading.
     pub tools_pending: Vec<leon_domain::BackendKind>,
     /// The GitHub repository (`owner/name`) of each project, from its
-    /// `origin`: an issue starts a conversation in its repository's project.
+    /// `origin`: an issue starts a flow in its repository's project.
     pub project_repos: Arc<HashMap<ProjectId, String>>,
     /// Desktop notifications to show (NOTIF-1), oldest first. Each has a
     /// unique id so the UI shows it once.
@@ -81,14 +81,14 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// A conversation by id.
-    pub fn conversation(&self, id: ConversationId) -> Option<&ConversationView> {
-        self.conversations.iter().find(|c| c.conversation.id == id)
+    /// A flow by id.
+    pub fn flow(&self, id: FlowId) -> Option<&FlowView> {
+        self.flows.iter().find(|c| c.flow.id == id)
     }
 
-    /// A conversation's pull requests, one per folder in folder order, each
+    /// A flow's pull requests, one per folder in folder order, each
     /// once (CTX-2).
-    pub fn prs_of(&self, c: &ConversationView) -> Vec<&PullRequest> {
+    pub fn prs_of(&self, c: &FlowView) -> Vec<&PullRequest> {
         let mut prs: Vec<&PullRequest> = Vec::new();
         for pr in c.folders.iter().filter_map(|f| self.prs.get(f)) {
             if !prs
@@ -102,27 +102,27 @@ impl Snapshot {
     }
 }
 
-/// A conversation with what the left pane shows about it.
+/// A flow with what the left pane shows about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConversationView {
-    /// The stored conversation.
-    pub conversation: Conversation,
-    /// Status of its agent sessions combined (NAV-5).
+pub struct FlowView {
+    /// The stored flow.
+    pub flow: Flow,
+    /// Status of its conversations combined (NAV-5).
     pub status: Status,
-    /// Its agent sessions, the one the user started first.
-    pub sessions: Vec<AgentSessionId>,
-    /// The folders it works in, never empty once it has a session (CTX-2).
+    /// Its conversations, the one the user started first.
+    pub conversations: Vec<ConversationId>,
+    /// The folders it works in, never empty once it has a conversation (CTX-2).
     pub folders: Vec<PathBuf>,
     /// The issues it is linked to, the one it was started for first
     /// (CTX-2).
     pub issues: Vec<GhRef>,
 }
 
-/// An agent session with its live state.
+/// An conversation with its live state.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionView {
-    /// The stored session.
-    pub session: AgentSession,
+pub struct ConversationView {
+    /// The stored conversation.
+    pub conversation: Conversation,
     /// Live status.
     pub status: Status,
     /// Subagents run by the CLI: started, still running (CONV-13).
@@ -162,8 +162,8 @@ pub struct TranscriptView {
 pub struct Notification {
     /// Unique id.
     pub id: u64,
-    /// Conversation it is about.
-    pub conversation: ConversationId,
+    /// Flow it is about.
+    pub flow: FlowId,
     /// First line.
     pub title: String,
     /// Second line.

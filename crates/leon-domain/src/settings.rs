@@ -3,8 +3,8 @@ use crate::BackendKind;
 /// The user's settings, independent of the file format they come from.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Settings {
-    /// Prefilled choices for a new conversation.
-    pub defaults: SessionDefaults,
+    /// Prefilled choices for a new flow.
+    pub defaults: ConversationDefaults,
     /// `diff.fold` patterns (GIT-4), as written.
     pub diff_fold: Vec<String>,
     /// `sources.folders`: the user's agents, skills and MCP servers in the
@@ -15,12 +15,12 @@ pub struct Settings {
     pub cli_order: Vec<BackendKind>,
 }
 
-/// Choices prefilled when the user starts a conversation (CONV-3, CONV-4).
+/// Choices prefilled when the user starts a flow (CONV-3, CONV-4).
 ///
 /// Model, effort and permission are the CLI's own values, so they stay
-/// strings; the backend checks them when a session starts.
+/// strings; the backend checks them when a conversation starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionDefaults {
+pub struct ConversationDefaults {
     /// CLI to use.
     pub backend: BackendKind,
     /// Agent picked when the project has it; `None`: the CLI's own agent.
@@ -33,7 +33,7 @@ pub struct SessionDefaults {
     pub permission: String,
 }
 
-impl Default for SessionDefaults {
+impl Default for ConversationDefaults {
     fn default() -> Self {
         Self {
             backend: BackendKind::ClaudeCode,

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 pub struct ProjectId(pub i64);
 
 /// A folder registered in Leon, usually a git repository. Groups
-/// conversations in the left pane (NAV-2).
+/// flows in the left pane (NAV-2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
     /// Store id.
@@ -14,6 +14,6 @@ pub struct Project {
     pub name: String,
     /// Absolute path of the folder.
     pub path: PathBuf,
-    /// Its conversations are folded away in the left pane (NAV-2).
+    /// Its flows are folded away in the left pane (NAV-2).
     pub collapsed: bool,
 }

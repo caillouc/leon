@@ -229,7 +229,7 @@ mod tests {
             ),
             Reply::Call {
                 id: json!(5),
-                call: AppToolCall::RenameConversation { title: "New".to_owned() },
+                call: AppToolCall::RenameFlow { title: "New".to_owned() },
             }
         );
     }

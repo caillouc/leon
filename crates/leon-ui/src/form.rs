@@ -5,7 +5,7 @@
 use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*, px};
 use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
-use leon_domain::ConversationId;
+use leon_domain::FlowId;
 
 use crate::icons::{Icon, icon};
 use crate::picker::{Choice, Look};
@@ -15,9 +15,9 @@ use crate::workspace::{Screen, Tab, Workspace};
 
 impl Workspace {
     /// The form: a new flow, or with `flow`, another conversation in it.
-    pub(crate) fn render_new_conversation(
+    pub(crate) fn render_new_flow(
         &mut self,
-        flow: Option<ConversationId>,
+        flow: Option<FlowId>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -37,10 +37,10 @@ impl Workspace {
                 )))
                 .into_any_element();
         }
-        let in_flow = flow.and_then(|id| self.snapshot.conversation(id)).cloned();
+        let in_flow = flow.and_then(|id| self.snapshot.flow(id)).cloned();
         let project = in_flow
             .as_ref()
-            .map(|view| view.conversation.project)
+            .map(|view| view.flow.project)
             .or(self.form.project)
             .and_then(|id| self.snapshot.projects.iter().find(|p| p.id == id))
             .or_else(|| self.snapshot.projects.first())
@@ -157,7 +157,7 @@ impl Workspace {
                     .text_size(px(15.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child(match &in_flow {
-                        Some(view) => format!("New conversation in {}", view.conversation.title),
+                        Some(view) => format!("New conversation in {}", view.flow.title),
                         None => "New flow".to_owned(),
                     }),
             )
@@ -297,7 +297,7 @@ impl Workspace {
 
     /// The form's settings for an agent file's `model`, as the user's CLI
     /// order picks them (EXT-6); `None` when the model picks nothing.
-    fn agent_settings(&self, model: Option<&str>) -> Option<leon_domain::SessionSettings> {
+    fn agent_settings(&self, model: Option<&str>) -> Option<leon_domain::ConversationSettings> {
         leon_core::settings_for_agent(
             &self.form.settings,
             model,
@@ -310,10 +310,10 @@ impl Workspace {
     /// folders, the one the right pane shows first.
     fn form_folder_picker(
         &mut self,
-        view: &leon_core::ConversationView,
+        view: &leon_core::FlowView,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let picked = self.form_folder(view.conversation.id);
+        let picked = self.form_folder(view.flow.id);
         let name = |folder: &std::path::Path| {
             crate::right_folders::folder_name(folder, self.snapshot.git.get(folder))
         };
@@ -340,8 +340,8 @@ impl Workspace {
 
     /// The folder a new conversation in `flow` starts in: the one picked,
     /// else the one the right pane shows.
-    fn form_folder(&self, flow: ConversationId) -> Option<std::path::PathBuf> {
-        let view = self.snapshot.conversation(flow)?;
+    fn form_folder(&self, flow: FlowId) -> Option<std::path::PathBuf> {
+        let view = self.snapshot.flow(flow)?;
         self.form
             .folder
             .clone()
@@ -351,11 +351,8 @@ impl Workspace {
 
     /// Opens the form for another conversation in `flow` (FLOW-7), with
     /// the default agent.
-    pub(crate) fn open_new_in_flow(&mut self, flow: ConversationId, cx: &mut Context<Self>) {
-        self.form.project = self
-            .snapshot
-            .conversation(flow)
-            .map(|v| v.conversation.project);
+    pub(crate) fn open_new_in_flow(&mut self, flow: FlowId, cx: &mut Context<Self>) {
+        self.form.project = self.snapshot.flow(flow).map(|v| v.flow.project);
         self.form.folder = None;
         self.form.settings.agent = None;
         self.default_agent();
@@ -367,28 +364,27 @@ impl Workspace {
     /// conversation in the flow whose form is shown.
     pub(crate) fn submit_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.screen {
-            Screen::Conversation(id) if self.tabs.get(&id) == Some(&Tab::New) => {
+            Screen::Flow(id) if self.tabs.get(&id) == Some(&Tab::New) => {
                 self.start_in_flow(id, window, cx);
             }
-            _ => self.start_conversation(window, cx),
+            _ => self.start_flow(window, cx),
         }
     }
 
     /// Starts another conversation in `flow`; its tab opens once it exists.
-    fn start_in_flow(&mut self, flow: ConversationId, window: &mut Window, cx: &mut Context<Self>) {
+    fn start_in_flow(&mut self, flow: FlowId, window: &mut Window, cx: &mut Context<Self>) {
         let text = crate::message_input::message(&self.form_text.read(cx).content(), &self.pasted);
-        let (Some(working_dir), Some(view)) =
-            (self.form_folder(flow), self.snapshot.conversation(flow))
+        let (Some(working_dir), Some(view)) = (self.form_folder(flow), self.snapshot.flow(flow))
         else {
             return;
         };
         if text.is_empty() {
             return;
         }
-        let before = view.sessions.len();
+        let before = view.conversations.len();
         self.pasted.clear();
-        self.core.send(Intent::NewSession {
-            conversation: flow,
+        self.core.send(Intent::NewConversation {
+            flow,
             settings: self.form.settings.clone(),
             working_dir,
             text,
@@ -396,11 +392,11 @@ impl Workspace {
         self.form_text
             .update(cx, |state, cx| state.set_value("", window, cx));
         self.tabs.insert(flow, Tab::Flow);
-        self.pending_session = Some((flow, before));
+        self.pending_conversation = Some((flow, before));
         cx.notify();
     }
 
-    pub(crate) fn start_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn start_flow(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = crate::message_input::message(&self.form_text.read(cx).content(), &self.pasted);
         let project = self
             .form
@@ -411,7 +407,7 @@ impl Workspace {
             return;
         }
         self.pasted.clear();
-        self.core.send(Intent::NewConversation {
+        self.core.send(Intent::NewFlow {
             project,
             settings: self.form.settings.clone(),
             text,

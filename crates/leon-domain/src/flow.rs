@@ -4,15 +4,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{BackendKind, ProjectId};
 
-/// Identifier of a conversation in Leon's store.
+/// Identifier of a flow in Leon's store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct FlowId(pub i64);
+
+/// Identifier of an conversation in Leon's store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ConversationId(pub i64);
 
-/// Identifier of an agent session in Leon's store.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct AgentSessionId(pub i64);
-
-/// Where a conversation or an agent session stands (NAV-5).
+/// Where a flow or an conversation stands (NAV-5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Status {
     /// No turn running.
@@ -26,7 +26,7 @@ pub enum Status {
     Error,
 }
 
-/// What a conversation asks of the user, as the left pane shows it (NAV-5),
+/// What a flow asks of the user, as the left pane shows it (NAV-5),
 /// from least to most pressing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Attention {
@@ -43,7 +43,7 @@ pub enum Attention {
 }
 
 impl Attention {
-    /// From the conversation's status and whether it is unread.
+    /// From the flow's status and whether it is unread.
     pub fn of(status: Status, unread: bool) -> Self {
         match status {
             Status::NeedsInput => Self::NeedsYou,
@@ -56,10 +56,10 @@ impl Attention {
 }
 
 impl Status {
-    /// Status of a conversation from the status of its agent sessions:
+    /// Status of a flow from the status of its conversations:
     /// needs input, then running, then error, then idle.
-    pub fn of_conversation(sessions: impl IntoIterator<Item = Self>) -> Self {
-        sessions.into_iter().fold(
+    pub fn of_flow(conversations: impl IntoIterator<Item = Self>) -> Self {
+        conversations.into_iter().fold(
             Self::Idle,
             |acc, s| if s.rank() > acc.rank() { s } else { acc },
         )
@@ -75,12 +75,12 @@ impl Status {
     }
 }
 
-/// One left-pane item: the agent session the user started plus every agent
-/// session started from it.
+/// One left-pane item: the conversation the user started plus every agent
+/// conversation started from it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Conversation {
+pub struct Flow {
     /// Store id.
-    pub id: ConversationId,
+    pub id: FlowId,
     /// Project it belongs to (NAV-2).
     pub project: ProjectId,
     /// Title shown in the left pane (NAV-9).
@@ -94,17 +94,17 @@ pub struct Conversation {
     /// Last activity, Unix milliseconds.
     pub updated_at: i64,
     /// The folders its agents work in — worktrees, other repositories — in
-    /// the order Leon saw them (D3, CTX-2); empty: the first session's
+    /// the order Leon saw them (D3, CTX-2); empty: the first conversation's
     /// folder.
     pub folders: Vec<PathBuf>,
     /// The issue it was started for (GH-2, CTX-1), if any.
     pub issue: Option<crate::GhRef>,
 }
 
-/// Choices that shape an agent session (CONV-2..4).
+/// Choices that shape an conversation (CONV-2..4).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionSettings {
-    /// CLI that runs the session.
+pub struct ConversationSettings {
+    /// CLI that runs the conversation.
     pub backend: BackendKind,
     /// Agent name; `None` is the CLI's own agent.
     pub agent: Option<String>,
@@ -116,17 +116,17 @@ pub struct SessionSettings {
     pub permission: String,
 }
 
-/// One agent's own CLI conversation inside a conversation.
+/// One agent's own CLI flow inside a flow.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentSession {
+pub struct Conversation {
     /// Store id.
-    pub id: AgentSessionId,
-    /// Conversation it belongs to.
-    pub conversation: ConversationId,
-    /// Agent session that started it; `None` when the user did.
-    pub started_by: Option<AgentSessionId>,
+    pub id: ConversationId,
+    /// Flow it belongs to.
+    pub flow: FlowId,
+    /// Conversation that started it; `None` when the user did.
+    pub started_by: Option<ConversationId>,
     /// Backend, agent, model, effort, permission.
-    pub settings: SessionSettings,
+    pub settings: ConversationSettings,
     /// Where the CLI runs.
     pub working_dir: PathBuf,
     /// The CLI's own session id, once known; used to resume.
@@ -141,7 +141,7 @@ mod tests {
     use super::Status::{Error, Idle, NeedsInput, Running};
 
     #[test]
-    fn what_a_conversation_asks_of_the_user() {
+    fn what_a_flow_asks_of_the_user() {
         use super::Attention;
         let cases = [
             (Idle, false, Attention::Nothing),
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn conversation_status_follows_priority() {
+    fn flow_status_follows_priority() {
         let cases = [
             (vec![], Idle),
             (vec![Idle, Idle], Idle),
@@ -173,11 +173,11 @@ mod tests {
             (vec![Error, Running], Running),
             (vec![Running, NeedsInput, Error], NeedsInput),
         ];
-        for (sessions, expected) in cases {
+        for (conversations, expected) in cases {
             assert_eq!(
-                Status::of_conversation(sessions.clone()),
+                Status::of_flow(conversations.clone()),
                 expected,
-                "{sessions:?}"
+                "{conversations:?}"
             );
         }
     }

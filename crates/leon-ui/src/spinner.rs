@@ -25,7 +25,7 @@ pub(crate) fn spinner(id: impl Into<ElementId>, color: Rgba, size: f32) -> AnyEl
         .into_any_element()
 }
 
-/// An agent session's status mark, the loader while it works; always as
+/// An conversation's status mark, the loader while it works; always as
 /// wide, so names line up. `id` is unique among the marks on screen.
 pub(crate) fn status_mark(id: impl Into<ElementId>, status: Status) -> AnyElement {
     let mark = match status {

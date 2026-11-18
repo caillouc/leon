@@ -1,4 +1,4 @@
-//! Right-click menus of the left pane: a conversation's (NAV-3, NAV-4,
+//! Right-click menus of the left pane: a flow's (NAV-3, NAV-4,
 //! NAV-8: rename in place, pin, mark as unread, archive, delete) and a
 //! project's (remove it from Leon). Deleting and removing ask first.
 
@@ -8,7 +8,7 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, InputState};
 use leon_core::Intent;
-use leon_domain::{ConversationId, ProjectId};
+use leon_domain::{FlowId, ProjectId};
 
 use crate::theme;
 use crate::workspace::{Workspace, value_of};
@@ -16,7 +16,7 @@ use crate::workspace::{Workspace, value_of};
 /// What a right-click menu is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MenuFor {
-    Conversation(ConversationId),
+    Flow(FlowId),
     Project(ProjectId),
 }
 
@@ -25,7 +25,7 @@ impl Workspace {
     pub(crate) fn render_row_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (target, at) = self.row_menu?;
         let items = match target {
-            MenuFor::Conversation(id) => self.conversation_items(id, cx)?,
+            MenuFor::Flow(id) => self.flow_items(id, cx)?,
             MenuFor::Project(id) => vec![menu_item(
                 "remove-project",
                 "Remove project…",
@@ -62,12 +62,8 @@ impl Workspace {
         )
     }
 
-    fn conversation_items(
-        &self,
-        id: ConversationId,
-        cx: &mut Context<Self>,
-    ) -> Option<Vec<AnyElement>> {
-        let c = &self.snapshot.conversation(id)?.conversation;
+    fn flow_items(&self, id: FlowId, cx: &mut Context<Self>) -> Option<Vec<AnyElement>> {
+        let c = &self.snapshot.flow(id)?.flow;
         let (pinned, archived, unread) = (c.pinned, c.archived, c.unread);
         let mut items = vec![
             menu_item("rename", "Rename", false, cx, move |this, window, cx| {
@@ -117,11 +113,11 @@ impl Workspace {
     }
 
     /// Turns the row's title into an input; Enter saves.
-    fn start_rename(&mut self, id: ConversationId, window: &mut Window, cx: &mut Context<Self>) {
+    fn start_rename(&mut self, id: FlowId, window: &mut Window, cx: &mut Context<Self>) {
         let title = self
             .snapshot
-            .conversation(id)
-            .map_or_default(|c| c.conversation.title.clone());
+            .flow(id)
+            .map_or_default(|c| c.flow.title.clone());
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
             state.set_value(title, window, cx);
@@ -147,11 +143,11 @@ impl Workspace {
         cx.notify();
     }
 
-    fn confirm_delete(&mut self, id: ConversationId, window: &mut Window, cx: &mut Context<Self>) {
+    fn confirm_delete(&mut self, id: FlowId, window: &mut Window, cx: &mut Context<Self>) {
         let title = self
             .snapshot
-            .conversation(id)
-            .map_or_default(|c| c.conversation.title.clone());
+            .flow(id)
+            .map_or_default(|c| c.flow.title.clone());
         self.confirm(
             &format!("Delete \u{201c}{title}\u{201d}?"),
             "Its transcripts are removed from Leon. Files and the CLIs' own sessions stay.",
@@ -173,11 +169,11 @@ impl Workspace {
         };
         let count = self
             .snapshot
-            .conversations
+            .flows
             .iter()
-            .filter(|c| c.conversation.project == id)
+            .filter(|c| c.flow.project == id)
             .count();
-        let conversations = match count {
+        let flows = match count {
             0 => String::new(),
             1 => "Its flow is deleted from Leon. ".to_owned(),
             n => format!("Its {n} flows are deleted from Leon. "),
@@ -185,7 +181,7 @@ impl Workspace {
         self.confirm(
             &format!("Remove \u{201c}{}\u{201d} from Leon?", project.name),
             &format!(
-                "{conversations}The folder {} and the CLIs' own sessions stay.",
+                "{flows}The folder {} and the CLIs' own sessions stay.",
                 project.path.display()
             ),
             "Remove",

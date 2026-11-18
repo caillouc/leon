@@ -32,7 +32,7 @@ const STACK: usize = 3;
 fn size_of(node: Node) -> Pt {
     match node {
         Node::You => YOU,
-        Node::Session(_) => NODE,
+        Node::Conversation(_) => NODE,
     }
 }
 
@@ -40,7 +40,7 @@ fn size_of(node: Node) -> Pt {
 /// a long line. "You" first, then one region per agent in the order each
 /// first appeared; the rows snake (left to right, then right to left), so
 /// each region sits next to the one before and a planner → coder →
-/// reviewer → planner loop reads as a loop. An agent's sessions share its
+/// reviewer → planner loop reads as a loop. An agent's conversations share its
 /// region, stacked, a new column every `STACK` boxes.
 #[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
 pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
@@ -80,14 +80,14 @@ pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
     pos
 }
 
-/// "You", then the sessions of each agent, agents in the order they first
+/// "You", then the conversations of each agent, agents in the order they first
 /// appear.
 fn groups(model: &FlowModel) -> Vec<Vec<Node>> {
     let mut groups: Vec<(Option<&str>, Vec<Node>)> = Vec::new();
     for node in &model.nodes {
         let agent = match node {
             Node::You => None,
-            Node::Session(_) => Some(model.agent.get(node).map_or("", String::as_str)),
+            Node::Conversation(_) => Some(model.agent.get(node).map_or("", String::as_str)),
         };
         match groups
             .iter_mut()

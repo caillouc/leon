@@ -1,5 +1,5 @@
 //! Right pane (CTX-1, GIT-*, GH-1): uncommitted changes, branch diff, pull
-//! request and information about the conversation, plus the pending review.
+//! request and information about the flow, plus the pending review.
 
 use std::collections::HashMap;
 
@@ -9,7 +9,7 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, TextareaState};
 use leon_core::Intent;
-use leon_domain::{AgentSessionId, ConversationId, GhRef, ReviewComment, review_message};
+use leon_domain::{ConversationId, FlowId, GhRef, ReviewComment, review_message};
 
 use crate::diff_drawer::Drawer;
 use crate::diff_rows::{DiffList, counts};
@@ -39,7 +39,7 @@ pub(crate) struct Pending {
     pub comment: ReviewComment,
 }
 
-/// The tab a conversation opens on: Info until its agents work in a folder,
+/// The tab a flow opens on: Info until its agents work in a folder,
 /// then Changes.
 pub(crate) fn default_tab(working: bool) -> RightTab {
     if working {
@@ -51,16 +51,16 @@ pub(crate) fn default_tab(working: bool) -> RightTab {
 
 /// What the right pane remembers between renders.
 pub(crate) struct RightState {
-    /// The tab picked by hand, per conversation; else [`default_tab`].
-    pub tabs: HashMap<ConversationId, RightTab>,
-    /// The folder picked, per conversation working in several (CTX-2).
-    pub folder: HashMap<ConversationId, std::path::PathBuf>,
+    /// The tab picked by hand, per flow; else [`default_tab`].
+    pub tabs: HashMap<FlowId, RightTab>,
+    /// The folder picked, per flow working in several (CTX-2).
+    pub folder: HashMap<FlowId, std::path::PathBuf>,
     /// Files the user opened or closed by hand, overriding `diff.fold`.
-    pub open: HashMap<(ConversationId, DiffSource, String), bool>,
-    /// Pending review per conversation (GIT-5).
-    pub review: HashMap<ConversationId, Vec<Pending>>,
-    /// Session the review goes to, when the user picked one.
-    pub review_to: HashMap<ConversationId, AgentSessionId>,
+    pub open: HashMap<(FlowId, DiffSource, String), bool>,
+    /// Pending review per flow (GIT-5).
+    pub review: HashMap<FlowId, Vec<Pending>>,
+    /// Conversation the review goes to, when the user picked one.
+    pub review_to: HashMap<FlowId, ConversationId>,
     /// The line a comment is being written on.
     pub draft: Option<DraftAt>,
     /// Lines being chosen by dragging a line's +, before the comment box.
@@ -73,7 +73,7 @@ pub(crate) struct RightState {
     /// (GH-8).
     pub thread_reply: Entity<TextareaState>,
     pub replying: Option<String>,
-    pub lists: HashMap<(ConversationId, DiffSource), DiffList>,
+    pub lists: HashMap<(FlowId, DiffSource), DiffList>,
     /// The diff drawer, when open.
     pub drawer: Option<Drawer>,
 }
@@ -143,7 +143,7 @@ impl Workspace {
             .bg(theme::panel())
             .border_l_1()
             .border_color(theme::border());
-        let Screen::Conversation(id) = self.screen else {
+        let Screen::Flow(id) = self.screen else {
             return frame
                 .child(empty(
                     "Select a flow to see its changes, branch diff and pull request.",
@@ -171,18 +171,18 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// The tab shown for conversation `id`.
-    pub(crate) fn right_tab(&self, id: ConversationId) -> RightTab {
+    /// The tab shown for flow `id`.
+    pub(crate) fn right_tab(&self, id: FlowId) -> RightTab {
         self.right.tabs.get(&id).copied().unwrap_or_else(|| {
             let working = self
                 .snapshot
-                .conversation(id)
-                .is_some_and(|c| !c.conversation.folders.is_empty());
+                .flow(id)
+                .is_some_and(|c| !c.flow.folders.is_empty());
             default_tab(working)
         })
     }
 
-    fn right_tabs(&self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
+    fn right_tabs(&self, id: FlowId, cx: &mut Context<Self>) -> AnyElement {
         let git = self.folder_git(id);
         // Lines added and removed, as git counts them.
         let lines = |files: &[leon_domain::FileDiff]| {
@@ -262,7 +262,7 @@ impl Workspace {
                     }))
             }))
             .child(div().flex_1())
-            // Closes the pane; the conversation's header opens it again.
+            // Closes the pane; the flow's header opens it again.
             .child(
                 div()
                     .id("right-close")
@@ -280,21 +280,21 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// The Info tab (CTX-1): where the conversation works, the issue it is
-    /// for, and one card per agent session.
-    fn render_info(&self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
-        let Some(view) = self.snapshot.conversation(id) else {
+    /// The Info tab (CTX-1): where the flow works, the issue it is
+    /// for, and one card per conversation.
+    fn render_info(&self, id: FlowId, cx: &mut Context<Self>) -> AnyElement {
+        let Some(view) = self.snapshot.flow(id) else {
             return empty("This flow no longer exists.");
         };
         let project = self
             .snapshot
             .projects
             .iter()
-            .find(|p| p.id == view.conversation.project);
-        let sessions: Vec<_> = view
-            .sessions
+            .find(|p| p.id == view.flow.project);
+        let conversations: Vec<_> = view
+            .conversations
             .iter()
-            .filter_map(|s| self.snapshot.sessions.get(s))
+            .filter_map(|s| self.snapshot.conversations.get(s))
             .collect();
         // Every folder its agents work in, with its branch and base (CTX-2).
         let none = || "none".to_owned();
@@ -360,13 +360,17 @@ impl Workspace {
                         this.core.send(Intent::ShowDetail(Some(item.clone())));
                     }))
             });
-        let session_cards = sessions.iter().map(|s| {
-            let settings = &s.session.settings;
+        let conversation_cards = conversations.iter().map(|s| {
+            let settings = &s.conversation.settings;
             let (model, effort) = self.model_and_effort(settings);
-            let usage = self.snapshot.transcripts.get(&s.session.id).map_or_else(
-                || "not loaded".to_owned(),
-                |t| crate::transcript::usage_text(leon_domain::Usage::total(&t.entries)),
-            );
+            let usage = self
+                .snapshot
+                .transcripts
+                .get(&s.conversation.id)
+                .map_or_else(
+                    || "not loaded".to_owned(),
+                    |t| crate::transcript::usage_text(leon_domain::Usage::total(&t.entries)),
+                );
             card(
                 "",
                 vec![
@@ -375,7 +379,7 @@ impl Workspace {
                     ("Permission", settings.permission.clone(), false),
                     (
                         "CLI session",
-                        s.session
+                        s.conversation
                             .cli_session
                             .clone()
                             .unwrap_or_else(|| "not started".into()),
@@ -396,7 +400,7 @@ impl Workspace {
                     .items_center()
                     .gap_2()
                     .child(status_mark(
-                        SharedString::from(format!("spin-info-{}", s.session.id.0)),
+                        SharedString::from(format!("spin-info-{}", s.conversation.id.0)),
                         s.status,
                     ))
                     .child(
@@ -404,7 +408,7 @@ impl Workspace {
                             .flex_1()
                             .text_size(px(13.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(self.session_name(s)),
+                            .child(self.conversation_name(s)),
                     )
                     .child(
                         div()
@@ -425,17 +429,17 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_3()
-            .child(self.now_card(&sessions))
+            .child(self.now_card(&conversations))
             .child(place)
             .children(links)
             .child(label("Conversations").pt_1())
-            .children(session_cards)
+            .children(conversation_cards)
             .into_any_element()
     }
 
     pub(crate) fn render_review_bar(
         &self,
-        id: ConversationId,
+        id: FlowId,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
@@ -443,19 +447,19 @@ impl Workspace {
         if count == 0 {
             return None;
         }
-        let view = self.snapshot.conversation(id)?;
+        let view = self.snapshot.flow(id)?;
         let target = self.review_target(id)?;
         let choices = view
-            .sessions
+            .conversations
             .iter()
-            .filter_map(|s| self.snapshot.sessions.get(s))
-            .map(|s| (s.session.id.0.to_string(), self.session_name(s)))
+            .filter_map(|s| self.snapshot.conversations.get(s))
+            .map(|s| (s.conversation.id.0.to_string(), self.conversation_name(s)))
             .collect();
         let current = self
             .snapshot
-            .sessions
+            .conversations
             .get(&target)
-            .map_or_default(|s| self.session_name(s));
+            .map_or_default(|s| self.conversation_name(s));
         let to = self.picker(
             "review-to",
             &current,
@@ -463,7 +467,7 @@ impl Workspace {
             cx,
             move |this, value, _, _| {
                 if let Ok(raw) = value.parse() {
-                    this.right.review_to.insert(id, AgentSessionId(raw));
+                    this.right.review_to.insert(id, ConversationId(raw));
                 }
             },
         );
@@ -519,31 +523,28 @@ impl Workspace {
         )
     }
 
-    /// The session a review goes to: the one picked, else the one open in
+    /// The conversation a review goes to: the one picked, else the one open in
     /// the main pane, else the first.
-    fn review_target(&self, id: ConversationId) -> Option<AgentSessionId> {
-        let sessions = &self.snapshot.conversation(id)?.sessions;
+    fn review_target(&self, id: FlowId) -> Option<ConversationId> {
+        let conversations = &self.snapshot.flow(id)?.conversations;
         self.right
             .review_to
             .get(&id)
             .copied()
-            .filter(|s| sessions.contains(s))
-            .or_else(|| self.current_session())
-            .or_else(|| sessions.first().copied())
+            .filter(|s| conversations.contains(s))
+            .or_else(|| self.current_conversation())
+            .or_else(|| conversations.first().copied())
     }
 
-    fn send_review(&mut self, id: ConversationId, cx: &mut Context<Self>) {
-        let Some(session) = self.review_target(id) else {
+    fn send_review(&mut self, id: FlowId, cx: &mut Context<Self>) {
+        let Some(conversation) = self.review_target(id) else {
             return;
         };
         let Some(pending) = self.right.review.remove(&id) else {
             return;
         };
         // With several folders, each file by its full path (CTX-2).
-        let several = self
-            .snapshot
-            .conversation(id)
-            .is_some_and(|c| c.folders.len() > 1);
+        let several = self.snapshot.flow(id).is_some_and(|c| c.folders.len() > 1);
         let comments: Vec<ReviewComment> = pending
             .into_iter()
             .map(|p| match (several, &p.folder) {
@@ -555,7 +556,7 @@ impl Workspace {
             })
             .collect();
         self.core.send(Intent::Send {
-            session,
+            conversation,
             text: review_message(&comments),
         });
         cx.notify();
@@ -617,7 +618,7 @@ mod tests {
     use super::{RightTab, default_tab};
 
     #[test]
-    fn a_conversation_opens_on_info_until_it_has_a_worktree() {
+    fn a_flow_opens_on_info_until_it_has_a_worktree() {
         assert_eq!(default_tab(false), RightTab::Info);
         assert_eq!(default_tab(true), RightTab::Changes);
     }

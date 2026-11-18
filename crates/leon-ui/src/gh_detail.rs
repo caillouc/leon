@@ -1,6 +1,6 @@
 //! An issue's or a pull request's details in the drawer (GH-2, GH-3): read
 //! from GitHub when a row of My issues or My open pull requests is clicked,
-//! with what can be done from Leon — start or open the conversation, request
+//! with what can be done from Leon — start or open the flow, request
 //! a Copilot review, comment — and a link to GitHub.
 
 use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, div, prelude::*, px};
@@ -82,7 +82,7 @@ impl Workspace {
         ))
     }
 
-    /// An issue: title, board fields, labels, assignees, the conversation
+    /// An issue: title, board fields, labels, assignees, the flow
     /// button, its text and its comments.
     fn issue_body(&self, issue: &Issue, cx: &mut Context<Self>) -> Div {
         let status = issue.status.as_ref().map(|s| {

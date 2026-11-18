@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::AgentSessionId;
+use crate::ConversationId;
 
-/// One line of an agent session's transcript. Persisted (P5): new variants
+/// One line of an conversation's transcript. Persisted (P5): new variants
 /// only, never change the meaning of an existing one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -12,14 +12,14 @@ pub enum Entry {
         /// Message text.
         text: String,
     },
-    /// A message another agent session sent to this one: a request, a
+    /// A message another conversation sent to this one: a request, a
     /// follow-up, or the answer to a request (FLOW-1, FLOW-2).
     FromAgent {
-        /// The session that sent it.
-        from: AgentSessionId,
+        /// The conversation that sent it.
+        from: ConversationId,
         /// Message text.
         text: String,
-        /// `true`: the answer to a request this session sent; `false`: a
+        /// `true`: the answer to a request this conversation sent; `false`: a
         /// request, whose answer goes back to `from`.
         answer: bool,
     },
@@ -114,7 +114,7 @@ pub struct RunningTool {
 }
 
 /// The tool calls of a transcript that have no result yet, oldest first.
-/// Only meaningful while its session runs: a stopped turn leaves calls
+/// Only meaningful while its conversation runs: a stopped turn leaves calls
 /// without a result.
 pub fn running_tools(entries: &[TimedEntry]) -> Vec<RunningTool> {
     entries

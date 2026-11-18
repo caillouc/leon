@@ -23,7 +23,7 @@ pub(crate) struct Drawer {
 impl Workspace {
     /// Opens the drawer at `path`, unfolding it if `diff.fold` folded it.
     pub(crate) fn open_drawer(&mut self, source: DiffSource, path: String, cx: &mut Context<Self>) {
-        if let Screen::Conversation(id) = self.screen {
+        if let Screen::Flow(id) = self.screen {
             self.right.open.insert((id, source, path.clone()), true);
         }
         self.right.drawer = Some(Drawer {
@@ -67,7 +67,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let Screen::Conversation(id) = self.screen else {
+        let Screen::Flow(id) = self.screen else {
             return None;
         };
         let open = self.right.drawer.as_mut()?;

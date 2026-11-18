@@ -13,23 +13,23 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Entry, Project,
-    ProjectId, SessionSettings, Settings, Status, TimedEntry,
+    BackendKind, Conversation, ConversationId, ConversationSettings, Entry, Flow, FlowId, Project,
+    ProjectId, Settings, Status, TimedEntry,
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::ports::{
     AgentDefinition, BackendChannel, BackendCommand, BackendEvent, BackendOptions, Backends,
-    Catalog, NewSession, PortError, SessionSpec, Storage,
+    Catalog, NewConversation, PortError, SessionSpec, Storage,
 };
 use crate::{CoreHandle, Intent, Ports, Snapshot, start};
 
 #[derive(Default)]
 struct FakeStorage {
     projects: Mutex<Vec<Project>>,
+    flows: Mutex<Vec<Flow>>,
     conversations: Mutex<Vec<Conversation>>,
-    sessions: Mutex<Vec<AgentSession>>,
-    entries: Mutex<HashMap<AgentSessionId, Vec<TimedEntry>>>,
+    entries: Mutex<HashMap<ConversationId, Vec<TimedEntry>>>,
     folded: Mutex<std::collections::BTreeSet<String>>,
 }
 
@@ -75,27 +75,19 @@ impl Storage for FakeStorage {
     }
     fn remove_project(&self, id: ProjectId) -> Result<(), PortError> {
         self.projects.lock().unwrap().retain(|p| p.id != id);
-        self.conversations
-            .lock()
-            .unwrap()
-            .retain(|c| c.project != id);
+        self.flows.lock().unwrap().retain(|c| c.project != id);
         Ok(())
+    }
+    fn list_flows(&self) -> Result<Vec<Flow>, PortError> {
+        Ok(self.flows.lock().unwrap().clone())
     }
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError> {
         Ok(self.conversations.lock().unwrap().clone())
     }
-    fn list_sessions(&self) -> Result<Vec<AgentSession>, PortError> {
-        Ok(self.sessions.lock().unwrap().clone())
-    }
-    fn create_conversation(
-        &self,
-        project: ProjectId,
-        title: &str,
-        now: i64,
-    ) -> Result<Conversation, PortError> {
-        let mut list = self.conversations.lock().unwrap();
-        let c = Conversation {
-            id: ConversationId(i64::try_from(list.len()).unwrap() + 1),
+    fn create_flow(&self, project: ProjectId, title: &str, now: i64) -> Result<Flow, PortError> {
+        let mut list = self.flows.lock().unwrap();
+        let c = Flow {
+            id: FlowId(i64::try_from(list.len()).unwrap() + 1),
             project,
             title: title.into(),
             pinned: false,
@@ -108,22 +100,22 @@ impl Storage for FakeStorage {
         list.push(c.clone());
         Ok(c)
     }
-    fn update_conversation(&self, c: &Conversation) -> Result<(), PortError> {
-        let mut list = self.conversations.lock().unwrap();
+    fn update_flow(&self, c: &Flow) -> Result<(), PortError> {
+        let mut list = self.flows.lock().unwrap();
         if let Some(slot) = list.iter_mut().find(|x| x.id == c.id) {
             *slot = c.clone();
         }
         Ok(())
     }
-    fn delete_conversation(&self, id: ConversationId) -> Result<(), PortError> {
-        self.conversations.lock().unwrap().retain(|c| c.id != id);
+    fn delete_flow(&self, id: FlowId) -> Result<(), PortError> {
+        self.flows.lock().unwrap().retain(|c| c.id != id);
         Ok(())
     }
-    fn create_session(&self, new: &NewSession) -> Result<AgentSession, PortError> {
-        let mut list = self.sessions.lock().unwrap();
-        let s = AgentSession {
-            id: AgentSessionId(i64::try_from(list.len()).unwrap() + 1),
-            conversation: new.conversation,
+    fn create_conversation(&self, new: &NewConversation) -> Result<Conversation, PortError> {
+        let mut list = self.conversations.lock().unwrap();
+        let s = Conversation {
+            id: ConversationId(i64::try_from(list.len()).unwrap() + 1),
+            flow: new.flow,
             started_by: new.started_by,
             settings: new.settings.clone(),
             working_dir: new.working_dir.clone(),
@@ -133,39 +125,43 @@ impl Storage for FakeStorage {
         list.push(s.clone());
         Ok(s)
     }
-    fn update_session(&self, s: &AgentSession) -> Result<(), PortError> {
-        let mut list = self.sessions.lock().unwrap();
+    fn update_conversation(&self, s: &Conversation) -> Result<(), PortError> {
+        let mut list = self.conversations.lock().unwrap();
         if let Some(slot) = list.iter_mut().find(|x| x.id == s.id) {
             *slot = s.clone();
         }
         Ok(())
     }
-    fn append_entry(&self, session: AgentSessionId, entry: &TimedEntry) -> Result<(), PortError> {
+    fn append_entry(
+        &self,
+        conversation: ConversationId,
+        entry: &TimedEntry,
+    ) -> Result<(), PortError> {
         self.entries
             .lock()
             .unwrap()
-            .entry(session)
+            .entry(conversation)
             .or_default()
             .push(entry.clone());
         Ok(())
     }
     fn replace_entries(
         &self,
-        session: AgentSessionId,
+        conversation: ConversationId,
         entries: &[TimedEntry],
     ) -> Result<(), PortError> {
         self.entries
             .lock()
             .unwrap()
-            .insert(session, entries.to_vec());
+            .insert(conversation, entries.to_vec());
         Ok(())
     }
-    fn entries(&self, session: AgentSessionId) -> Result<Vec<TimedEntry>, PortError> {
+    fn entries(&self, conversation: ConversationId) -> Result<Vec<TimedEntry>, PortError> {
         Ok(self
             .entries
             .lock()
             .unwrap()
-            .get(&session)
+            .get(&conversation)
             .cloned()
             .unwrap_or_default())
     }
@@ -314,8 +310,8 @@ struct Harness {
     backends: Arc<FakeBackends>,
 }
 
-fn settings(backend: BackendKind) -> SessionSettings {
-    SessionSettings {
+fn settings(backend: BackendKind) -> ConversationSettings {
+    ConversationSettings {
         backend,
         agent: Some("planner".into()),
         model: None,
@@ -390,26 +386,26 @@ async fn next_command(h: &Harness, index: usize) -> BackendCommand {
     panic!("no command reached the CLI");
 }
 
-fn entries(s: &Snapshot, session: AgentSessionId) -> Vec<Entry> {
+fn entries(s: &Snapshot, conversation: ConversationId) -> Vec<Entry> {
     s.transcripts
-        .get(&session)
+        .get(&conversation)
         .map_or_default(|t| t.entries.iter().map(|e| e.entry.clone()).collect())
 }
 
-async fn new_conversation(h: &Harness, backend: BackendKind) -> AgentSessionId {
+async fn new_flow(h: &Harness, backend: BackendKind) -> ConversationId {
     until(&h.core, "loaded", |s| s.loaded).await;
-    h.core.send(Intent::NewConversation {
+    h.core.send(Intent::NewFlow {
         project: ProjectId(1),
         settings: settings(backend),
         text: "Fix the retry bug".into(),
         issue: Some(leon_domain::GhRef::issue("acme/api", 12)),
     });
-    let s = until(&h.core, "conversation", |s| !s.conversations.is_empty()).await;
+    let s = until(&h.core, "conversation", |s| !s.flows.is_empty()).await;
     // The issue it was started for is kept with it (GH-2).
     assert_eq!(
-        s.conversations[0].conversation.issue,
+        s.flows[0].flow.issue,
         Some(leon_domain::GhRef::issue("acme/api", 12))
     );
     started(h, 1).await;
-    s.conversations[0].sessions[0]
+    s.flows[0].conversations[0]
 }

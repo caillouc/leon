@@ -1,4 +1,4 @@
-//! Conversation titles from a one-off CLI call (NAV-9, D1): the conversation's
+//! Flow titles from a one-off CLI call (NAV-9, D1): the conversation's
 //! own CLI, its cheapest settings, run outside any project.
 
 use std::ffi::OsString;

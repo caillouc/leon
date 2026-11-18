@@ -7,11 +7,11 @@ use std::time::Duration;
 
 use leon_backends::Clis;
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, Backends, SessionSpec};
-use leon_domain::{BackendKind, SessionSettings};
+use leon_domain::{BackendKind, ConversationSettings};
 
 fn spec(backend: BackendKind, dir: &std::path::Path, resume: Option<String>) -> SessionSpec {
     SessionSpec {
-        settings: SessionSettings {
+        settings: ConversationSettings {
             backend,
             agent: None,
             model: None,

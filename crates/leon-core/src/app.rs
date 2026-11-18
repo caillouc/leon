@@ -6,8 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use leon_domain::{
-    AgentSessionId, BackendKind, ConversationId, Entry, SessionSettings, Settings, Status,
-    TimedEntry,
+    BackendKind, ConversationId, ConversationSettings, Entry, FlowId, Settings, Status, TimedEntry,
 };
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -16,11 +15,11 @@ use tokio::sync::watch;
 use crate::intent::Intent;
 use crate::ports::{
     AppToolRequest, AppToolSender, AppTools, BackendCommand, BackendEvent, Backends, Catalog, Git,
-    GitHub, NewSession, SessionSpec, Storage,
+    GitHub, NewConversation, SessionSpec, Storage,
 };
 use crate::repo::Internal;
 use crate::snapshot::Snapshot;
-use crate::state::{SessionState, State, title_from};
+use crate::state::{ConversationState, State, title_from};
 
 /// Everything the core talks to.
 pub struct Ports {
@@ -34,7 +33,7 @@ pub struct Ports {
     pub git: Arc<dyn Git>,
     /// GitHub, with the user's login.
     pub github: Arc<dyn GitHub>,
-    /// The app's MCP server given to every agent session (P10); `None`: no
+    /// The app's MCP server given to every conversation (P10); `None`: no
     /// app tools.
     pub app_tools: Option<Arc<dyn AppTools>>,
     /// Leon's shared MCP list (I14).
@@ -153,21 +152,21 @@ pub fn detached(snapshot: Snapshot) -> (CoreHandle, Detached) {
     )
 }
 
-type SessionEvent = (AgentSessionId, Option<BackendEvent>);
+type ConversationEvent = (ConversationId, Option<BackendEvent>);
 
 pub(crate) struct Core {
     pub(crate) ports: Ports,
     pub(crate) state: State,
     publish: watch::Sender<Arc<Snapshot>>,
-    pub(crate) live: HashMap<AgentSessionId, UnboundedSender<BackendCommand>>,
+    pub(crate) live: HashMap<ConversationId, UnboundedSender<BackendCommand>>,
     /// When each live CLI finished its last turn.
-    pub(crate) idle_since: HashMap<AgentSessionId, i64>,
-    viewing: Option<ConversationId>,
-    /// The agent session whose messages are on screen.
-    reading: Option<AgentSessionId>,
+    pub(crate) idle_since: HashMap<ConversationId, i64>,
+    viewing: Option<FlowId>,
+    /// The conversation whose messages are on screen.
+    reading: Option<ConversationId>,
     /// Leon's window is the active one.
     window_active: bool,
-    event_tx: UnboundedSender<SessionEvent>,
+    event_tx: UnboundedSender<ConversationEvent>,
     pub(crate) internal_tx: UnboundedSender<Internal>,
     pub(crate) git_in_flight: HashSet<std::path::PathBuf>,
     pub(crate) git_dirty: HashSet<std::path::PathBuf>,
@@ -185,7 +184,7 @@ impl Core {
     async fn run(
         mut self,
         mut intents: UnboundedReceiver<Intent>,
-        mut events: UnboundedReceiver<SessionEvent>,
+        mut events: UnboundedReceiver<ConversationEvent>,
         mut internal: UnboundedReceiver<Internal>,
         mut tools: UnboundedReceiver<AppToolRequest>,
     ) {
@@ -200,7 +199,7 @@ impl Core {
                     Some(intent) => self.apply(intent),
                     None => break,
                 },
-                Some((session, event)) = events.recv() => self.on_event(session, event),
+                Some((conversation, event)) = events.recv() => self.on_event(conversation, event),
                 Some(message) = internal.recv() => self.on_internal(message),
                 Some(request) = tools.recv() => self.on_tool(request),
             }
@@ -234,11 +233,11 @@ impl Core {
 
     fn load(&mut self) {
         let storage = Arc::clone(&self.ports.storage);
-        let (projects, conversations, sessions) = blocking(|| {
+        let (projects, flows, conversations) = blocking(|| {
             (
                 storage.list_projects(),
+                storage.list_flows(),
                 storage.list_conversations(),
-                storage.list_sessions(),
             )
         });
         self.state.projects = Arc::new(Self::report(projects).unwrap_or_default());
@@ -249,11 +248,11 @@ impl Core {
                 .into_iter()
                 .collect(),
         );
-        self.state.conversations = Self::report(conversations).unwrap_or_default();
-        for session in Self::report(sessions).unwrap_or_default() {
+        self.state.flows = Self::report(flows).unwrap_or_default();
+        for conversation in Self::report(conversations).unwrap_or_default() {
             self.state
-                .sessions
-                .insert(session.id, SessionState::new(session));
+                .conversations
+                .insert(conversation.id, ConversationState::new(conversation));
         }
         let options = BackendKind::ALL
             .into_iter()
@@ -303,36 +302,39 @@ impl Core {
         match intent {
             Intent::AddProject(path) => self.add_project(&path),
             Intent::View(id) => self.view(id),
-            Intent::NewConversation {
+            Intent::NewFlow {
                 project,
                 settings,
                 text,
                 issue,
-            } => self.new_conversation(project, settings, &text, issue),
-            Intent::NewSession {
-                conversation,
+            } => self.new_flow(project, settings, &text, issue),
+            Intent::NewConversation {
+                flow,
                 settings,
                 working_dir,
                 text,
-            } => self.new_session(conversation, settings, working_dir, &text),
-            Intent::Send { session, text } => self.send(session, &text),
+            } => self.new_conversation(flow, settings, working_dir, &text),
+            Intent::Send { conversation, text } => self.send(conversation, &text),
             Intent::Rewind {
-                session,
+                conversation,
                 entry,
                 text,
-            } => self.rewind(session, entry, &text),
-            Intent::Stop(session) => {
-                if let Some(commands) = self.live.get(&session) {
+            } => self.rewind(conversation, entry, &text),
+            Intent::Stop(conversation) => {
+                if let Some(commands) = self.live.get(&conversation) {
                     let _ = commands.send(BackendCommand::Interrupt);
                 }
             }
             Intent::Answer {
-                session,
+                conversation,
                 question,
                 answer,
-            } => self.answer(session, question, &answer),
-            Intent::ChangeSettings { session, settings } => {
-                self.change_settings(session, &settings);
+            } => self.answer(conversation, question, &answer),
+            Intent::ChangeSettings {
+                conversation,
+                settings,
+            } => {
+                self.change_settings(conversation, &settings);
             }
             Intent::CollapseProject(id, collapsed) => self.collapse_project(id, collapsed),
             Intent::RemoveProject(id) => self.remove_project(id),
@@ -386,53 +388,53 @@ impl Core {
         }
     }
 
-    /// The user reads agent session `id`'s messages.
-    fn read(&mut self, id: Option<AgentSessionId>) {
+    /// The user reads conversation `id`'s messages.
+    fn read(&mut self, id: Option<ConversationId>) {
         self.reading = id;
         if let Some(id) = id {
             self.mark_read(id);
         }
     }
 
-    /// The user saw session `id`'s answer: it is read, and so is its
-    /// conversation once no other session's answer waits (NAV-4, FLOW-4).
-    fn mark_read(&mut self, id: AgentSessionId) {
-        let Some(s) = self.state.sessions.get_mut(&id) else {
+    /// The user saw conversation `id`'s answer: it is read, and so is its
+    /// flow once no other conversation's answer waits (NAV-4, FLOW-4).
+    fn mark_read(&mut self, id: ConversationId) {
+        let Some(s) = self.state.conversations.get_mut(&id) else {
             return;
         };
-        let conversation = s.session.conversation;
-        if std::mem::take(&mut s.session.unread) {
-            self.save_session(id);
+        let flow = s.conversation.flow;
+        if std::mem::take(&mut s.conversation.unread) {
+            self.save_conversation(id);
         }
         let waiting = self
             .state
-            .sessions
+            .conversations
             .values()
-            .any(|s| s.session.conversation == conversation && s.session.unread);
+            .any(|s| s.conversation.flow == flow && s.conversation.unread);
         if self
             .state
-            .conversations
+            .flows
             .iter()
-            .any(|c| c.id == conversation && c.unread != waiting)
+            .any(|c| c.id == flow && c.unread != waiting)
         {
-            self.edit(conversation, |c| c.unread = waiting);
+            self.edit(flow, |c| c.unread = waiting);
         }
     }
 
-    fn view(&mut self, id: Option<ConversationId>) {
+    fn view(&mut self, id: Option<FlowId>) {
         self.viewing = id;
         let Some(id) = id else { return };
         self.refresh_git(id);
         self.refresh_pr(id);
-        for session in self.state.sessions_of(id) {
-            self.load_transcript(session);
+        for conversation in self.state.conversations_of(id) {
+            self.load_transcript(conversation);
         }
     }
 
-    fn load_transcript(&mut self, id: AgentSessionId) {
+    fn load_transcript(&mut self, id: ConversationId) {
         if self
             .state
-            .sessions
+            .conversations
             .get(&id)
             .is_none_or(|s| s.transcript.is_some())
         {
@@ -440,7 +442,7 @@ impl Core {
         }
         let storage = Arc::clone(&self.ports.storage);
         let entries = Self::report(blocking(|| storage.entries(id))).unwrap_or_default();
-        if let Some(s) = self.state.sessions.get_mut(&id) {
+        if let Some(s) = self.state.conversations.get_mut(&id) {
             s.transcript = Some(crate::snapshot::TranscriptView {
                 entries: Arc::new(entries),
                 partial: None,
@@ -448,27 +450,23 @@ impl Core {
         }
     }
 
-    pub(crate) fn edit(
-        &mut self,
-        id: ConversationId,
-        change: impl FnOnce(&mut leon_domain::Conversation),
-    ) {
-        let Some(c) = self.state.conversation_mut(id) else {
+    pub(crate) fn edit(&mut self, id: FlowId, change: impl FnOnce(&mut leon_domain::Flow)) {
+        let Some(c) = self.state.flow_mut(id) else {
             return;
         };
         change(c);
         let saved = c.clone();
         let storage = Arc::clone(&self.ports.storage);
-        Self::report(blocking(|| storage.update_conversation(&saved)));
+        Self::report(blocking(|| storage.update_flow(&saved)));
     }
 
-    /// Whether the user sees agent session `id`'s messages: its tab, in the
+    /// Whether the user sees conversation `id`'s messages: its tab, in the
     /// active window.
-    fn on_screen(&self, id: AgentSessionId) -> bool {
+    fn on_screen(&self, id: ConversationId) -> bool {
         self.window_active && self.reading == Some(id)
     }
 
-    fn touch(&mut self, id: ConversationId, unread: bool) {
+    fn touch(&mut self, id: FlowId, unread: bool) {
         let now = self.now();
         self.edit(id, |c| {
             c.updated_at = now;
@@ -476,10 +474,10 @@ impl Core {
         });
     }
 
-    fn new_conversation(
+    fn new_flow(
         &mut self,
         project: leon_domain::ProjectId,
-        settings: SessionSettings,
+        settings: ConversationSettings,
         text: &str,
         issue: Option<leon_domain::GhRef>,
     ) {
@@ -491,74 +489,68 @@ impl Core {
         let now = self.now();
         let title = title_from(text);
         let backend = settings.backend;
-        let Some(mut conversation) = Self::report(blocking(|| {
-            storage.create_conversation(project, &title, now)
-        })) else {
+        let Some(mut flow) = Self::report(blocking(|| storage.create_flow(project, &title, now)))
+        else {
             return;
         };
         if issue.is_some() {
-            conversation.issue = issue;
-            Self::report(blocking(|| storage.update_conversation(&conversation)));
+            flow.issue = issue;
+            Self::report(blocking(|| storage.update_flow(&flow)));
         }
-        let new = NewSession {
-            conversation: conversation.id,
+        let new = NewConversation {
+            flow: flow.id,
             started_by: None,
             settings,
             working_dir: dir,
         };
-        let Some(id) = Self::report(self.add_session(&new)) else {
+        let Some(id) = Self::report(self.add_conversation(&new)) else {
             return;
         };
-        self.state.conversations.push(conversation.clone());
-        self.viewing = Some(conversation.id);
+        self.state.flows.push(flow.clone());
+        self.viewing = Some(flow.id);
         self.send(id, text);
-        self.write_title(conversation.id, &conversation.title, backend, text);
+        self.write_title(flow.id, &flow.title, backend, text);
     }
 
     /// The user starts another conversation in flow `conversation`
     /// (FLOW-7).
-    fn new_session(
+    fn new_conversation(
         &mut self,
-        conversation: ConversationId,
-        settings: SessionSettings,
+        flow: FlowId,
+        settings: ConversationSettings,
         working_dir: std::path::PathBuf,
         text: &str,
     ) {
-        if !self
-            .state
-            .conversations
-            .iter()
-            .any(|c| c.id == conversation)
-        {
+        if !self.state.flows.iter().any(|c| c.id == flow) {
             return;
         }
-        let new = NewSession {
-            conversation,
+        let new = NewConversation {
+            flow,
             started_by: None,
             settings: self.explicit(settings),
             working_dir,
         };
-        if let Some(id) = Self::report(self.add_session(&new)) {
+        if let Some(id) = Self::report(self.add_conversation(&new)) {
             self.send(id, text);
         }
     }
 
     /// Saves a new agent session and keeps it, its transcript empty.
-    pub(crate) fn add_session(
+    pub(crate) fn add_conversation(
         &mut self,
-        new: &NewSession,
-    ) -> Result<AgentSessionId, crate::ports::PortError> {
+        new: &NewConversation,
+    ) -> Result<ConversationId, crate::ports::PortError> {
         let storage = Arc::clone(&self.ports.storage);
-        let session = blocking(|| storage.create_session(new))?;
-        let id = session.id;
-        let mut state = SessionState::new(session);
+        let conversation = blocking(|| storage.create_conversation(new))?;
+        let id = conversation.id;
+        let mut state = ConversationState::new(conversation);
         state.transcript = Some(crate::snapshot::TranscriptView::default());
-        self.state.sessions.insert(id, state);
+        self.state.conversations.insert(id, state);
         Ok(id)
     }
 
     /// Asks the CLI for a title in the background (NAV-9).
-    fn write_title(&self, id: ConversationId, old: &str, backend: BackendKind, text: &str) {
+    fn write_title(&self, id: FlowId, old: &str, backend: BackendKind, text: &str) {
         let backends = Arc::clone(&self.ports.backends);
         let tx = self.internal_tx.clone();
         let (old, text) = (old.to_owned(), text.to_owned());
@@ -570,18 +562,18 @@ impl Core {
         });
     }
 
-    fn record(&mut self, id: AgentSessionId, entry: Entry) -> Option<usize> {
+    fn record(&mut self, id: ConversationId, entry: Entry) -> Option<usize> {
         let at = self.now();
         let timed = TimedEntry { at, entry };
         if !matches!(timed.entry, Entry::Tool { output: None, .. }) {
             let storage = Arc::clone(&self.ports.storage);
             Self::report(blocking(|| storage.append_entry(id, &timed)));
         }
-        Some(self.state.sessions.get_mut(&id)?.push(timed))
+        Some(self.state.conversations.get_mut(&id)?.push(timed))
     }
 
     /// Sends the user's message (CONV-1).
-    fn send(&mut self, id: AgentSessionId, text: &str) {
+    fn send(&mut self, id: ConversationId, text: &str) {
         // Replying means its answer was read.
         self.mark_read(id);
         self.deliver(
@@ -593,17 +585,17 @@ impl Core {
         );
     }
 
-    /// Records `entry` in a session's transcript and sends `message` to its
-    /// CLI, starting it if needed. `false` when nothing was sent: the session
+    /// Records `entry` in a conversation's transcript and sends `message` to its
+    /// CLI, starting it if needed. `false` when nothing was sent: the conversation
     /// is busy, the message empty, or the CLI could not start.
-    pub(crate) fn deliver(&mut self, id: AgentSessionId, entry: Entry, message: &str) -> bool {
-        let Some(s) = self.state.sessions.get(&id) else {
+    pub(crate) fn deliver(&mut self, id: ConversationId, entry: Entry, message: &str) -> bool {
+        let Some(s) = self.state.conversations.get(&id) else {
             return false;
         };
         if s.status == Status::Running || message.trim().is_empty() {
             return false;
         }
-        let conversation = s.session.conversation;
+        let flow = s.conversation.flow;
         let message = if s.carry_context {
             with_context(s, message)
         } else {
@@ -614,7 +606,7 @@ impl Core {
         if !self.ensure_live(id) {
             return false;
         }
-        if let Some(s) = self.state.sessions.get_mut(&id) {
+        if let Some(s) = self.state.conversations.get_mut(&id) {
             s.carry_context = false;
             s.status = Status::Running;
             s.question = None;
@@ -624,27 +616,27 @@ impl Core {
             let _ = commands.send(BackendCommand::Send(message));
         }
         self.idle_since.remove(&id);
-        self.touch(conversation, false);
+        self.touch(flow, false);
         true
     }
 
-    /// Starts the CLI for a session if it is not running. Returns `false`
+    /// Starts the CLI for a conversation if it is not running. Returns `false`
     /// (and records the error) when it cannot start.
-    fn ensure_live(&mut self, id: AgentSessionId) -> bool {
+    fn ensure_live(&mut self, id: ConversationId) -> bool {
         if self.live.get(&id).is_some_and(|c| !c.is_closed()) {
             return true;
         }
-        let Some(s) = self.state.sessions.get(&id) else {
+        let Some(s) = self.state.conversations.get(&id) else {
             return false;
         };
-        let session = &s.session;
+        let conversation = &s.conversation;
         let project = self
             .state
-            .conversations
+            .flows
             .iter()
-            .find(|c| c.id == session.conversation)
+            .find(|c| c.id == conversation.flow)
             .and_then(|c| self.state.project(c.project));
-        let agent = session.settings.agent.as_ref().and_then(|name| {
+        let agent = conversation.settings.agent.as_ref().and_then(|name| {
             self.state
                 .agents
                 .get(&project?.id)?
@@ -662,11 +654,12 @@ impl Core {
             )
         });
         let spec = SessionSpec {
-            settings: session.settings.clone(),
+            settings: conversation.settings.clone(),
             agent,
-            working_dir: session.working_dir.clone(),
-            resume: session.cli_session.clone(),
-            mcp_servers: self.session_servers(self.ports.app_tools.as_ref().map(|t| t.server(id))),
+            working_dir: conversation.working_dir.clone(),
+            resume: conversation.cli_session.clone(),
+            mcp_servers: self
+                .conversation_servers(self.ports.app_tools.as_ref().map(|t| t.server(id))),
             sources: self.state.sources.to_vec(),
             skills,
             instructions,
@@ -694,7 +687,7 @@ impl Core {
                         text: error.to_string(),
                     },
                 );
-                if let Some(s) = self.state.sessions.get_mut(&id) {
+                if let Some(s) = self.state.conversations.get_mut(&id) {
                     s.status = Status::Error;
                 }
                 false
@@ -704,10 +697,10 @@ impl Core {
 
     /// Goes back to before entry `entry`, a message of the user, and sends
     /// `text` (CONV-7, CONV-8). Works the same on every CLI: the next message
-    /// starts a new CLI session that carries the conversation so far.
-    fn rewind(&mut self, id: AgentSessionId, entry: usize, text: &str) {
+    /// starts a new CLI session that carries the flow so far.
+    fn rewind(&mut self, id: ConversationId, entry: usize, text: &str) {
         self.load_transcript(id);
-        let Some(s) = self.state.sessions.get_mut(&id) else {
+        let Some(s) = self.state.conversations.get_mut(&id) else {
             return;
         };
         let Some(transcript) = s.transcript.as_mut() else {
@@ -724,13 +717,13 @@ impl Core {
         let dropped = entries.len() - entry;
         entries.truncate(entry);
         let kept = entries.clone();
-        s.session.cli_session = None;
+        s.conversation.cli_session = None;
         s.carry_context = true;
         s.suggestions.clear();
         self.live.remove(&id);
         let storage = Arc::clone(&self.ports.storage);
         Self::report(blocking(|| storage.replace_entries(id, &kept)));
-        self.save_session(id);
+        self.save_conversation(id);
         self.record(
             id,
             Entry::Notice {
@@ -742,7 +735,7 @@ impl Core {
         self.send(id, text);
     }
 
-    fn answer(&mut self, id: AgentSessionId, question: String, answer: &str) {
+    fn answer(&mut self, id: ConversationId, question: String, answer: &str) {
         if let Some(commands) = self.live.get(&id) {
             let _ = commands.send(BackendCommand::Answer {
                 id: question,
@@ -755,38 +748,38 @@ impl Core {
                 text: format!("You answered: {answer}"),
             },
         );
-        if let Some(s) = self.state.sessions.get_mut(&id) {
+        if let Some(s) = self.state.conversations.get_mut(&id) {
             s.question = None;
             s.status = Status::Running;
         }
     }
 
     /// Settings with the backend's default model and effort filled in.
-    fn explicit(&self, mut settings: SessionSettings) -> SessionSettings {
+    fn explicit(&self, mut settings: ConversationSettings) -> ConversationSettings {
         if let Some(options) = self.state.options.get(&settings.backend) {
             options.complete(&mut settings);
         }
         settings
     }
 
-    fn change_settings(&mut self, id: AgentSessionId, settings: &SessionSettings) {
+    fn change_settings(&mut self, id: ConversationId, settings: &ConversationSettings) {
         let settings = &self.explicit(settings.clone());
-        let Some(s) = self.state.sessions.get_mut(&id) else {
+        let Some(s) = self.state.conversations.get_mut(&id) else {
             return;
         };
-        if &s.session.settings == settings {
+        if &s.conversation.settings == settings {
             return;
         }
-        let old = std::mem::replace(&mut s.session.settings, settings.clone());
+        let old = std::mem::replace(&mut s.conversation.settings, settings.clone());
         if old.backend != settings.backend {
-            s.session.cli_session = None;
+            s.conversation.cli_session = None;
             s.carry_context = true;
         }
-        let saved = s.session.clone();
+        let saved = s.conversation.clone();
         // The CLI reads these choices at start: the next message restarts it.
         self.live.remove(&id);
         let storage = Arc::clone(&self.ports.storage);
-        Self::report(blocking(|| storage.update_session(&saved)));
+        Self::report(blocking(|| storage.update_conversation(&saved)));
         self.record(
             id,
             Entry::Notice {
@@ -795,19 +788,19 @@ impl Core {
         );
     }
 
-    fn delete(&mut self, id: ConversationId) {
+    fn delete(&mut self, id: FlowId) {
         self.forget(id);
         let storage = Arc::clone(&self.ports.storage);
-        Self::report(blocking(|| storage.delete_conversation(id)));
+        Self::report(blocking(|| storage.delete_flow(id)));
     }
 
-    /// Drops a conversation and its sessions from memory, stopping their CLIs.
-    fn forget(&mut self, id: ConversationId) {
-        for session in self.state.sessions_of(id) {
-            self.live.remove(&session);
-            self.state.sessions.remove(&session);
+    /// Drops a flow and its conversations from memory, stopping their CLIs.
+    fn forget(&mut self, id: FlowId) {
+        for conversation in self.state.conversations_of(id) {
+            self.live.remove(&conversation);
+            self.state.conversations.remove(&conversation);
         }
-        self.state.conversations.retain(|c| c.id != id);
+        self.state.flows.retain(|c| c.id != id);
     }
 
     fn fold_group(&mut self, key: String, folded: bool) {
@@ -827,15 +820,15 @@ impl Core {
         if Self::report(blocking(|| storage.remove_project(id))).is_none() {
             return;
         }
-        let conversations: Vec<ConversationId> = self
+        let flows: Vec<FlowId> = self
             .state
-            .conversations
+            .flows
             .iter()
             .filter(|c| c.project == id)
             .map(|c| c.id)
             .collect();
-        for conversation in conversations {
-            self.forget(conversation);
+        for flow in flows {
+            self.forget(flow);
         }
         Arc::make_mut(&mut self.state.projects).retain(|p| p.id != id);
         Arc::make_mut(&mut self.state.agents).remove(&id);
@@ -843,12 +836,12 @@ impl Core {
         Arc::make_mut(&mut self.state.project_repos).remove(&id);
     }
 
-    fn on_event(&mut self, id: AgentSessionId, event: Option<BackendEvent>) {
+    fn on_event(&mut self, id: ConversationId, event: Option<BackendEvent>) {
         let Some(event) = event else {
             self.live.remove(&id);
             if self
                 .state
-                .sessions
+                .conversations
                 .get(&id)
                 .is_some_and(|s| s.status == Status::Running)
             {
@@ -865,16 +858,16 @@ impl Core {
 
     pub(crate) fn finish_turn(
         &mut self,
-        id: AgentSessionId,
+        id: ConversationId,
         usage: Option<leon_domain::Usage>,
         error: Option<String>,
     ) {
-        let Some(s) = self.state.sessions.get_mut(&id) else {
+        let Some(s) = self.state.conversations.get_mut(&id) else {
             return;
         };
         let partial = s.transcript.as_mut().and_then(|t| t.partial.take());
         let pending: Vec<usize> = s.pending_tools.drain().map(|(_, i)| i).collect();
-        let conversation = s.session.conversation;
+        let flow = s.conversation.flow;
         let failed = error.is_some() || s.status == Status::Error;
         s.status = if failed { Status::Error } else { Status::Idle };
         let storage = Arc::clone(&self.ports.storage);
@@ -896,75 +889,75 @@ impl Core {
         self.record(id, Entry::TurnEnd { usage });
         let now = self.now();
         self.idle_since.insert(id, now);
-        self.refresh_git(conversation);
+        self.refresh_git(flow);
         if self.after_turn(id, failed) {
-            self.touch(conversation, false);
+            self.touch(flow, false);
         } else {
-            self.answered(id, conversation, failed);
+            self.answered(id, flow, failed);
         }
     }
 
     /// The agent finished or needs the user: mark unread and notify when the
-    /// conversation is not on screen (NAV-4, NOTIF-1).
-    pub(crate) fn answered(
-        &mut self,
-        id: AgentSessionId,
-        conversation: ConversationId,
-        failed: bool,
-    ) {
+    /// flow is not on screen (NAV-4, NOTIF-1).
+    pub(crate) fn answered(&mut self, id: ConversationId, flow: FlowId, failed: bool) {
         let unread = !self.on_screen(id);
-        if let Some(s) = self.state.sessions.get_mut(&id).filter(|_| unread) {
-            s.session.unread = true;
-            self.save_session(id);
+        if let Some(s) = self.state.conversations.get_mut(&id).filter(|_| unread) {
+            s.conversation.unread = true;
+            self.save_conversation(id);
         }
-        self.touch(conversation, unread);
+        self.touch(flow, unread);
         if !unread {
             return;
         }
         let agent = self
             .state
-            .sessions
+            .conversations
             .get(&id)
-            .and_then(|s| s.session.settings.agent.clone())
+            .and_then(|s| s.conversation.settings.agent.clone())
             .unwrap_or_else(|| "The agent".to_owned());
         let title = self
             .state
-            .conversations
+            .flows
             .iter()
-            .find(|c| c.id == conversation)
+            .find(|c| c.id == flow)
             .map_or_default(|c| c.title.clone());
         let headline = if failed {
             format!("{agent} stopped with an error")
         } else {
             format!("{agent} answered")
         };
-        self.state.notify(conversation, headline, title);
+        self.state.notify(flow, headline, title);
     }
 
     pub(crate) fn state_mut(&mut self) -> &mut State {
         &mut self.state
     }
 
-    pub(crate) fn record_entry(&mut self, id: AgentSessionId, entry: Entry) -> Option<usize> {
+    pub(crate) fn record_entry(&mut self, id: ConversationId, entry: Entry) -> Option<usize> {
         self.record(id, entry)
     }
 
-    pub(crate) fn save_session(&mut self, id: AgentSessionId) {
-        let Some(saved) = self.state.sessions.get(&id).map(|s| s.session.clone()) else {
+    pub(crate) fn save_conversation(&mut self, id: ConversationId) {
+        let Some(saved) = self
+            .state
+            .conversations
+            .get(&id)
+            .map(|s| s.conversation.clone())
+        else {
             return;
         };
         let storage = Arc::clone(&self.ports.storage);
-        Self::report(blocking(|| storage.update_session(&saved)));
+        Self::report(blocking(|| storage.update_conversation(&saved)));
     }
 
-    pub(crate) fn save_entry(&mut self, id: AgentSessionId, entry: &TimedEntry) {
+    pub(crate) fn save_entry(&mut self, id: ConversationId, entry: &TimedEntry) {
         let storage = Arc::clone(&self.ports.storage);
         Self::report(blocking(|| storage.append_entry(id, entry)));
     }
 }
 
-/// The message for a new CLI session that must know the conversation so far.
-fn with_context(s: &SessionState, text: &str) -> String {
+/// The message for a new CLI session that must know the flow so far.
+fn with_context(s: &ConversationState, text: &str) -> String {
     let mut lines = Vec::new();
     for e in s
         .transcript
@@ -993,7 +986,7 @@ fn with_context(s: &SessionState, text: &str) -> String {
     )
 }
 
-fn describe_change(old: &SessionSettings, new: &SessionSettings) -> String {
+fn describe_change(old: &ConversationSettings, new: &ConversationSettings) -> String {
     if old.backend != new.backend {
         return format!(
             "Switched from {} to {}. Your next message starts a new {} session with this conversation's context.",

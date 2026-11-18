@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use leon_core::ports::{AgentDefinition, BackendCommand, BackendEvent, SessionSpec, Source};
-use leon_domain::{BackendKind, McpServer, SessionSettings};
+use leon_domain::{BackendKind, ConversationSettings, McpServer};
 use serde_json::{Value, json};
 
 use super::copilot;
@@ -15,7 +15,7 @@ const SESSION: &str = "sess_abc123def456";
 
 fn spec(resume: Option<&str>) -> SessionSpec {
     SessionSpec {
-        settings: SessionSettings {
+        settings: ConversationSettings {
             backend: BackendKind::CopilotCli,
             agent: None,
             model: None,

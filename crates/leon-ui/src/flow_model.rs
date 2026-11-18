@@ -1,18 +1,18 @@
 //! What the flow diagram shows (FLOW-4, FLOW-5), built from what the agent
-//! sessions actually did: boxes, arrows with their messages, and where each
+//! conversations actually did: boxes, arrows with their messages, and where each
 //! box sits. No rendering here.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use leon_core::{SessionView, TranscriptView};
-use leon_domain::{AgentSessionId, Entry, Status};
+use leon_core::{ConversationView, TranscriptView};
+use leon_domain::{ConversationId, Entry, Status};
 
-/// A box: the user, or an agent session.
+/// A box: the user, or an conversation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Node {
     You,
-    Session(AgentSessionId),
+    Conversation(ConversationId),
 }
 
 /// What an arrow carries.
@@ -62,31 +62,36 @@ impl Edge {
     }
 }
 
-/// Boxes, arrows, and who started each agent session.
+/// Boxes, arrows, and who started each conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FlowModel {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
-    /// The box that started each session's box: "You" or another session.
+    /// The box that started each conversation's box: "You" or another conversation.
     pub parent: HashMap<Node, Node>,
-    /// Each session's agent (its CLI's name without one): the layout keeps
-    /// an agent's sessions together.
+    /// Each conversation's agent (its CLI's name without one): the layout keeps
+    /// an agent's conversations together.
     pub agent: HashMap<Node, String>,
 }
 
-/// Builds the flow of one conversation from its sessions (in order) and
+/// Builds the flow of one flow from its conversations (in order) and
 /// their loaded transcripts.
 pub(crate) fn build(
-    sessions: &[&SessionView],
-    transcripts: &HashMap<AgentSessionId, Arc<TranscriptView>>,
+    conversations: &[&ConversationView],
+    transcripts: &HashMap<ConversationId, Arc<TranscriptView>>,
 ) -> FlowModel {
     let mut nodes = vec![Node::You];
     let mut parent = HashMap::new();
     let mut agent = HashMap::new();
-    for s in sessions {
-        let me = Node::Session(s.session.id);
-        parent.insert(me, s.session.started_by.map_or(Node::You, Node::Session));
-        let settings = &s.session.settings;
+    for s in conversations {
+        let me = Node::Conversation(s.conversation.id);
+        parent.insert(
+            me,
+            s.conversation
+                .started_by
+                .map_or(Node::You, Node::Conversation),
+        );
+        let settings = &s.conversation.settings;
         agent.insert(
             me,
             settings
@@ -109,10 +114,10 @@ pub(crate) fn build(
             items: vec![item],
         }),
     };
-    for s in sessions {
-        let me = Node::Session(s.session.id);
+    for s in conversations {
+        let me = Node::Conversation(s.conversation.id);
         let entries = transcripts
-            .get(&s.session.id)
+            .get(&s.conversation.id)
             .map_or_default(|t| t.entries.as_slice());
         // Who the current turn answers: the user, or the agent that asked.
         let mut asked_by_you = false;
@@ -141,7 +146,7 @@ pub(crate) fn build(
                     } else {
                         (EdgeKind::Prompt, "Request")
                     };
-                    add(Node::Session(*from), me, kind, item(e.at, label, text));
+                    add(Node::Conversation(*from), me, kind, item(e.at, label, text));
                 }
                 Entry::Agent { text } => answer = Some((e.at, text)),
                 Entry::TurnEnd { .. } => {
@@ -184,7 +189,7 @@ fn item(at: i64, label: &'static str, text: &str) -> Item {
 }
 
 /// Status line of a box.
-pub(crate) fn status_text(s: &SessionView, waiting_for: Option<&str>) -> String {
+pub(crate) fn status_text(s: &ConversationView, waiting_for: Option<&str>) -> String {
     match s.status {
         Status::Running if s.subagents.1 > 0 => {
             let n = s.subagents.1;

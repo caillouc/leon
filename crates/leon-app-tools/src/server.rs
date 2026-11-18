@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use leon_core::ports::{AppToolCall, AppToolRequest, AppToolSender};
-use leon_domain::AgentSessionId;
+use leon_domain::ConversationId;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, WriteHalf};
 use tokio::net::UnixListener;
@@ -72,7 +72,7 @@ async fn accept(listener: UnixListener, tools: AppToolSender) {
     }
 }
 
-/// Serves one bridge: its `{"session": <id>}` line, then MCP messages until
+/// Serves one bridge: its `{"conversation": <id>}` line, then MCP messages until
 /// it closes. Tool calls run concurrently; answers go out as they come.
 pub(crate) async fn connection<S>(stream: S, tools: AppToolSender)
 where
@@ -81,20 +81,20 @@ where
     let (read, write) = tokio::io::split(stream);
     let mut reader = BufReader::new(read);
     let mut line = Vec::new();
-    let Some(session) = session_line(&mut reader, &mut line).await else {
+    let Some(conversation) = conversation_line(&mut reader, &mut line).await else {
         tracing::warn!("app tools: connection without a session line, closed");
         return;
     };
-    tracing::debug!(session = session.0, "app tools: bridge connected");
+    tracing::debug!(conversation = conversation.0, "app tools: bridge connected");
     let (out, queue) = unbounded_channel();
-    tokio::spawn(write_messages(write, queue, session));
+    tokio::spawn(write_messages(write, queue, conversation));
     loop {
         line.clear();
         match reader.read_until(b'\n', &mut line).await {
             Ok(0) => break,
             Ok(_) => {}
             Err(error) => {
-                tracing::debug!(session = session.0, %error, "app tools: read failed");
+                tracing::debug!(conversation = conversation.0, %error, "app tools: read failed");
                 break;
             }
         }
@@ -102,7 +102,7 @@ where
             Reply::Nothing => Ok(()),
             Reply::Send(message) => out.send(message),
             Reply::Call { id, call } => {
-                tokio::spawn(answer(session, id, call, tools.clone(), out.clone()));
+                tokio::spawn(answer(conversation, id, call, tools.clone(), out.clone()));
                 Ok(())
             }
         };
@@ -110,22 +110,28 @@ where
             break;
         }
     }
-    tracing::debug!(session = session.0, "app tools: bridge disconnected");
+    tracing::debug!(
+        conversation = conversation.0,
+        "app tools: bridge disconnected"
+    );
 }
 
-async fn session_line<R>(reader: &mut BufReader<R>, line: &mut Vec<u8>) -> Option<AgentSessionId>
+async fn conversation_line<R>(
+    reader: &mut BufReader<R>,
+    line: &mut Vec<u8>,
+) -> Option<ConversationId>
 where
     R: AsyncRead + Unpin,
 {
     reader.read_until(b'\n', line).await.ok()?;
     let hello: Value = serde_json::from_slice(line).ok()?;
-    hello.get("session")?.as_i64().map(AgentSessionId)
+    hello.get("session")?.as_i64().map(ConversationId)
 }
 
 async fn write_messages<W>(
     mut write: WriteHalf<W>,
     mut queue: UnboundedReceiver<Value>,
-    session: AgentSessionId,
+    conversation: ConversationId,
 ) where
     W: AsyncWrite,
 {
@@ -137,17 +143,17 @@ async fn write_messages<W>(
             Err(error) => Err(error),
         };
         if let Err(error) = written {
-            tracing::debug!(session = session.0, %error, "app tools: write failed");
+            tracing::debug!(conversation = conversation.0, %error, "app tools: write failed");
             return;
         }
     }
     if let Err(error) = write.shutdown().await {
-        tracing::debug!(session = session.0, %error, "app tools: close failed");
+        tracing::debug!(conversation = conversation.0, %error, "app tools: close failed");
     }
 }
 
 async fn answer(
-    session: AgentSessionId,
+    conversation: ConversationId,
     id: Value,
     call: AppToolCall,
     tools: AppToolSender,
@@ -155,7 +161,7 @@ async fn answer(
 ) {
     let (reply, outcome) = oneshot::channel();
     let request = AppToolRequest {
-        session,
+        conversation,
         call,
         reply,
     };
@@ -168,7 +174,7 @@ async fn answer(
     };
     if out.send(protocol::tool_result(id, outcome)).is_err() {
         tracing::debug!(
-            session = session.0,
+            conversation = conversation.0,
             "app tools: bridge gone before the answer"
         );
     }

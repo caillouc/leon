@@ -187,7 +187,7 @@ pub fn scrim() -> Rgba {
 }
 
 /// An agent's colour in the flow diagram, by its place among the
-/// conversation's agents.
+/// flow's agents.
 pub fn agent_color(index: usize) -> Rgba {
     const PALETTE: [u32; 8] = [
         0x007a_a2f7, // blue

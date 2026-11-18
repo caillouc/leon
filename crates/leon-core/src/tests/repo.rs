@@ -1,4 +1,4 @@
-//! Git and GitHub state of a conversation.
+//! Git and GitHub state of a flow.
 
 use std::sync::Mutex;
 
@@ -45,9 +45,17 @@ impl Git for FakeGit {
     fn changes(&self, _dir: &Path) -> Result<Vec<FileDiff>, PortError> {
         Ok(vec![file("src/retry.rs")])
     }
+    /// `origin/main` is behind `origin/master`: since `main`, the branch
+    /// diff holds one more file.
     fn branch_diff(&self, _dir: &Path, base: &str) -> Result<Vec<FileDiff>, PortError> {
-        assert_eq!(base, "origin/main");
-        Ok(vec![file("src/retry.rs"), file("Cargo.lock")])
+        match base {
+            "origin/main" => Ok(vec![file("src/retry.rs"), file("Cargo.lock")]),
+            "origin/master" => Ok(vec![file("src/app.ts")]),
+            _ => Err(PortError::new(
+                "reading the branch diff",
+                "unknown revision",
+            )),
+        }
     }
 }
 
@@ -75,9 +83,10 @@ impl GitHub for FakeGitHub {
         }
     }
     fn pull_request(&self, _dir: &Path, branch: &str) -> Result<Option<PullRequest>, PortError> {
-        let (repo, number, closes) = match branch {
-            "fix-retry" => ("acme/api", 7, GhRef::issue("acme/api", 12)),
-            "web-fix" => ("acme/web", 3, GhRef::issue("acme/web", 5)),
+        // The web pull request goes straight to `master`.
+        let (repo, number, closes, base) = match branch {
+            "fix-retry" => ("acme/api", 7, GhRef::issue("acme/api", 12), "main"),
+            "web-fix" => ("acme/web", 3, GhRef::issue("acme/web", 5), "master"),
             _ => return Ok(None),
         };
         Ok(Some(PullRequest {
@@ -87,7 +96,7 @@ impl GitHub for FakeGitHub {
             url: String::new(),
             state: PrState::Open,
             branch: branch.into(),
-            base: "main".into(),
+            base: base.into(),
             labels: vec![],
             checks: vec![],
             rollup: None,
@@ -149,13 +158,13 @@ impl GitHub for FakeGitHub {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_conversation_shows_its_branch_changes_and_pull_request() {
+async fn a_flow_shows_its_branch_changes_and_pull_request() {
     let h = harness();
-    new_conversation(&h, BackendKind::Codex).await;
-    let id = until(&h.core, "conversation", |s| !s.conversations.is_empty())
+    new_flow(&h, BackendKind::Codex).await;
+    let id = until(&h.core, "conversation", |s| !s.flows.is_empty())
         .await
-        .conversations[0]
-        .conversation
+        .flows[0]
+        .flow
         .id;
     h.core.send(Intent::View(Some(id)));
     let api = Path::new("/code/api");
@@ -181,11 +190,11 @@ async fn a_github_failure_is_shown_not_fatal() {
 #[tokio::test(flavor = "multi_thread")]
 async fn requesting_a_copilot_review_says_so() {
     let h = harness();
-    new_conversation(&h, BackendKind::Codex).await;
-    let id = until(&h.core, "conversation", |s| !s.conversations.is_empty())
+    new_flow(&h, BackendKind::Codex).await;
+    let id = until(&h.core, "conversation", |s| !s.flows.is_empty())
         .await
-        .conversations[0]
-        .conversation
+        .flows[0]
+        .flow
         .id;
     h.core.send(Intent::View(Some(id)));
     until(&h.core, "pull request", |s| {

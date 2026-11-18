@@ -521,14 +521,14 @@ mod tests {
 
     use leon_core::ports::{AgentDefinition, BackendCommand, BackendEvent, SessionSpec};
     use leon_domain::Capability;
-    use leon_domain::{BackendKind, PlanStep, SessionSettings, StepStatus, Usage};
+    use leon_domain::{BackendKind, ConversationSettings, PlanStep, StepStatus, Usage};
     use serde_json::{Value, json};
 
     use super::Session;
 
     fn spec(resume: Option<&str>) -> SessionSpec {
         SessionSpec {
-            settings: SessionSettings {
+            settings: ConversationSettings {
                 backend: BackendKind::Codex,
                 agent: Some("coder".into()),
                 model: Some("gpt-6-luna".into()),

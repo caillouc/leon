@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use leon_domain::{BackendKind, SessionSettings, cli_for_model, full_cli_order};
+use leon_domain::{BackendKind, ConversationSettings, cli_for_model, full_cli_order};
 
 use crate::ports::BackendOptions;
 
@@ -12,11 +12,11 @@ use crate::ports::BackendOptions;
 /// becomes its first ("auto"). `None` when the file names no model,
 /// `inherit`, or a model no CLI offers.
 pub fn settings_for_agent<S: std::hash::BuildHasher>(
-    settings: &SessionSettings,
+    settings: &ConversationSettings,
     model: Option<&str>,
     order: &[BackendKind],
     options: &HashMap<BackendKind, BackendOptions, S>,
-) -> Option<SessionSettings> {
+) -> Option<ConversationSettings> {
     let names = |backend| {
         options
             .get(&backend)
@@ -44,7 +44,7 @@ mod tests {
     use std::collections::HashMap;
 
     use leon_domain::BackendKind::{ClaudeCode, Codex};
-    use leon_domain::SessionSettings;
+    use leon_domain::ConversationSettings;
 
     use super::settings_for_agent;
     use crate::ports::{BackendOptions, ModelOption};
@@ -83,7 +83,7 @@ mod tests {
                 ),
             ),
         ]);
-        let planner = SessionSettings {
+        let planner = ConversationSettings {
             backend: ClaudeCode,
             agent: Some("coder".into()),
             model: Some("claude-opus-5-5".into()),

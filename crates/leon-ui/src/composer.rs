@@ -6,7 +6,7 @@ use gpui::{
 };
 use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
-use leon_domain::{AgentSessionId, Status};
+use leon_domain::{ConversationId, Status};
 
 use crate::icons::{Icon, icon};
 use crate::picker::Look;
@@ -17,11 +17,11 @@ use crate::workspace::Workspace;
 impl Workspace {
     pub(crate) fn render_composer(
         &mut self,
-        session: AgentSessionId,
+        conversation: ConversationId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(s) = self.snapshot.sessions.get(&session).cloned() else {
+        let Some(s) = self.snapshot.conversations.get(&conversation).cloned() else {
             return div().into_any_element();
         };
         let running = s.status == Status::Running;
@@ -47,7 +47,7 @@ impl Workspace {
                     option.clone(),
                     cx.listener(move |this, _, _, _| {
                         this.core.send(Intent::Answer {
-                            session,
+                            conversation,
                             question: question.clone(),
                             answer: answer.clone(),
                         });
@@ -93,11 +93,11 @@ impl Workspace {
                     .child(div().flex().gap_2().children(options)),
             );
         }
-        if let Some((_, entry)) = self.rewind.filter(|(id, _)| *id == session) {
+        if let Some((_, entry)) = self.rewind.filter(|(id, _)| *id == conversation) {
             let later = self
                 .snapshot
                 .transcripts
-                .get(&session)
+                .get(&conversation)
                 .map_or(0, |t| t.entries.len().saturating_sub(entry));
             column = column.child(
                 div()
@@ -137,7 +137,7 @@ impl Workspace {
             );
         }
 
-        let settings = s.session.settings.clone();
+        let settings = s.conversation.settings.clone();
         let [backend, model, effort, permission] = self.setting_pickers(
             Look::Inline,
             "session",
@@ -145,17 +145,17 @@ impl Workspace {
             cx,
             move |this, next, _, _| {
                 this.core.send(Intent::ChangeSettings {
-                    session,
+                    conversation,
                     settings: next,
                 });
             },
         );
-        let agent = self.session_name(&s);
+        let agent = self.conversation_name(&s);
         let action = if running {
             button(
                 "stop",
                 "Stop",
-                cx.listener(move |this, _, _, _| this.core.send(Intent::Stop(session))),
+                cx.listener(move |this, _, _, _| this.core.send(Intent::Stop(conversation))),
             )
         } else {
             primary(
@@ -166,8 +166,8 @@ impl Workspace {
         };
         let project = self
             .snapshot
-            .conversation(s.session.conversation)
-            .map(|c| c.conversation.project);
+            .flow(s.conversation.flow)
+            .map(|c| c.flow.project);
         let slash = self.slash_list(&self.composer.clone(), project, cx);
         let ghost = self.argument_ghost(&self.composer, project, cx);
         let suggestion = (!running && self.rewind.is_none())
@@ -223,15 +223,15 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// Sends the composer's text to the shown session (CONV-1).
+    /// Sends the composer's text to the shown conversation (CONV-1).
     pub(crate) fn send_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(session) = self.current_session() else {
+        let Some(conversation) = self.current_conversation() else {
             return;
         };
         if self
             .snapshot
-            .sessions
-            .get(&session)
+            .conversations
+            .get(&conversation)
             .is_some_and(|s| s.status == Status::Running)
         {
             return;
@@ -242,14 +242,14 @@ impl Workspace {
         }
         self.pasted.clear();
         match self.rewind.take() {
-            Some((id, entry)) if id == session => {
+            Some((id, entry)) if id == conversation => {
                 self.core.send(Intent::Rewind {
-                    session,
+                    conversation,
                     entry,
                     text,
                 });
             }
-            _ => self.core.send(Intent::Send { session, text }),
+            _ => self.core.send(Intent::Send { conversation, text }),
         }
         self.composer
             .update(cx, |state, cx| state.set_value("", window, cx));
@@ -259,7 +259,7 @@ impl Workspace {
     /// it goes back to before it (CONV-7, CONV-8).
     pub(crate) fn start_edit(
         &mut self,
-        session: AgentSessionId,
+        conversation: ConversationId,
         entry: usize,
         text: &str,
         window: &mut Window,
@@ -267,13 +267,13 @@ impl Workspace {
     ) {
         if self
             .snapshot
-            .sessions
-            .get(&session)
+            .conversations
+            .get(&conversation)
             .is_some_and(|s| s.status == Status::Running)
         {
             return;
         }
-        self.rewind = Some((session, entry));
+        self.rewind = Some((conversation, entry));
         let text = SharedString::from(text.to_owned());
         self.composer
             .update(cx, |state, cx| state.set_value(text, window, cx));

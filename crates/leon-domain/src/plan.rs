@@ -1,4 +1,4 @@
-//! An agent session's plan (CONV-14): the steps the agent set itself and
+//! An conversation's plan (CONV-14): the steps the agent set itself and
 //! where each stands, as the CLI reports them.
 
 /// Where a step stands.

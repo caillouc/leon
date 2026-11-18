@@ -3,9 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, DoctorCheck,
-    DoctorSection, FileDiff, Issue, McpServer, Project, ProjectId, PullRequest, SessionSettings,
-    TimedEntry, Usage,
+    BackendKind, Conversation, ConversationId, ConversationSettings, DoctorCheck, DoctorSection,
+    FileDiff, Flow, FlowId, Issue, McpServer, Project, ProjectId, PullRequest, TimedEntry, Usage,
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -39,55 +38,54 @@ pub trait Storage: Send + Sync + 'static {
     /// Registers a folder as a project; returns the existing one if the path
     /// is already registered.
     fn add_project(&self, name: &str, path: &Path, now: i64) -> Result<Project, PortError>;
-    /// Folds or unfolds a project's conversations in the left pane.
+    /// Folds or unfolds a project's flows in the left pane.
     fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError>;
     /// The GitHub lists' folded groups, by key (GH-2, GH-3).
     fn folded_groups(&self) -> Result<Vec<String>, PortError>;
     /// Folds or unfolds a GitHub list's group.
     fn set_folded_group(&self, key: &str, folded: bool) -> Result<(), PortError>;
-    /// Removes a project from Leon with its conversations, their sessions
+    /// Removes a project from Leon with its flows, their conversations
     /// and transcripts. The folder stays on disk.
     fn remove_project(&self, id: ProjectId) -> Result<(), PortError>;
-    /// Every conversation, most recent first.
+    /// Every flow, most recent first.
+    fn list_flows(&self) -> Result<Vec<Flow>, PortError>;
+    /// Every conversation, oldest first.
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError>;
-    /// Every agent session, oldest first.
-    fn list_sessions(&self) -> Result<Vec<AgentSession>, PortError>;
-    /// Creates a conversation.
-    fn create_conversation(
-        &self,
-        project: ProjectId,
-        title: &str,
-        now: i64,
-    ) -> Result<Conversation, PortError>;
+    /// Creates a flow.
+    fn create_flow(&self, project: ProjectId, title: &str, now: i64) -> Result<Flow, PortError>;
     /// Saves title, pin, archive, unread and last activity.
-    fn update_conversation(&self, conversation: &Conversation) -> Result<(), PortError>;
-    /// Deletes a conversation, its sessions and their transcripts.
-    fn delete_conversation(&self, id: ConversationId) -> Result<(), PortError>;
-    /// Creates an agent session.
-    fn create_session(&self, new: &NewSession) -> Result<AgentSession, PortError>;
+    fn update_flow(&self, flow: &Flow) -> Result<(), PortError>;
+    /// Deletes a flow, its conversations and their transcripts.
+    fn delete_flow(&self, id: FlowId) -> Result<(), PortError>;
+    /// Creates an conversation.
+    fn create_conversation(&self, new: &NewConversation) -> Result<Conversation, PortError>;
     /// Saves settings, working directory and CLI session id.
-    fn update_session(&self, session: &AgentSession) -> Result<(), PortError>;
+    fn update_conversation(&self, conversation: &Conversation) -> Result<(), PortError>;
     /// Appends one transcript entry.
-    fn append_entry(&self, session: AgentSessionId, entry: &TimedEntry) -> Result<(), PortError>;
-    /// The whole transcript of a session, oldest first.
-    fn entries(&self, session: AgentSessionId) -> Result<Vec<TimedEntry>, PortError>;
-    /// Replaces a session's whole transcript (CONV-7: going back).
+    fn append_entry(
+        &self,
+        conversation: ConversationId,
+        entry: &TimedEntry,
+    ) -> Result<(), PortError>;
+    /// The whole transcript of a conversation, oldest first.
+    fn entries(&self, conversation: ConversationId) -> Result<Vec<TimedEntry>, PortError>;
+    /// Replaces a conversation's whole transcript (CONV-7: going back).
     fn replace_entries(
         &self,
-        session: AgentSessionId,
+        conversation: ConversationId,
         entries: &[TimedEntry],
     ) -> Result<(), PortError>;
 }
 
-/// What is needed to create an agent session.
+/// What is needed to create an conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewSession {
-    /// Conversation it joins.
-    pub conversation: ConversationId,
-    /// Session that started it; `None` for the user.
-    pub started_by: Option<AgentSessionId>,
+pub struct NewConversation {
+    /// Flow it joins.
+    pub flow: FlowId,
+    /// Conversation that started it; `None` for the user.
+    pub started_by: Option<ConversationId>,
     /// Backend, agent, model, effort, permission.
-    pub settings: SessionSettings,
+    pub settings: ConversationSettings,
     /// Where the CLI runs.
     pub working_dir: PathBuf,
 }
@@ -212,14 +210,14 @@ pub trait Catalog: Send + Sync + 'static {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionSpec {
     /// Backend, agent, model, effort, permission.
-    pub settings: SessionSettings,
+    pub settings: ConversationSettings,
     /// The agent's definition, when one is chosen.
     pub agent: Option<AgentDefinition>,
     /// Where the CLI runs.
     pub working_dir: PathBuf,
     /// The CLI's session id to resume, if any.
     pub resume: Option<String>,
-    /// MCP servers to add to the session: the app's own tools (P10).
+    /// MCP servers to add to the conversation: the app's own tools (P10).
     pub mcp_servers: Vec<McpServer>,
     /// The user's source folders (EXT-2): each CLI loads what it can.
     pub sources: Vec<Source>,
@@ -254,7 +252,7 @@ pub enum BackendEvent {
         detail: String,
     },
     /// Files a tool call changes, as the CLI gave them: absolute, or
-    /// relative to the session's folder (CTX-2).
+    /// relative to the conversation's folder (CTX-2).
     FilesChanged(Vec<PathBuf>),
     /// A tool call finished.
     ToolDone {
@@ -268,13 +266,13 @@ pub enum BackendEvent {
     /// A reply the user may want to send next (CONV-10).
     Suggestion(String),
     /// Something the user should know that is not the agent's answer, e.g.
-    /// the CLI could not resume its session and started a new one.
+    /// the CLI could not resume its conversation and started a new one.
     Notice(String),
     /// The agent's plan, whole, each time it changes (CONV-14).
     Plan(Vec<leon_domain::PlanStep>),
-    /// Subagents run by the CLI inside this session (CONV-13).
+    /// Subagents run by the CLI inside this conversation (CONV-13).
     Subagents {
-        /// Started so far in this session.
+        /// Started so far in this conversation.
         started: u32,
         /// Still running.
         running: u32,
@@ -297,7 +295,7 @@ pub enum BackendEvent {
         /// Usage reported for the turn.
         usage: Option<Usage>,
     },
-    /// The CLI failed; the session may be resumed with a new message.
+    /// The CLI failed; the conversation may be resumed with a new message.
     Failed(String),
 }
 
@@ -353,8 +351,8 @@ pub struct BackendOptions {
 
 impl BackendOptions {
     /// Fills the model and effort left unchosen with the defaults, so every
-    /// session runs with explicit settings and shows what it uses.
-    pub fn complete(&self, settings: &mut SessionSettings) {
+    /// conversation runs with explicit settings and shows what it uses.
+    pub fn complete(&self, settings: &mut ConversationSettings) {
         if settings.model.is_none() {
             settings.model = self.models.first().map(|m| m.id.clone());
         }
@@ -390,7 +388,7 @@ pub trait Backends: Send + Sync + 'static {
     fn start(&self, spec: SessionSpec) -> Result<BackendChannel, PortError>;
     /// What the pickers offer for `backend`.
     fn options(&self, backend: BackendKind) -> BackendOptions;
-    /// A short title for a conversation that starts with `message`, from a
+    /// A short title for a flow that starts with `message`, from a
     /// one-off call to `backend` (NAV-9, D1). Blocks until the CLI answers.
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError>;
     /// Doctor: one section per CLI (installed, version, logged in). Blocks.
@@ -462,11 +460,11 @@ pub trait GitHub: Send + Sync + 'static {
     fn doctor(&self) -> DoctorSection;
 }
 
-/// A call to one of the tools the app gives every agent session (P10, P15),
+/// A call to one of the tools the app gives every conversation (P10, P15),
 /// made through the app's MCP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppToolCall {
-    /// Start another agent in a new agent session of the same conversation
+    /// Start another agent in a new conversation of the same flow
     /// (FLOW-1). Returns at once; the answer comes back as a message.
     StartAgent {
         /// Agent name, as in its agent file.
@@ -476,32 +474,32 @@ pub enum AppToolCall {
         /// Where it runs; the caller's working directory when `None`.
         working_directory: Option<PathBuf>,
     },
-    /// Send a follow-up to another agent session of the conversation
+    /// Send a follow-up to another conversation of the flow
     /// (FLOW-2). Returns at once; the answer comes back as a message.
     MessageAgent {
-        /// Target session.
-        session: AgentSessionId,
+        /// Target conversation.
+        conversation: ConversationId,
         /// Message text.
         text: String,
     },
-    /// Rename the conversation.
-    RenameConversation {
+    /// Rename the flow.
+    RenameFlow {
         /// New title.
         title: String,
     },
-    /// The calling session moved to another folder, e.g. a worktree (D3).
+    /// The calling conversation moved to another folder, e.g. a worktree (D3).
     SetWorkingDirectory {
         /// Absolute path.
         path: PathBuf,
     },
 }
 
-/// An [`AppToolCall`] from a session, with where to send the result text
+/// An [`AppToolCall`] from a conversation, with where to send the result text
 /// (or why it failed) for the agent.
 #[derive(Debug)]
 pub struct AppToolRequest {
-    /// The calling agent session.
-    pub session: AgentSessionId,
+    /// The calling conversation.
+    pub conversation: ConversationId,
     /// What it asks.
     pub call: AppToolCall,
     /// Result for the agent: `Ok` text or `Err` message.
@@ -510,12 +508,12 @@ pub struct AppToolRequest {
 
 /// How a CLI reaches the app's MCP server (P10).
 pub trait AppTools: Send + Sync + 'static {
-    /// The MCP server to give one agent session; its tool calls arrive as
-    /// [`AppToolRequest`]s from that session.
-    fn server(&self, session: AgentSessionId) -> McpServer;
+    /// The MCP server to give one conversation; its tool calls arrive as
+    /// [`AppToolRequest`]s from that conversation.
+    fn server(&self, conversation: ConversationId) -> McpServer;
     /// Doctor: whether agents can reach the app's tools. Blocks.
     fn doctor(&self) -> DoctorCheck;
-    /// What every agent session is told about these tools: when to call
+    /// What every conversation is told about these tools: when to call
     /// them so the app shows the current work (CTX-3).
     fn instructions(&self) -> &'static str;
 }

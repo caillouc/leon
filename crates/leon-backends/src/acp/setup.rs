@@ -44,7 +44,7 @@ impl Capabilities {
     }
 }
 
-/// How the agent session starts.
+/// How the conversation starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Start {
     New,

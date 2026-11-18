@@ -11,8 +11,6 @@
 )]
 
 mod composer;
-mod conv_row;
-mod conversation;
 mod diff_drawer;
 mod diff_rows;
 mod diff_view;
@@ -21,6 +19,8 @@ mod drawer;
 mod flow;
 mod flow_model;
 mod flow_paint;
+mod flow_pane;
+mod flow_row;
 mod form;
 mod gh_detail;
 mod github;

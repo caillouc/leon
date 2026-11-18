@@ -4,7 +4,7 @@
 
 use gpui::{AnyElement, Context, div, prelude::*, px};
 use leon_core::ports::AgentFolder;
-use leon_domain::{BackendKind, SessionDefaults, Settings, full_cli_order};
+use leon_domain::{BackendKind, ConversationDefaults, Settings, full_cli_order};
 
 use crate::icons::{Icon, icon};
 use crate::picker::{Choice, Look};
@@ -16,7 +16,7 @@ use crate::workspace::Workspace;
 const NO_AGENT: &str = "The CLI's own agent";
 
 impl Workspace {
-    /// The agent the new-conversation form starts with, among every
+    /// The agent the new-flow form starts with, among every
     /// project's agents; picked in a project that has it.
     pub(crate) fn default_agent_picker(
         &self,
@@ -43,7 +43,7 @@ impl Workspace {
             cx,
             move |this, value, _, _| {
                 this.save(Settings {
-                    defaults: SessionDefaults {
+                    defaults: ConversationDefaults {
                         agent: (!value.is_empty()).then_some(value),
                         ..settings.defaults.clone()
                     },

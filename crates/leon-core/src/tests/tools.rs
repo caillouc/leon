@@ -62,14 +62,14 @@ fn server(name: &str) -> McpServer {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_shared_server_reaches_new_sessions_untrusted() {
+async fn a_shared_server_reaches_new_conversations_untrusted() {
     let h = harness();
     until(&h.core, "loaded", |s| s.loaded).await;
     h.core.send(Intent::AddTool(server("metabase")));
     h.core.send(Intent::AddTool(server("leon")));
     let s = until(&h.core, "listed", |s| s.shared_tools.len() == 2).await;
     assert!(s.shared_tools.iter().all(|m| !m.trusted));
-    new_conversation(&h, BackendKind::Codex).await;
+    new_flow(&h, BackendKind::Codex).await;
     let spec = h.backends.started.lock().unwrap()[0].spec.clone();
     let names: Vec<(&str, bool)> = spec
         .mcp_servers

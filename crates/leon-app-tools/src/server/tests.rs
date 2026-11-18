@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use leon_core::ports::{AppToolCall, AppToolRequest};
-use leon_domain::AgentSessionId;
+use leon_domain::ConversationId;
 use serde_json::{Value, json};
 use tokio::io::{
     AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines, ReadHalf, WriteHalf,
@@ -49,8 +49,8 @@ impl Client {
     }
 }
 
-/// A connection for `session`, and what the core receives from it.
-async fn connect(session: i64) -> (Client, UnboundedReceiver<AppToolRequest>) {
+/// A connection for `conversation`, and what the core receives from it.
+async fn connect(conversation: i64) -> (Client, UnboundedReceiver<AppToolRequest>) {
     let (core, requests) = unbounded_channel();
     let (client, server) = tokio::io::duplex(64 * 1024);
     tokio::spawn(connection(server, core));
@@ -59,7 +59,9 @@ async fn connect(session: i64) -> (Client, UnboundedReceiver<AppToolRequest>) {
         lines: BufReader::new(read).lines(),
         write,
     };
-    client.line(&format!(r#"{{"session": {session}}}"#)).await;
+    client
+        .line(&format!(r#"{{"session": {conversation}}}"#))
+        .await;
     (client, requests)
 }
 
@@ -77,7 +79,7 @@ fn tool_result(id: i64, text: &str, is_error: bool) -> Value {
 }
 
 #[tokio::test]
-async fn each_tool_call_reaches_the_core_with_the_session() {
+async fn each_tool_call_reaches_the_core_with_the_conversation() {
     let cases = [
         (
             "start_agent",
@@ -92,14 +94,14 @@ async fn each_tool_call_reaches_the_core_with_the_session() {
             "message_agent",
             json!({ "conversation": 12, "text": "And the tests?" }),
             AppToolCall::MessageAgent {
-                session: AgentSessionId(12),
+                conversation: ConversationId(12),
                 text: "And the tests?".to_owned(),
             },
         ),
         (
             "rename_flow",
             json!({ "title": "Parser fix", "unknown": 1 }),
-            AppToolCall::RenameConversation {
+            AppToolCall::RenameFlow {
                 title: "Parser fix".to_owned(),
             },
         ),
@@ -116,8 +118,8 @@ async fn each_tool_call_reaches_the_core_with_the_session() {
         client.call(1, name, arguments).await;
         let request = request(&mut requests).await;
         assert_eq!(
-            (request.session, &request.call),
-            (AgentSessionId(7), &expected),
+            (request.conversation, &request.call),
+            (ConversationId(7), &expected),
             "{name}"
         );
         request.reply.send(Ok(format!("{name} done"))).unwrap();
@@ -218,7 +220,7 @@ async fn bad_input_gets_errors_and_the_connection_stays_up() {
 }
 
 #[tokio::test]
-async fn a_connection_without_a_session_line_is_closed() {
+async fn a_connection_without_a_conversation_line_is_closed() {
     let (core, _requests) = unbounded_channel();
     let (client, server) = tokio::io::duplex(1024);
     tokio::spawn(connection(server, core));

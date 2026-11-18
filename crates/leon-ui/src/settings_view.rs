@@ -6,7 +6,7 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, Textarea, TextareaState};
 use leon_core::Intent;
-use leon_domain::{FoldPattern, SessionDefaults, SessionSettings, Settings};
+use leon_domain::{ConversationDefaults, ConversationSettings, FoldPattern, Settings};
 
 use crate::icons::{Icon, icon};
 use crate::picker::Look;
@@ -98,7 +98,7 @@ impl Workspace {
     pub(crate) fn render_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let settings = self.snapshot.settings.clone();
         let d = &settings.defaults;
-        let current = SessionSettings {
+        let current = ConversationSettings {
             backend: d.backend,
             agent: None,
             model: d.model.clone(),
@@ -114,7 +114,7 @@ impl Workspace {
                 cx,
                 move |this, next, _, _| {
                     this.save(Settings {
-                        defaults: SessionDefaults {
+                        defaults: ConversationDefaults {
                             backend: next.backend,
                             agent: settings.defaults.agent.clone(),
                             model: next.model,

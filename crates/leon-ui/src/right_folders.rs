@@ -1,4 +1,4 @@
-//! The folders of a conversation in the right pane (CTX-2): which one
+//! The folders of a flow in the right pane (CTX-2): which one
 //! Changes, Branch and PR show, picked from a row of chips when there are
 //! several.
 
@@ -6,17 +6,17 @@ use std::path::{Path, PathBuf};
 
 use gpui::{AnyElement, Context, FontWeight, IntoElement, div, prelude::*, px};
 use leon_core::{GitView, Intent};
-use leon_domain::{ConversationId, PullRequest};
+use leon_domain::{FlowId, PullRequest};
 
 use crate::github::pr_icon;
 use crate::theme;
 use crate::workspace::Workspace;
 
 impl Workspace {
-    /// The folder Changes, Branch and PR show for conversation `id`: the one
+    /// The folder Changes, Branch and PR show for flow `id`: the one
     /// picked, else the newest.
-    pub(crate) fn folder(&self, id: ConversationId) -> Option<PathBuf> {
-        let view = self.snapshot.conversation(id)?;
+    pub(crate) fn folder(&self, id: FlowId) -> Option<PathBuf> {
+        let view = self.snapshot.flow(id)?;
         self.right
             .folder
             .get(&id)
@@ -26,23 +26,19 @@ impl Workspace {
     }
 
     /// The git state of that folder.
-    pub(crate) fn folder_git(&self, id: ConversationId) -> Option<&GitView> {
+    pub(crate) fn folder_git(&self, id: FlowId) -> Option<&GitView> {
         self.snapshot.git.get(&self.folder(id)?)
     }
 
     /// The pull request of that folder's branch.
-    pub(crate) fn folder_pr(&self, id: ConversationId) -> Option<&PullRequest> {
+    pub(crate) fn folder_pr(&self, id: FlowId) -> Option<&PullRequest> {
         self.snapshot.prs.get(&self.folder(id)?)
     }
 
     /// One chip per folder — repository, branch, pull request state — when
-    /// the conversation works in several; a click shows that folder.
-    pub(crate) fn folder_chips(
-        &self,
-        id: ConversationId,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let view = self.snapshot.conversation(id)?;
+    /// the flow works in several; a click shows that folder.
+    pub(crate) fn folder_chips(&self, id: FlowId, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let view = self.snapshot.flow(id)?;
         if view.folders.len() < 2 {
             return None;
         }

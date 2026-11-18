@@ -1,5 +1,5 @@
 //! Opt-in contract test (AGENTS.md): a real CLI starts `leon mcp` from its
-//! session config and calls one of Leon's tools through it (P10). Uses the
+//! conversation config and calls one of Leon's tools through it (P10). Uses the
 //! user's own CLI login; not run in CI.
 //! `cargo test -p leon --test live_tools -- --ignored --nocapture`
 
@@ -19,7 +19,7 @@ use leon_backends::Clis;
 use leon_core::ports::{
     AppToolCall, AppTools, BackendCommand, BackendEvent, Backends, SessionSpec,
 };
-use leon_domain::{AgentSessionId, BackendKind, SessionSettings};
+use leon_domain::{BackendKind, ConversationId, ConversationSettings};
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "runs the real Codex CLI with the user's login"]
@@ -47,7 +47,7 @@ async fn calls_a_leon_tool(backend: BackendKind) {
     let tools = LocalTools::new(PathBuf::from(env!("CARGO_BIN_EXE_leon")), socket);
     let clis = Clis::default();
     let spec = SessionSpec {
-        settings: SessionSettings {
+        settings: ConversationSettings {
             backend,
             agent: None,
             model: None,
@@ -57,7 +57,7 @@ async fn calls_a_leon_tool(backend: BackendKind) {
         agent: None,
         working_dir: dir.path().to_path_buf(),
         resume: None,
-        mcp_servers: vec![tools.server(AgentSessionId(7))],
+        mcp_servers: vec![tools.server(ConversationId(7))],
         sources: Vec::new(),
         skills: Vec::new(),
         instructions: None,
@@ -75,7 +75,7 @@ async fn calls_a_leon_tool(backend: BackendKind) {
     loop {
         tokio::select! {
             Some(request) = requests.recv() => {
-                called = Some((request.session, request.call.clone()));
+                called = Some((request.conversation, request.call.clone()));
                 request.reply.send(Ok("Renamed the conversation.".into())).unwrap();
             }
             event = channel.events.recv() => match event {
@@ -93,8 +93,8 @@ async fn calls_a_leon_tool(backend: BackendKind) {
     assert_eq!(
         called,
         Some((
-            AgentSessionId(7),
-            AppToolCall::RenameConversation {
+            ConversationId(7),
+            AppToolCall::RenameFlow {
                 title: "pong".into()
             }
         ))

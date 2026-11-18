@@ -5,10 +5,10 @@ use super::*;
 #[tokio::test(flavor = "multi_thread")]
 async fn a_turn_streams_then_lands_in_the_transcript() {
     let h = harness();
-    let id = new_conversation(&h, BackendKind::Codex).await;
+    let id = new_flow(&h, BackendKind::Codex).await;
     let spec = h.backends.started.lock().unwrap()[0].spec.clone();
     assert_eq!(spec.working_dir, PathBuf::from("/code/api"));
-    // `~/.agents/AGENTS.md` goes to every session (EXT-8).
+    // `~/.agents/AGENTS.md` goes to every conversation (EXT-8).
     assert_eq!(spec.instructions.map(|i| i.text), Some("Be brief.".into()));
     assert_eq!(
         spec.agent.map(|a| a.instructions),
@@ -31,8 +31,8 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
         s.transcripts[&id].partial.as_deref() == Some("Look")
     })
     .await;
-    assert_eq!(s.conversations[0].status, Status::Running);
-    assert_eq!(s.conversations[0].conversation.title, "Fix the retry bug");
+    assert_eq!(s.flows[0].status, Status::Running);
+    assert_eq!(s.flows[0].flow.title, "Fix the retry bug");
 
     emit(
         &h,
@@ -61,10 +61,7 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
             usage: None,
         },
     );
-    let s = until(&h.core, "idle", |s| {
-        s.conversations[0].status == Status::Idle
-    })
-    .await;
+    let s = until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
     assert_eq!(
         entries(&s, id),
         [
@@ -85,20 +82,22 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
         ]
     );
     assert_eq!(
-        h.storage.sessions.lock().unwrap()[0].cli_session.as_deref(),
+        h.storage.conversations.lock().unwrap()[0]
+            .cli_session
+            .as_deref(),
         Some("thread-1")
     );
     assert_eq!(h.storage.entries.lock().unwrap()[&id].len(), 4);
     // Shown on its Flow only: the answer was not read.
-    assert!(s.conversations[0].conversation.unread);
+    assert!(s.flows[0].flow.unread);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_answer_read_on_its_agents_tab_is_read() {
     let h = harness();
     // The user reads the agent's messages (intents reach the core in order).
-    h.core.send(Intent::Read(Some(AgentSessionId(1))));
-    new_conversation(&h, BackendKind::Codex).await;
+    h.core.send(Intent::Read(Some(ConversationId(1))));
+    new_flow(&h, BackendKind::Codex).await;
     emit(&h, 0, BackendEvent::Text("Done.".into()));
     emit(
         &h,
@@ -109,17 +108,17 @@ async fn an_answer_read_on_its_agents_tab_is_read() {
         },
     );
     let s = until(&h.core, "answered", |s| {
-        s.conversations[0].status == Status::Idle && !s.transcripts.is_empty()
+        s.flows[0].status == Status::Idle && !s.transcripts.is_empty()
     })
     .await;
-    assert!(!s.conversations[0].conversation.unread);
+    assert!(!s.flows[0].flow.unread);
     assert!(s.notifications.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_answer_off_screen_marks_unread_and_notifies() {
     let h = harness();
-    let id = new_conversation(&h, BackendKind::Codex).await;
+    let id = new_flow(&h, BackendKind::Codex).await;
     h.core.send(Intent::View(None));
     emit(&h, 0, BackendEvent::Text("Done.".into()));
     emit(
@@ -130,29 +129,26 @@ async fn an_answer_off_screen_marks_unread_and_notifies() {
             usage: None,
         },
     );
-    let s = until(&h.core, "unread", |s| {
-        s.conversations[0].conversation.unread
-    })
-    .await;
+    let s = until(&h.core, "unread", |s| s.flows[0].flow.unread).await;
     assert_eq!(s.notifications.len(), 1);
     assert_eq!(s.notifications[0].title, "planner answered");
-    let conversation = s.conversations[0].conversation.id;
+    let flow = s.flows[0].flow.id;
     // Showing it (its Flow) does not read it; opening an agent's tab does.
-    assert!(s.sessions[&id].session.unread);
-    h.core.send(Intent::View(Some(conversation)));
+    assert!(s.conversations[&id].conversation.unread);
+    h.core.send(Intent::View(Some(flow)));
     h.core.send(Intent::Read(Some(id)));
-    let s = until(&h.core, "read", |s| !s.conversations[0].conversation.unread).await;
-    assert!(!s.sessions[&id].session.unread);
+    let s = until(&h.core, "read", |s| !s.flows[0].flow.unread).await;
+    assert!(!s.conversations[&id].conversation.unread);
     assert_eq!(entries(&s, id).len(), 3);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_answer_while_leon_is_in_the_background_is_unread() {
     let h = harness();
-    // The conversation stays selected, but the user is in another app.
+    // The flow stays selected, but the user is in another app.
     // Sent first: intents reach the core in order, CLI events on their own.
     h.core.send(Intent::WindowActive(false));
-    new_conversation(&h, BackendKind::Codex).await;
+    new_flow(&h, BackendKind::Codex).await;
     emit(&h, 0, BackendEvent::Text("Done.".into()));
     emit(
         &h,
@@ -162,21 +158,18 @@ async fn an_answer_while_leon_is_in_the_background_is_unread() {
             usage: None,
         },
     );
-    let s = until(&h.core, "unread", |s| {
-        s.conversations[0].conversation.unread
-    })
-    .await;
+    let s = until(&h.core, "unread", |s| s.flows[0].flow.unread).await;
     assert_eq!(s.notifications.len(), 1);
     // Coming back does not hide it: it stays to review until opened.
     h.core.send(Intent::WindowActive(true));
-    let s = until(&h.core, "back", |s| s.conversations[0].conversation.unread).await;
-    assert!(s.conversations[0].conversation.unread);
+    let s = until(&h.core, "back", |s| s.flows[0].flow.unread).await;
+    assert!(s.flows[0].flow.unread);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn stop_and_questions_reach_the_cli() {
     let h = harness();
-    let id = new_conversation(&h, BackendKind::Codex).await;
+    let id = new_flow(&h, BackendKind::Codex).await;
     next_command(&h, 0).await;
     h.core.send(Intent::Stop(id));
     assert_eq!(next_command(&h, 0).await, BackendCommand::Interrupt);
@@ -192,15 +185,18 @@ async fn stop_and_questions_reach_the_cli() {
         },
     );
     let s = until(&h.core, "needs input", |s| {
-        s.conversations[0].status == Status::NeedsInput
+        s.flows[0].status == Status::NeedsInput
     })
     .await;
     assert_eq!(
-        s.sessions[&id].question.as_ref().map(|q| q.detail.as_str()),
+        s.conversations[&id]
+            .question
+            .as_ref()
+            .map(|q| q.detail.as_str()),
         Some("rm -rf build")
     );
     h.core.send(Intent::Answer {
-        session: id,
+        conversation: id,
         question: "q1".into(),
         answer: "Deny".into(),
     });
@@ -214,9 +210,9 @@ async fn stop_and_questions_reach_the_cli() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn switching_backend_restarts_with_the_conversation_so_far() {
+async fn switching_backend_restarts_with_the_flow_so_far() {
     let h = harness();
-    let id = new_conversation(&h, BackendKind::Codex).await;
+    let id = new_flow(&h, BackendKind::Codex).await;
     emit(
         &h,
         0,
@@ -233,17 +229,14 @@ async fn switching_backend_restarts_with_the_conversation_so_far() {
             usage: None,
         },
     );
-    until(&h.core, "idle", |s| {
-        s.conversations[0].status == Status::Idle
-    })
-    .await;
+    until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
 
     h.core.send(Intent::ChangeSettings {
-        session: id,
+        conversation: id,
         settings: settings(BackendKind::ClaudeCode),
     });
     h.core.send(Intent::Send {
-        session: id,
+        conversation: id,
         text: "Go ahead".into(),
     });
     started(&h, 2).await;
@@ -294,19 +287,17 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         Settings::default(),
     );
     until(&core, "loaded", |s| s.loaded).await;
-    core.send(Intent::NewConversation {
+    core.send(Intent::NewFlow {
         project: ProjectId(1),
         settings: settings(BackendKind::Codex),
         text: "hi".into(),
         issue: None,
     });
     let s = until(&core, "error", |s| {
-        s.conversations
-            .first()
-            .is_some_and(|c| c.status == Status::Error)
+        s.flows.first().is_some_and(|c| c.status == Status::Error)
     })
     .await;
-    let id = s.conversations[0].sessions[0];
+    let id = s.flows[0].conversations[0];
     assert!(
         matches!(entries(&s, id).last(), Some(Entry::Error { text }) if text.contains("not installed"))
     );
@@ -316,13 +307,13 @@ async fn a_cli_that_cannot_start_shows_an_error() {
 async fn the_cli_writes_the_title() {
     let h = harness();
     *h.backends.title.lock().unwrap() = Some("Webhook retry fix".into());
-    new_conversation(&h, BackendKind::Codex).await;
+    new_flow(&h, BackendKind::Codex).await;
     until(&h.core, "title", |s| {
-        s.conversations[0].conversation.title == "Webhook retry fix"
+        s.flows[0].flow.title == "Webhook retry fix"
     })
     .await;
     assert_eq!(
-        h.storage.list_conversations().unwrap()[0].title,
+        h.storage.list_flows().unwrap()[0].title,
         "Webhook retry fix"
     );
 }
@@ -360,15 +351,15 @@ fn unchosen_model_and_effort_get_the_defaults() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn removing_a_project_forgets_it_and_its_conversations() {
+async fn removing_a_project_forgets_it_and_its_flows() {
     let h = harness();
-    new_conversation(&h, BackendKind::Codex).await;
+    new_flow(&h, BackendKind::Codex).await;
     h.core.send(Intent::RemoveProject(ProjectId(1)));
     let s = until(&h.core, "project removed", |s| s.projects.is_empty()).await;
+    assert!(s.flows.is_empty());
     assert!(s.conversations.is_empty());
-    assert!(s.sessions.is_empty());
     assert!(h.storage.projects.lock().unwrap().is_empty());
-    assert!(h.storage.conversations.lock().unwrap().is_empty());
+    assert!(h.storage.flows.lock().unwrap().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]

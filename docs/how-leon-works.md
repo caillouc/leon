@@ -168,7 +168,7 @@ accepted by you on 2026-11-17 and recorded in
 | 16 | The Doctor | — | DOCTOR-1 | |
 | 17 | Settings write `config.toml` in place with `toml_edit` (comments kept, default values removed) | Rewrite the whole file | ⚠️ to confirm | You did not answer; the recommended option was taken. `toml_edit` was already in the build. A file that does not parse is never touched. |
 | 18 | Icons: Lucide SVGs copied into `assets/icons` and embedded | The `gpui-kit-assets` crate | ⚠️ to confirm | No new dependency; ISC licence file kept next to them. |
-| 19 | A flow started from an issue stores it (`conversations.issue`, store migration 5) | Find the link from branch names or PR bodies | ⚠️ to confirm | Exact and simple; only flows started from the issue list are linked. |
+| 19 | A flow started from an issue stores it (`flows.issue`, store migration 5) | Find the link from branch names or PR bodies | ⚠️ to confirm | Exact and simple; only flows started from the issue list are linked. |
 | 20 | Issue priority also read from an organization issue field named "Priority" | Board fields only | ⚠️ to confirm | On a real account, priority lived there and not on the board. |
 | 21 | Connectors are read-only (each CLI's list commands, JSON) | Enable, disable, install from Leon | ⚠️ to confirm | Managing plugins changes your CLI setup; Codex has no command to enable or disable one. |
 | 22 | `cargo run` starts Leon (`default-members`) | `cargo run -p leon` | ⚠️ to confirm | Plain `cargo build` / `cargo test` now cover the app crate only; CI passes `--workspace`. |

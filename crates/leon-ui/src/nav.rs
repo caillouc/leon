@@ -87,10 +87,7 @@ impl Workspace {
             Screen::Tools => self.core.send(Intent::RefreshTools),
             Screen::Doctor => self.core.send(Intent::RunDoctor),
             Screen::Settings => self.load_settings_form(window, cx),
-            Screen::Nothing
-            | Screen::Conversation(_)
-            | Screen::NewConversation
-            | Screen::GitHub(_) => {}
+            Screen::Nothing | Screen::Flow(_) | Screen::NewFlow | Screen::GitHub(_) => {}
         }
         cx.notify();
     }

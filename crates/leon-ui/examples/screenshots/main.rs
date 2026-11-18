@@ -7,10 +7,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_core::ports::{AgentDefinition, BackendOptions, SlashCommand};
-use leon_core::{ConversationView, Detail, Question, SessionView, Snapshot, TranscriptView};
+use leon_core::{ConversationView, Detail, FlowView, Question, Snapshot, TranscriptView};
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Entry, PlanStep,
-    Project, ProjectId, SessionSettings, Settings, Status, StepStatus, TimedEntry, Usage,
+    BackendKind, Conversation, ConversationId, ConversationSettings, Entry, Flow, FlowId, PlanStep,
+    Project, ProjectId, Settings, Status, StepStatus, TimedEntry, Usage,
 };
 use leon_ui::preview::{Shot, capture};
 
@@ -31,25 +31,25 @@ fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| (*s).to_owned()).collect()
 }
 
-fn session(
+fn conversation(
     id: i64,
-    conversation: i64,
+    flow: i64,
     agent: &str,
     backend: BackendKind,
     status: Status,
-) -> SessionView {
-    SessionView {
-        session: AgentSession {
-            id: AgentSessionId(id),
-            conversation: ConversationId(conversation),
+) -> ConversationView {
+    ConversationView {
+        conversation: Conversation {
+            id: ConversationId(id),
+            flow: FlowId(flow),
             // planner (1) → coder (2) → reviewer (4), who reports back to the
             // planner: a loop.
             started_by: match id {
-                2 => Some(AgentSessionId(1)),
-                4 => Some(AgentSessionId(2)),
+                2 => Some(ConversationId(1)),
+                4 => Some(ConversationId(2)),
                 _ => None,
             },
-            settings: SessionSettings {
+            settings: ConversationSettings {
                 backend,
                 agent: Some(agent.to_owned()),
                 model: Some("claude-opus-5-5".to_owned()),
@@ -87,22 +87,22 @@ fn session(
     }
 }
 
-fn conversation(id: i64, project: i64, title: &str, unread: bool, pinned: bool) -> Conversation {
-    Conversation {
-        id: ConversationId(id),
+fn flow(id: i64, project: i64, title: &str, unread: bool, pinned: bool) -> Flow {
+    Flow {
+        id: FlowId(id),
         project: ProjectId(project),
         title: title.into(),
         pinned,
         archived: false,
         unread,
         updated_at: hours_ago(id * 5),
-        // The first conversation works in two repositories (CTX-2).
+        // The first flow works in two repositories (CTX-2).
         folders: if id == 1 {
             vec![repo::API.into(), repo::WEB.into()]
         } else {
             Vec::new()
         },
-        // The first conversation was started for issue #401.
+        // The first flow was started for issue #401.
         issue: (id == 1).then(|| leon_domain::GhRef::issue("acme/payments-api", 401)),
     }
 }
@@ -119,8 +119,8 @@ fn timed(entry: Entry) -> TimedEntry {
     TimedEntry { at: 0, entry }
 }
 
-/// Transcripts of the sample sessions.
-fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
+/// Transcripts of the sample conversations.
+fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
     let transcript = vec![
         timed(Entry::User { text: "/ticket 398 webhook retries give up after 30 seconds".into() }),
         timed(Entry::Tool { id: "1".into(), name: "Read".into(), detail: "src/webhooks/retry.rs".into(), output: Some("…".into()), failed: false }),
@@ -131,12 +131,12 @@ fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
         timed(Entry::TurnEnd { usage: Some(Usage { input_tokens: 41_200, output_tokens: 1_830, cost_usd: Some(0.42) }) }),
         timed(Entry::User { text: "Go ahead".into() }),
         timed(Entry::FromAgent {
-            from: AgentSessionId(4),
+            from: ConversationId(4),
             text: "Before you merge: add a test for attempt 0.".into(),
             answer: false,
         }),
         timed(Entry::FromAgent {
-            from: AgentSessionId(2),
+            from: ConversationId(2),
             text: "Done: the window is 15 minutes and each delay is capped at 2 minutes.".into(),
             answer: true,
         }),
@@ -145,18 +145,18 @@ fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
     ];
     let mut transcripts = HashMap::new();
     transcripts.insert(
-        AgentSessionId(1),
+        ConversationId(1),
         Arc::new(TranscriptView {
             entries: Arc::new(transcript.clone()),
             partial: Some("Editing the retry loop: the delay now".into()),
         }),
     );
     transcripts.insert(
-        AgentSessionId(4),
+        ConversationId(4),
         Arc::new(TranscriptView {
             entries: Arc::new(vec![
                 timed(Entry::FromAgent {
-                    from: AgentSessionId(2),
+                    from: ConversationId(2),
                     text: "Review the retry change.".into(),
                     answer: false,
                 }),
@@ -169,11 +169,11 @@ fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
         }),
     );
     transcripts.insert(
-        AgentSessionId(2),
+        ConversationId(2),
         Arc::new(TranscriptView {
             entries: Arc::new(vec![
                 timed(Entry::FromAgent {
-                    from: AgentSessionId(1),
+                    from: ConversationId(1),
                     text: "Implement steps 1 and 2 of the plan in `src/webhooks/retry.rs`.".into(),
                     answer: false,
                 }),
@@ -194,7 +194,7 @@ fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
         }),
     );
     transcripts.insert(
-        AgentSessionId(3),
+        ConversationId(3),
         Arc::new(TranscriptView {
             entries: Arc::new(transcript[..4].to_vec()),
             partial: None,
@@ -241,44 +241,44 @@ fn options() -> HashMap<BackendKind, BackendOptions> {
 }
 
 fn sample() -> Snapshot {
-    let conversations = vec![
-        ConversationView {
-            conversation: conversation(1, 1, "Fix webhook retry timeout", false, false),
+    let flows = vec![
+        FlowView {
+            flow: flow(1, 1, "Fix webhook retry timeout", false, false),
             status: Status::Running,
-            sessions: vec![AgentSessionId(1), AgentSessionId(2), AgentSessionId(4)],
+            conversations: vec![ConversationId(1), ConversationId(2), ConversationId(4)],
             folders: vec![repo::API.into(), repo::WEB.into()],
             issues: vec![
                 leon_domain::GhRef::issue("acme/payments-api", 401),
                 leon_domain::GhRef::issue("acme/web-dashboard", 31),
             ],
         },
-        ConversationView {
-            conversation: conversation(2, 2, "Migrate config to TOML", true, false),
+        FlowView {
+            flow: flow(2, 2, "Migrate config to TOML", true, false),
             status: Status::NeedsInput,
-            sessions: vec![AgentSessionId(3)],
+            conversations: vec![ConversationId(3)],
             folders: vec!["/code/infra-tools".into()],
             issues: vec![],
         },
-        ConversationView {
-            conversation: conversation(3, 1, "Draft release notes v2.3", true, true),
+        FlowView {
+            flow: flow(3, 1, "Draft release notes v2.3", true, true),
             status: Status::Idle,
-            sessions: vec![],
+            conversations: vec![],
             folders: vec![],
             issues: vec![],
         },
-        ConversationView {
-            conversation: conversation(4, 2, "Investigate flaky login e2e test", true, false),
+        FlowView {
+            flow: flow(4, 2, "Investigate flaky login e2e test", true, false),
             status: Status::Error,
-            sessions: vec![],
+            conversations: vec![],
             folders: vec![],
             issues: vec![],
         },
     ];
-    let sessions = [
-        session(1, 1, "planner", BackendKind::ClaudeCode, Status::Running),
-        session(2, 1, "coder", BackendKind::Codex, Status::Idle),
-        session(3, 2, "coder", BackendKind::Codex, Status::NeedsInput),
-        session(4, 1, "reviewer", BackendKind::ClaudeCode, Status::Idle),
+    let conversations = [
+        conversation(1, 1, "planner", BackendKind::ClaudeCode, Status::Running),
+        conversation(2, 1, "coder", BackendKind::Codex, Status::Idle),
+        conversation(3, 2, "coder", BackendKind::Codex, Status::NeedsInput),
+        conversation(4, 1, "reviewer", BackendKind::ClaudeCode, Status::Idle),
     ];
     let transcripts = transcripts();
     let options = options();
@@ -339,8 +339,13 @@ fn sample() -> Snapshot {
                 collapsed: false,
             },
         ]),
-        conversations: Arc::new(conversations),
-        sessions: Arc::new(sessions.into_iter().map(|s| (s.session.id, s)).collect()),
+        flows: Arc::new(flows),
+        conversations: Arc::new(
+            conversations
+                .into_iter()
+                .map(|s| (s.conversation.id, s))
+                .collect(),
+        ),
         transcripts,
         agents: Arc::new(agents),
         options: Arc::new(options),
@@ -391,49 +396,34 @@ fn main() {
     let (core, _detached) = leon_core::detached(sample());
     let shots = vec![
         ("empty".to_owned(), Shot::Empty),
-        (
-            "conversation".to_owned(),
-            Shot::Conversation(ConversationId(1)),
-        ),
-        ("question".to_owned(), Shot::Conversation(ConversationId(2))),
-        (
-            "right-closed".to_owned(),
-            Shot::RightClosed(ConversationId(1)),
-        ),
-        (
-            "slash-list".to_owned(),
-            Shot::Typed(ConversationId(1), "/dep"),
-        ),
+        ("conversation".to_owned(), Shot::Conversation(FlowId(1))),
+        ("question".to_owned(), Shot::Conversation(FlowId(2))),
+        ("right-closed".to_owned(), Shot::RightClosed(FlowId(1))),
+        ("slash-list".to_owned(), Shot::Typed(FlowId(1), "/dep")),
         (
             "slash-arguments".to_owned(),
-            Shot::Typed(ConversationId(1), "/deploy staging"),
+            Shot::Typed(FlowId(1), "/deploy staging"),
         ),
         (
             "picker".to_owned(),
-            Shot::PickerOpen(ConversationId(1), "session-model"),
+            Shot::PickerOpen(FlowId(1), "session-model"),
         ),
-        ("flow".to_owned(), Shot::Flow(ConversationId(1))),
-        ("new-in-flow".to_owned(), Shot::NewInFlow(ConversationId(1))),
-        ("new-conversation".to_owned(), Shot::NewConversation),
+        ("flow".to_owned(), Shot::Flow(FlowId(1))),
+        ("new-in-flow".to_owned(), Shot::NewInFlow(FlowId(1))),
+        ("new-conversation".to_owned(), Shot::NewFlow),
         (
             "new-conversation-agent".to_owned(),
-            Shot::NewConversationWith("coder"),
+            Shot::NewFlowWith("coder"),
         ),
-        (
-            "right-branch".to_owned(),
-            Shot::Right(ConversationId(1), "branch"),
-        ),
-        ("right-pr".to_owned(), Shot::Right(ConversationId(1), "pr")),
-        (
-            "right-info".to_owned(),
-            Shot::Right(ConversationId(1), "info"),
-        ),
-        ("review".to_owned(), Shot::Review(ConversationId(1))),
+        ("right-branch".to_owned(), Shot::Right(FlowId(1), "branch")),
+        ("right-pr".to_owned(), Shot::Right(FlowId(1), "pr")),
+        ("right-info".to_owned(), Shot::Right(FlowId(1), "info")),
+        ("review".to_owned(), Shot::Review(FlowId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),
         ("my-issues".to_owned(), Shot::MyIssues),
         ("settings".to_owned(), Shot::Settings),
         ("doctor".to_owned(), Shot::Doctor),
-        ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
+        ("row-menu".to_owned(), Shot::RowMenu(FlowId(1))),
         ("tools".to_owned(), Shot::Tools),
         (
             "tools-asking".to_owned(),
@@ -454,11 +444,11 @@ fn main() {
         ),
         (
             "drawer".to_owned(),
-            Shot::Drawer(ConversationId(1), "src/webhooks/retry.rs", false),
+            Shot::Drawer(FlowId(1), "src/webhooks/retry.rs", false),
         ),
         (
             "drawer-split".to_owned(),
-            Shot::Drawer(ConversationId(1), "src/webhooks/retry.rs", true),
+            Shot::Drawer(FlowId(1), "src/webhooks/retry.rs", true),
         ),
     ];
     gpui_platform::application()

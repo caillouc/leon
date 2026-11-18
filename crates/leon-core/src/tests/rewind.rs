@@ -18,7 +18,7 @@ fn answer(h: &Harness, index: usize, text: &str) {
 #[tokio::test(flavor = "multi_thread")]
 async fn going_back_drops_later_entries_and_restarts_with_context() {
     let h = harness();
-    let id = new_conversation(&h, BackendKind::Codex).await;
+    let id = new_flow(&h, BackendKind::Codex).await;
     next_command(&h, 0).await;
     emit(
         &h,
@@ -28,9 +28,12 @@ async fn going_back_drops_later_entries_and_restarts_with_context() {
         },
     );
     answer(&h, 0, "First answer");
-    until(&h.core, "idle", |s| s.sessions[&id].status == Status::Idle).await;
+    until(&h.core, "idle", |s| {
+        s.conversations[&id].status == Status::Idle
+    })
+    .await;
     h.core.send(Intent::Send {
-        session: id,
+        conversation: id,
         text: "Second try".into(),
     });
     next_command(&h, 0).await;
@@ -44,7 +47,7 @@ async fn going_back_drops_later_entries_and_restarts_with_context() {
     );
 
     h.core.send(Intent::Rewind {
-        session: id,
+        conversation: id,
         entry: 3,
         text: "Other idea".into(),
     });
@@ -79,21 +82,24 @@ async fn going_back_drops_later_entries_and_restarts_with_context() {
 #[tokio::test(flavor = "multi_thread")]
 async fn suggestions_show_until_the_next_message() {
     let h = harness();
-    let id = new_conversation(&h, BackendKind::ClaudeCode).await;
+    let id = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
     answer(&h, 0, "Plan ready");
     emit(&h, 0, BackendEvent::Suggestion("Go ahead".into()));
     let s = until(&h.core, "suggestion", |s| {
-        !s.sessions[&id].suggestions.is_empty()
+        !s.conversations[&id].suggestions.is_empty()
     })
     .await;
-    assert_eq!(s.sessions[&id].suggestions, vec!["Go ahead".to_owned()]);
+    assert_eq!(
+        s.conversations[&id].suggestions,
+        vec!["Go ahead".to_owned()]
+    );
     h.core.send(Intent::Send {
-        session: id,
+        conversation: id,
         text: "Go ahead".into(),
     });
     until(&h.core, "cleared", |s| {
-        s.sessions[&id].suggestions.is_empty()
+        s.conversations[&id].suggestions.is_empty()
     })
     .await;
 }

@@ -2,8 +2,8 @@
 //! Linux, the same shortcuts), so Quit, Hide, Close, Copy, Paste… work, and
 //! a standard Edit menu, where macOS adds Start Dictation and Emoji.
 //!
-//! Shortcuts of Leon's own: ⌘N new conversation, ⌘, Settings, ⌘L the message
-//! box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous conversation, Esc closes
+//! Shortcuts of Leon's own: ⌘N new flow, ⌘, Settings, ⌘L the message
+//! box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous flow, Esc closes
 //! what is open on top (a menu, a picker, a drawer).
 
 use gpui::{App, Context, Div, KeyBinding, KeyDownEvent, Menu, MenuItem, OsAction, actions};
@@ -21,13 +21,13 @@ actions!(
         Minimize,
         Zoom,
         CloseWindow,
-        NewConversation,
+        NewFlow,
         AddProject,
         OpenSettings,
         FocusMessage,
         FocusSearch,
-        NextConversation,
-        PreviousConversation,
+        NextFlow,
+        PreviousFlow,
     ]
 );
 
@@ -50,7 +50,7 @@ pub(crate) fn install(cx: &mut App) {
             MenuItem::action("Quit Leon", Quit),
         ]),
         Menu::new("File").items([
-            MenuItem::action("New Flow", NewConversation),
+            MenuItem::action("New Flow", NewFlow),
             MenuItem::action("Add Project…", AddProject),
             MenuItem::separator(),
             MenuItem::action("Close Window", CloseWindow),
@@ -68,8 +68,8 @@ pub(crate) fn install(cx: &mut App) {
             MenuItem::action("Message Box", FocusMessage),
             MenuItem::action("Search Flows", FocusSearch),
             MenuItem::separator(),
-            MenuItem::action("Next Flow", NextConversation),
-            MenuItem::action("Previous Flow", PreviousConversation),
+            MenuItem::action("Next Flow", NextFlow),
+            MenuItem::action("Previous Flow", PreviousFlow),
         ]),
         Menu::new("Window").items([
             MenuItem::action("Minimize", Minimize),
@@ -99,13 +99,13 @@ fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("alt-cmd-h", HideOthers, None),
         KeyBinding::new("cmd-m", Minimize, None),
         KeyBinding::new(primary!("w"), CloseWindow, None),
-        KeyBinding::new(primary!("n"), NewConversation, None),
+        KeyBinding::new(primary!("n"), NewFlow, None),
         KeyBinding::new(primary!("shift-o"), AddProject, None),
         KeyBinding::new(primary!(","), OpenSettings, None),
         KeyBinding::new(primary!("l"), FocusMessage, None),
         KeyBinding::new(primary!("k"), FocusSearch, None),
-        KeyBinding::new("ctrl-tab", NextConversation, None),
-        KeyBinding::new("ctrl-shift-tab", PreviousConversation, None),
+        KeyBinding::new("ctrl-tab", NextFlow, None),
+        KeyBinding::new("ctrl-shift-tab", PreviousFlow, None),
     ]
 }
 
@@ -117,9 +117,9 @@ impl Workspace {
             .on_action(cx.listener(|_, _: &Minimize, window, _| window.minimize_window()))
             .on_action(cx.listener(|_, _: &Zoom, window, _| window.zoom_window()))
             .on_action(cx.listener(|_, _: &CloseWindow, window, _| window.remove_window()))
-            .on_action(cx.listener(|this, _: &NewConversation, window, cx| {
+            .on_action(cx.listener(|this, _: &NewFlow, window, cx| {
                 let project = this.form.project;
-                this.open_new_conversation(project, None, window, cx);
+                this.open_new_flow(project, None, window, cx);
             }))
             .on_action(cx.listener(|this, _: &AddProject, _, cx| this.add_project(cx)))
             .on_action(cx.listener(|this, _: &OpenSettings, window, cx| {
@@ -127,7 +127,7 @@ impl Workspace {
             }))
             .on_action(cx.listener(|this, _: &FocusMessage, window, cx| {
                 let input = match this.screen {
-                    Screen::NewConversation => this.form_text.clone(),
+                    Screen::NewFlow => this.form_text.clone(),
                     _ => this.composer.clone(),
                 };
                 gpui::Focusable::focus_handle(input.read(cx), cx).focus(window, cx);
@@ -135,11 +135,9 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
                 gpui::Focusable::focus_handle(this.search.read(cx), cx).focus(window, cx);
             }))
-            .on_action(
-                cx.listener(|this, _: &NextConversation, _, cx| this.step_conversation(1, cx)),
-            )
-            .on_action(cx.listener(|this, _: &PreviousConversation, _, cx| {
-                this.step_conversation(-1, cx);
+            .on_action(cx.listener(|this, _: &NextFlow, _, cx| this.step_flow(1, cx)))
+            .on_action(cx.listener(|this, _: &PreviousFlow, _, cx| {
+                this.step_flow(-1, cx);
             }))
             .capture_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
                 if e.keystroke.key == "escape" && this.close_top(cx) {
@@ -168,15 +166,15 @@ impl Workspace {
         closed
     }
 
-    /// Opens the conversation `step` places after (or before) the open one,
+    /// Opens the flow `step` places after (or before) the open one,
     /// in the left pane's order (pinned first, then by project).
-    fn step_conversation(&mut self, step: isize, cx: &mut Context<Self>) {
+    fn step_flow(&mut self, step: isize, cx: &mut Context<Self>) {
         let order: Vec<_> = self.left_order();
         if order.is_empty() {
             return;
         }
         let at = match self.screen {
-            Screen::Conversation(id) => order.iter().position(|c| *c == id),
+            Screen::Flow(id) => order.iter().position(|c| *c == id),
             _ => None,
         };
         let len = isize::try_from(order.len()).unwrap_or(isize::MAX);

@@ -12,12 +12,12 @@ impl AppTools for FakeTools {
     fn doctor(&self) -> leon_domain::DoctorCheck {
         leon_domain::DoctorCheck::new(leon_domain::Health::Ok, "Tools for agents", "listening")
     }
-    fn server(&self, session: AgentSessionId) -> McpServer {
+    fn server(&self, conversation: ConversationId) -> McpServer {
         McpServer {
             name: "leon".into(),
             command: PathBuf::from("/bin/leon"),
             args: vec!["mcp".into()],
-            env: vec![("LEON_SESSION".into(), session.0.to_string())],
+            env: vec![("LEON_SESSION".into(), conversation.0.to_string())],
             trusted: true,
         }
     }
@@ -28,14 +28,14 @@ impl AppTools for FakeTools {
 
 pub(super) async fn call(
     h: &Harness,
-    session: AgentSessionId,
+    conversation: ConversationId,
     call: AppToolCall,
 ) -> Result<String, String> {
     let (reply, answer) = oneshot::channel();
     h.core
         .app_tools()
         .send(AppToolRequest {
-            session,
+            conversation,
             call,
             reply,
         })
@@ -61,7 +61,7 @@ fn end_turn(h: &Harness, index: usize, text: &str) {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     let h = harness();
-    let planner = new_conversation(&h, BackendKind::ClaudeCode).await;
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
     let spec = h.backends.started.lock().unwrap()[0].spec.clone();
     assert_eq!(
@@ -91,13 +91,13 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     // The planner is still in its turn: the coder's answer waits for it.
     end_turn(&h, 1, "Step 1 done.");
     let s = until(&h.core, "coder idle", |s| {
-        s.sessions
-            .get(&AgentSessionId(2))
+        s.conversations
+            .get(&ConversationId(2))
             .is_some_and(|x| x.status == Status::Idle)
     })
     .await;
     assert_eq!(
-        s.sessions[&AgentSessionId(2)].session.started_by,
+        s.conversations[&ConversationId(2)].conversation.started_by,
         Some(planner)
     );
     end_turn(&h, 0, "Waiting for the coder.");
@@ -108,20 +108,20 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     let s = until(&h.core, "answer in the planner", |s| {
         entries(s, planner).last()
             == Some(&Entry::FromAgent {
-                from: AgentSessionId(2),
+                from: ConversationId(2),
                 text: "Step 1 done.".into(),
                 answer: true,
             })
     })
     .await;
     // Answers between agents are not the user's: no notification for them.
-    assert_eq!(s.conversations[0].status, Status::Running);
+    assert_eq!(s.flows[0].status, Status::Running);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn bad_tool_calls_explain_what_is_wrong() {
     let h = harness();
-    let planner = new_conversation(&h, BackendKind::Codex).await;
+    let planner = new_flow(&h, BackendKind::Codex).await;
     let cases = [
         (
             AppToolCall::StartAgent {
@@ -141,14 +141,14 @@ async fn bad_tool_calls_explain_what_is_wrong() {
         ),
         (
             AppToolCall::MessageAgent {
-                session: AgentSessionId(99),
+                conversation: ConversationId(99),
                 text: "hi".into(),
             },
             "Conversation 99 is not in this flow.",
         ),
         (
             AppToolCall::MessageAgent {
-                session: planner,
+                conversation: planner,
                 text: "hi".into(),
             },
             "A conversation cannot message itself.",
@@ -160,27 +160,27 @@ async fn bad_tool_calls_explain_what_is_wrong() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_can_rename_the_conversation() {
+async fn an_agent_can_rename_the_flow() {
     let h = harness();
-    let planner = new_conversation(&h, BackendKind::Codex).await;
-    let rename = AppToolCall::RenameConversation {
+    let planner = new_flow(&h, BackendKind::Codex).await;
+    let rename = AppToolCall::RenameFlow {
         title: " Webhook retries ".into(),
     };
     assert!(call(&h, planner, rename).await.is_ok());
     until(&h.core, "renamed", |s| {
-        s.conversations[0].conversation.title == "Webhook retries"
+        s.flows[0].flow.title == "Webhook retries"
     })
     .await;
 }
 
 /// With several agents, only the one whose answer the user has not read is
-/// to review; reading its tab reads the conversation (NAV-4, FLOW-4).
+/// to review; reading its tab reads the flow (NAV-4, FLOW-4).
 #[tokio::test(flavor = "multi_thread")]
 async fn only_the_agent_that_answered_you_is_to_review() {
     let h = harness();
     // The user reads the planner's tab (intents reach the core in order).
-    h.core.send(Intent::Read(Some(AgentSessionId(1))));
-    let planner = new_conversation(&h, BackendKind::ClaudeCode).await;
+    h.core.send(Intent::Read(Some(ConversationId(1))));
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
     let start = AppToolCall::StartAgent {
         agent: "coder".into(),
@@ -194,43 +194,41 @@ async fn only_the_agent_that_answered_you_is_to_review() {
     end_turn(&h, 0, "Waiting for the coder.");
     // The user asks the coder directly; its answer comes while the planner's
     // tab is shown.
-    let coder = AgentSessionId(2);
+    let coder = ConversationId(2);
     until(&h.core, "coder idle", |s| {
-        s.sessions
+        s.conversations
             .get(&coder)
             .is_some_and(|x| x.status == Status::Idle)
     })
     .await;
     h.core.send(Intent::Send {
-        session: coder,
+        conversation: coder,
         text: "Also step 2".into(),
     });
     next_command(&h, 1).await;
     end_turn(&h, 1, "Step 2 done.");
     let s = until(&h.core, "coder to review", |s| {
-        s.sessions[&coder].session.unread
+        s.conversations[&coder].conversation.unread
     })
     .await;
-    assert!(!s.sessions[&planner].session.unread);
-    assert!(s.conversations[0].conversation.unread);
+    assert!(!s.conversations[&planner].conversation.unread);
+    assert!(s.flows[0].flow.unread);
     h.core.send(Intent::Read(Some(coder)));
-    let s = until(&h.core, "read", |s| !s.conversations[0].conversation.unread).await;
-    assert!(!s.sessions[&coder].session.unread);
+    let s = until(&h.core, "read", |s| !s.flows[0].flow.unread).await;
+    assert!(!s.conversations[&coder].conversation.unread);
 }
 
 /// The user starts a second conversation in the same flow, in the folder
 /// they picked (FLOW-7).
 #[tokio::test(flavor = "multi_thread")]
-async fn the_user_starts_another_conversation_in_a_flow() {
+async fn the_user_starts_another_flow_in_a_flow() {
     let h = harness();
-    new_conversation(&h, BackendKind::ClaudeCode).await;
-    let flow = until(&h.core, "flow", |s| !s.conversations.is_empty())
-        .await
-        .conversations[0]
-        .conversation
+    new_flow(&h, BackendKind::ClaudeCode).await;
+    let flow = until(&h.core, "flow", |s| !s.flows.is_empty()).await.flows[0]
+        .flow
         .id;
-    h.core.send(Intent::NewSession {
-        conversation: flow,
+    h.core.send(Intent::NewConversation {
+        flow,
         settings: settings(BackendKind::Codex),
         working_dir: PathBuf::from("/code/api/.worktrees/fix"),
         text: "Review the branch".into(),
@@ -241,15 +239,15 @@ async fn the_user_starts_another_conversation_in_a_flow() {
         BackendCommand::Send("Review the branch".into())
     );
     let s = until(&h.core, "two conversations", |s| {
-        s.conversations[0].sessions.len() == 2
+        s.flows[0].conversations.len() == 2
     })
     .await;
-    let second = &s.sessions[&s.conversations[0].sessions[1]].session;
+    let second = &s.conversations[&s.flows[0].conversations[1]].conversation;
     assert_eq!(second.started_by, None);
     assert_eq!(second.settings.backend, BackendKind::Codex);
     assert_eq!(
         second.working_dir,
         PathBuf::from("/code/api/.worktrees/fix")
     );
-    assert_eq!(s.conversations.len(), 1);
+    assert_eq!(s.flows.len(), 1);
 }

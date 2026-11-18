@@ -2,21 +2,21 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use leon_core::{Question, SessionView, TranscriptView};
+use leon_core::{ConversationView, Question, TranscriptView};
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, ConversationId, Entry, SessionSettings, Status,
+    BackendKind, Conversation, ConversationId, ConversationSettings, Entry, FlowId, Status,
     TimedEntry,
 };
 
 use super::{EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build, layout, route};
 
-fn session(id: i64, started_by: Option<i64>) -> SessionView {
-    SessionView {
-        session: AgentSession {
-            id: AgentSessionId(id),
-            conversation: ConversationId(1),
-            started_by: started_by.map(AgentSessionId),
-            settings: SessionSettings {
+fn conversation(id: i64, started_by: Option<i64>) -> ConversationView {
+    ConversationView {
+        conversation: Conversation {
+            id: ConversationId(id),
+            flow: FlowId(1),
+            started_by: started_by.map(ConversationId),
+            settings: ConversationSettings {
                 backend: BackendKind::Codex,
                 agent: None,
                 model: None,
@@ -56,24 +56,24 @@ fn texts(model: &super::FlowModel, from: Node, to: Node, kind: EdgeKind) -> Vec<
 }
 
 #[test]
-fn arrows_come_from_what_the_sessions_did() {
+fn arrows_come_from_what_the_conversations_did() {
     let (planner, coder) = (
-        Node::Session(AgentSessionId(1)),
-        Node::Session(AgentSessionId(2)),
+        Node::Conversation(ConversationId(1)),
+        Node::Conversation(ConversationId(2)),
     );
-    let mut asking = session(2, Some(1));
+    let mut asking = conversation(2, Some(1));
     asking.question = Some(Question {
         id: "q".into(),
         title: "Run cargo test?".into(),
         detail: String::new(),
         options: vec![],
     });
-    let sessions = [session(1, None), asking];
+    let conversations = [conversation(1, None), asking];
     let agent = |t: &str| Entry::Agent { text: t.into() };
     let end = || Entry::TurnEnd { usage: None };
     let transcripts = HashMap::from([
         (
-            AgentSessionId(1),
+            ConversationId(1),
             transcript(vec![
                 Entry::User {
                     text: "Fix it".into(),
@@ -81,7 +81,7 @@ fn arrows_come_from_what_the_sessions_did() {
                 agent("Here is the plan"),
                 end(),
                 Entry::FromAgent {
-                    from: AgentSessionId(2),
+                    from: ConversationId(2),
                     text: "Done".into(),
                     answer: true,
                 },
@@ -90,10 +90,10 @@ fn arrows_come_from_what_the_sessions_did() {
             ]),
         ),
         (
-            AgentSessionId(2),
+            ConversationId(2),
             transcript(vec![
                 Entry::FromAgent {
-                    from: AgentSessionId(1),
+                    from: ConversationId(1),
                     text: "Do step 1".into(),
                     answer: false,
                 },
@@ -102,7 +102,7 @@ fn arrows_come_from_what_the_sessions_did() {
             ]),
         ),
     ]);
-    let refs: Vec<&SessionView> = sessions.iter().collect();
+    let refs: Vec<&ConversationView> = conversations.iter().collect();
     let model = build(&refs, &transcripts);
 
     let cases = [
@@ -226,25 +226,25 @@ fn bends_are_rounded_within_their_segments() {
     );
 }
 
-/// A model from (session, its agent, who started it).
-fn model(sessions: &[(i64, &str, Option<i64>)]) -> FlowModel {
+/// A model from (conversation, its agent, who started it).
+fn model(conversations: &[(i64, &str, Option<i64>)]) -> FlowModel {
     let node = |id| {
         if id == 0 {
             Node::You
         } else {
-            Node::Session(AgentSessionId(id))
+            Node::Conversation(ConversationId(id))
         }
     };
     FlowModel {
         nodes: std::iter::once(Node::You)
-            .chain(sessions.iter().map(|(id, _, _)| node(*id)))
+            .chain(conversations.iter().map(|(id, _, _)| node(*id)))
             .collect(),
         edges: vec![],
-        parent: sessions
+        parent: conversations
             .iter()
             .map(|(id, _, by)| (node(*id), by.map_or(Node::You, node)))
             .collect(),
-        agent: sessions
+        agent: conversations
             .iter()
             .map(|(id, agent, _)| (node(*id), (*agent).to_owned()))
             .collect(),
@@ -253,10 +253,10 @@ fn model(sessions: &[(i64, &str, Option<i64>)]) -> FlowModel {
 
 /// The planner, two coders and a reviewer: regions on a 2 × 2 grid that
 /// snakes — You, then the planner to its right, the coders under the
-/// planner, the reviewer back on the left — each agent's sessions together.
+/// planner, the reviewer back on the left — each agent's conversations together.
 #[test]
 fn agents_fill_a_grid_each_in_its_own_region() {
-    let s = |id| Node::Session(AgentSessionId(id));
+    let s = |id| Node::Conversation(ConversationId(id));
     let m = model(&[
         (1, "planner", None),
         (2, "coder", Some(1)),
@@ -299,10 +299,10 @@ fn agents_fill_a_grid_each_in_its_own_region() {
     assert!(world.w < 2. * world.h, "{world:?}");
 }
 
-/// Four sessions of one agent stack three high, then start a new column.
+/// Four conversations of one agent stack three high, then start a new column.
 #[test]
-fn a_busy_agent_stacks_its_sessions() {
-    let s = |id| Node::Session(AgentSessionId(id));
+fn a_busy_agent_stacks_its_conversations() {
+    let s = |id| Node::Conversation(ConversationId(id));
     let m = model(&[
         (1, "coder", None),
         (2, "coder", None),

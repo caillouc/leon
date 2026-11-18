@@ -1,4 +1,4 @@
-//! Git and GitHub state of conversations (GIT-*, GH-*, NAV-6, CONV-14).
+//! Git and GitHub state of flows (GIT-*, GH-*, NAV-6, CONV-14).
 //!
 //! Every git or gh call runs on the blocking pool; its result comes back to
 //! the core actor as an [`Internal`] message, so the actor never waits.
@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use leon_domain::{ConversationId, GhKind, GhRef, Issue, PullRequest};
+use leon_domain::{FlowId, GhKind, GhRef, Issue, PullRequest};
 
 use crate::app::Core;
 use crate::ports::{GitHub, PortError};
@@ -20,11 +20,11 @@ pub(crate) enum Internal {
     Git(PathBuf, GitView),
     /// The pull request of a folder's branch, or none.
     Pr(PathBuf, Option<Box<PullRequest>>),
-    /// The working tree holding a folder of a conversation, `None` outside a
-    /// repository (CTX-2). `keep`: the folder joins the conversation even
+    /// The working tree holding a folder of a flow, `None` outside a
+    /// repository (CTX-2). `keep`: the folder joins the flow even
     /// then (an agent said it works there).
     WorkingTree {
-        conversation: ConversationId,
+        flow: FlowId,
         dir: PathBuf,
         root: Option<PathBuf>,
         keep: bool,
@@ -38,9 +38,9 @@ pub(crate) enum Internal {
     Detail(Detail),
     /// Time to refresh pull request badges.
     Tick,
-    /// A title the CLI wrote for a conversation (NAV-9), with the title it
+    /// A title the CLI wrote for a flow (NAV-9), with the title it
     /// replaces.
-    Title(ConversationId, String, String),
+    Title(FlowId, String, String),
     /// The doctor's report.
     Doctor(Vec<leon_domain::DoctorSection>),
     /// What each CLI is connected to (TOOLS-1).
@@ -48,8 +48,8 @@ pub(crate) enum Internal {
 }
 
 impl Core {
-    /// Re-reads the git state of every folder of a conversation.
-    pub(crate) fn refresh_git(&mut self, id: ConversationId) {
+    /// Re-reads the git state of every folder of a flow.
+    pub(crate) fn refresh_git(&mut self, id: FlowId) {
         for dir in self.state.folders_of(id) {
             self.refresh_folder(dir);
         }
@@ -63,14 +63,24 @@ impl Core {
         }
         let git = Arc::clone(&self.ports.git);
         let tx = self.internal_tx.clone();
+        let pr_base = self.pr_base(&dir);
         tokio::task::spawn_blocking(move || {
             let branch = git.branch(&dir);
-            let base = git.default_base(&dir);
+            // What its pull request merges into, as GitHub shows the diff
+            // (GIT-3); without one, or when that branch is not fetched, the
+            // remote's default branch.
+            let from_pr = pr_base.and_then(|b| git.branch_diff(&dir, &b).ok().map(|d| (b, d)));
+            let (base, branch_diff) = if let Some((base, diff)) = from_pr {
+                (Some(base), Ok(Some(diff)))
+            } else {
+                let base = git.default_base(&dir);
+                let diff = base
+                    .as_deref()
+                    .map(|b| git.branch_diff(&dir, b))
+                    .transpose();
+                (base, diff)
+            };
             let changes = git.changes(&dir);
-            let branch_diff = base
-                .as_deref()
-                .map(|b| git.branch_diff(&dir, b))
-                .transpose();
             let error = changes.as_ref().err().map(ToString::to_string);
             let view = GitView {
                 repo: git.github_repo(&dir),
@@ -84,8 +94,17 @@ impl Core {
         });
     }
 
-    /// Re-reads the pull request of each folder's branch of a conversation.
-    pub(crate) fn refresh_pr(&mut self, id: ConversationId) {
+    /// The branch the pull request of `dir`'s branch merges into, on the
+    /// remote: the branch diff's base (GIT-3).
+    fn pr_base(&self, dir: &std::path::Path) -> Option<String> {
+        self.state
+            .prs
+            .get(dir)
+            .map(|pr| format!("origin/{}", pr.base))
+    }
+
+    /// Re-reads the pull request of each folder's branch of a flow.
+    pub(crate) fn refresh_pr(&mut self, id: FlowId) {
         for dir in self.state.folders_of(id) {
             self.refresh_folder_pr(dir);
         }
@@ -237,18 +256,23 @@ impl Core {
                 }
             }
             Internal::Pr(dir, pr) => {
+                let before = self.pr_base(&dir);
                 let prs = Arc::make_mut(&mut self.state.prs);
                 match pr {
-                    Some(pr) => prs.insert(dir, *pr),
+                    Some(pr) => prs.insert(dir.clone(), *pr),
                     None => prs.remove(&dir),
                 };
+                // Another base: the branch diff is compared again (GIT-3).
+                if self.pr_base(&dir) != before {
+                    self.refresh_folder(dir);
+                }
             }
             Internal::WorkingTree {
-                conversation,
+                flow,
                 dir,
                 root,
                 keep,
-            } => self.working_tree_found(conversation, dir, root, keep),
+            } => self.working_tree_found(flow, dir, root, keep),
             Internal::Lists(Ok((issues, prs))) => {
                 self.state.my_issues = Arc::new(issues);
                 self.state.my_prs = Arc::new(prs);
@@ -296,18 +320,18 @@ impl Core {
         }
     }
 
-    /// Reads git state of every open conversation's folders (startup).
+    /// Reads git state of every open flow's folders (startup).
     pub(crate) fn refresh_all_git(&mut self) {
         for dir in self.open_folders() {
             self.refresh_folder(dir);
         }
     }
 
-    /// The folders of every conversation not archived, each once.
+    /// The folders of every flow not archived, each once.
     fn open_folders(&self) -> Vec<PathBuf> {
         let mut seen = HashSet::new();
         self.state
-            .conversations
+            .flows
             .iter()
             .filter(|c| !c.archived)
             .flat_map(|c| self.state.folders_of(c.id))

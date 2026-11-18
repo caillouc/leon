@@ -21,7 +21,7 @@ enum Pending {
     Prompt,
 }
 
-/// One agent session over ACP.
+/// One conversation over ACP.
 #[derive(Debug)]
 pub(crate) struct Session {
     /// The CLI's name, for messages.

@@ -1,9 +1,9 @@
-//! The conversation's pull request (GH-1, GH-4..6): state, checks,
+//! The flow's pull request (GH-1, GH-4..6): state, checks,
 //! reviewers, comments; request a Copilot review, post a comment.
 
 use gpui::{AnyElement, Context, Div, Entity, IntoElement, Rgba, div, prelude::*, px};
 use gpui_component::input::TextareaState;
-use leon_domain::{CheckState, Comment, ConversationId, GhRef, Label, PrState, PullRequest};
+use leon_domain::{CheckState, Comment, FlowId, GhRef, Label, PrState, PullRequest};
 
 use crate::gh_detail::github_link;
 use crate::left::since;
@@ -42,8 +42,8 @@ pub(crate) fn labels(labels: &[Label]) -> Div {
 }
 
 impl Workspace {
-    /// The PR tab of the right pane: the conversation's pull request.
-    pub(crate) fn render_pr(&mut self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
+    /// The PR tab of the right pane: the flow's pull request.
+    pub(crate) fn render_pr(&mut self, id: FlowId, cx: &mut Context<Self>) -> AnyElement {
         let Some(pr) = self.folder_pr(id).cloned() else {
             let branch = self
                 .folder_git(id)

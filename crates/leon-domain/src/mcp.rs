@@ -1,4 +1,4 @@
-//! MCP servers given to agent sessions (P10, EXT-2), and the `.mcp.json`
+//! MCP servers given to conversations (P10, EXT-2), and the `.mcp.json`
 //! shape every CLI and plugin uses for stdio servers:
 //! `{ "mcpServers": { name: { command, args?, env? } } }`.
 

@@ -45,7 +45,7 @@ CLI output ─▶ adapter ─▶ domain Event ─▶ apply(state, event) ─▶ 
 ```
 
 - The core is the only writer of state; the UI reads snapshots.
-- `apply(SessionState, Event) -> SessionState` is pure (in `leon-domain`);
+- `apply(ConversationState, Event) -> ConversationState` is pure (in `leon-domain`);
   status, unread and usage derive from events. Replaying stored events rebuilds
   a conversation.
 - A flow's status and unread are derived from its conversations
@@ -61,8 +61,8 @@ Flow (folders: every working tree its agents work in, D3, CTX-2)
  └─ Conversation  tester    (started_by: none, the user, with "+ New": FLOW-7)
 ```
 
-In code, a flow is still `Conversation` (`ConversationId`, SQLite table
-`conversations`) and a conversation `AgentSession` (`agent_sessions`).
+In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
+(`ConversationId`, table `conversations`, its transcript in `entries`).
 
 1. Every conversation's CLI gets Leon's MCP server: Claude Code through
    `--mcp-config` and `--allowedTools mcp__leon`, Codex through `thread/start`
@@ -220,7 +220,7 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   or the PR (checks, reviewers, comments, description, unresolved review
   threads), by repository and number, read in
   the background (`Intent::ShowDetail`). A flow started from an issue
-  keeps it (`conversations.issue`, store migration 5).
+  keeps it (`flows.issue`, store migration 5).
 - Ready / draft: `gh pr ready <n> [--undo] --repo <owner/name>` (flags from
   `gh pr ready --help`, gh 2.101.0, 2026-11-18; never run for real).
 - Copilot review: `gh pr edit <n> --add-reviewer @copilot` (documented in

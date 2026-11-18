@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use leon_core::ports::{ConfigFile, PortError};
-use leon_domain::{BackendKind, SessionDefaults, Settings};
+use leon_domain::{BackendKind, ConversationDefaults, Settings};
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 use crate::CURRENT_VERSION;
@@ -114,7 +114,7 @@ pub fn update(text: &str, settings: &Settings) -> Result<String, String> {
     if !doc.contains_key("version") {
         doc.insert("version", value(CURRENT_VERSION));
     }
-    let defaults = SessionDefaults::default();
+    let defaults = ConversationDefaults::default();
     let d = &settings.defaults;
     let changed = |is_default: bool, item: Item| (!is_default).then_some(item);
     set(
@@ -210,7 +210,7 @@ mod tests {
             (
                 "",
                 Settings {
-                    defaults: leon_domain::SessionDefaults {
+                    defaults: leon_domain::ConversationDefaults {
                         backend: BackendKind::CopilotCli,
                         ..Default::default()
                     },

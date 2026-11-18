@@ -2,34 +2,34 @@
 
 use std::path::PathBuf;
 
-use leon_domain::{AgentSessionId, ConversationId, ProjectId, SessionSettings};
+use leon_domain::{ConversationId, ConversationSettings, FlowId, ProjectId};
 
 /// A request from the UI. The core applies it and publishes a new snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Intent {
     /// Register a folder as a project.
     AddProject(PathBuf),
-    /// Remove a project from Leon with its conversations; the folder stays.
+    /// Remove a project from Leon with its flows; the folder stays.
     RemoveProject(ProjectId),
     /// Fold (`true`) or unfold a GitHub list's group, kept across restarts.
     FoldGroup(String, bool),
-    /// The conversation shown in the main pane (`None`: none): loads its
+    /// The flow shown in the main pane (`None`: none): loads its
     /// transcripts and git state.
-    View(Option<ConversationId>),
-    /// The agent session whose messages are on screen — its tab, not the
-    /// conversation's Flow (`None`: none). Marks its answer read, and its
-    /// conversation once no other session's answer waits; an answer that
+    View(Option<FlowId>),
+    /// The conversation whose messages are on screen — its tab, not the
+    /// flow's Flow tab (`None`: none). Marks its answer read, and its
+    /// flow once no other conversation's answer waits; an answer that
     /// arrives while it is read stays read (NAV-4, FLOW-4).
-    Read(Option<AgentSessionId>),
+    Read(Option<ConversationId>),
     /// Leon's window became active (`true`) or went behind another app: an
     /// answer counts as seen only in the active window (NAV-4, NOTIF-1).
     WindowActive(bool),
-    /// Start a conversation with an agent and send the first message (CONV-2).
-    NewConversation {
+    /// Start a flow with an agent and send the first message (CONV-2).
+    NewFlow {
         /// Project it belongs to.
         project: ProjectId,
         /// Backend, agent, model, effort, permission.
-        settings: SessionSettings,
+        settings: ConversationSettings,
         /// First message.
         text: String,
         /// The issue it is started for (GH-2), if any.
@@ -37,40 +37,40 @@ pub enum Intent {
     },
     /// Start another conversation in an existing flow, as the user, and
     /// send its first message (FLOW-7).
-    NewSession {
+    NewConversation {
         /// The flow.
-        conversation: ConversationId,
+        flow: FlowId,
         /// Backend, agent, model, effort, permission.
-        settings: SessionSettings,
+        settings: ConversationSettings,
         /// Where its CLI runs: one of the flow's folders.
         working_dir: std::path::PathBuf,
         /// First message.
         text: String,
     },
-    /// Send a message to an agent session (CONV-1).
+    /// Send a message to an conversation (CONV-1).
     Send {
-        /// Target session.
-        session: AgentSessionId,
+        /// Target conversation.
+        conversation: ConversationId,
         /// Message text.
         text: String,
     },
     /// Go back to before a message of the user and send `text` instead
     /// (CONV-7, CONV-8): later entries are dropped, the CLI starts a new
-    /// session carrying the conversation up to that point.
+    /// conversation carrying the flow up to that point.
     Rewind {
-        /// The session.
-        session: AgentSessionId,
+        /// The conversation.
+        conversation: ConversationId,
         /// Index of the user's message in the transcript.
         entry: usize,
         /// What to send instead.
         text: String,
     },
     /// Stop the running answer (CONV-6).
-    Stop(AgentSessionId),
+    Stop(ConversationId),
     /// Answer a question card (CONV-9).
     Answer {
-        /// Session that asked.
-        session: AgentSessionId,
+        /// Conversation that asked.
+        conversation: ConversationId,
         /// Question id.
         question: String,
         /// Chosen option or free text.
@@ -78,25 +78,25 @@ pub enum Intent {
     },
     /// Change backend, model, effort or permission (CONV-5).
     ChangeSettings {
-        /// Session to change.
-        session: AgentSessionId,
+        /// Conversation to change.
+        conversation: ConversationId,
         /// New settings.
-        settings: SessionSettings,
+        settings: ConversationSettings,
     },
-    /// Fold or unfold a project's conversations in the left pane (NAV-2).
+    /// Fold or unfold a project's flows in the left pane (NAV-2).
     CollapseProject(ProjectId, bool),
-    /// Rename a conversation (NAV-8).
-    Rename(ConversationId, String),
+    /// Rename a flow (NAV-8).
+    Rename(FlowId, String),
     /// Pin or unpin (NAV-3).
-    Pin(ConversationId, bool),
+    Pin(FlowId, bool),
     /// Archive or unarchive (NAV-8).
-    Archive(ConversationId, bool),
+    Archive(FlowId, bool),
     /// Mark as unread (NAV-4).
-    MarkUnread(ConversationId),
-    /// Delete a conversation (NAV-8).
-    Delete(ConversationId),
-    /// Re-read a conversation's git state now.
-    RefreshGit(ConversationId),
+    MarkUnread(FlowId),
+    /// Delete a flow (NAV-8).
+    Delete(FlowId),
+    /// Re-read a flow's git state now.
+    RefreshGit(FlowId),
     /// Re-read my issues and pull requests (GH-2, GH-3).
     RefreshGitHub,
     /// Run the doctor's checks again.

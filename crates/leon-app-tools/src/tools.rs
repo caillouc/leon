@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use leon_core::ports::AppToolCall;
-use leon_domain::AgentSessionId;
+use leon_domain::ConversationId;
 use serde_json::{Value, json};
 
 const START_AGENT: &str = "start_agent";
@@ -126,7 +126,7 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolEr
                 .transpose()?,
         },
         MESSAGE_AGENT => AppToolCall::MessageAgent {
-            session: AgentSessionId(
+            conversation: ConversationId(
                 arguments
                     .get("conversation")
                     .and_then(Value::as_i64)
@@ -139,7 +139,7 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolEr
             ),
             text: text(arguments, "text")?,
         },
-        RENAME_FLOW => AppToolCall::RenameConversation {
+        RENAME_FLOW => AppToolCall::RenameFlow {
             title: text(arguments, "title")?,
         },
         SET_WORKING_DIRECTORY => AppToolCall::SetWorkingDirectory {

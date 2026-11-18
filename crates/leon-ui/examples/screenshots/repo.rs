@@ -87,7 +87,7 @@ fn file(path: &str, status: FileStatus, added: u32, removed: u32) -> FileDiff {
     }
 }
 
-/// The two folders the first conversation works in (CTX-2).
+/// The two folders the first flow works in (CTX-2).
 pub const API: &str = "/code/payments-api/.worktrees/fix-webhook-retry";
 pub const WEB: &str = "/code/web-dashboard/.worktrees/fix-webhook-retry";
 

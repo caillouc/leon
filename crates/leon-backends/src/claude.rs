@@ -1,7 +1,7 @@
 //! Claude Code over stream-json: `claude -p --input-format stream-json
 //! --output-format stream-json` (checked on 2.1.288, 2026-11-17).
 //!
-//! One process per agent session, kept between turns. Stopping a turn kills
+//! One process per conversation, kept between turns. Stopping a turn kills
 //! the process; the next message starts it again with `--resume`.
 
 use std::collections::HashSet;
@@ -394,7 +394,7 @@ mod tests {
     use std::path::PathBuf;
 
     use leon_core::ports::{AgentDefinition, BackendEvent, SessionSpec};
-    use leon_domain::{BackendKind, PlanStep, SessionSettings, StepStatus};
+    use leon_domain::{BackendKind, ConversationSettings, PlanStep, StepStatus};
     use serde_json::{Value, json};
 
     use super::{Parser, args};
@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn args_pass_every_choice_explicitly() {
         let spec = SessionSpec {
-            settings: SessionSettings {
+            settings: ConversationSettings {
                 backend: BackendKind::ClaudeCode,
                 agent: Some("planner".into()),
                 model: Some("opus".into()),

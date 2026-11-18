@@ -108,8 +108,8 @@ One word per concept, in code, UI and docs. A new concept: ask to add it here.
 | Term | Meaning |
 |---|---|
 | Project | A folder registered in the app, usually a git repo. Groups flows. |
-| Flow | One left-pane item: the conversations the user started in it, every conversation an agent started from them, and who started which, with the prompts sent and the answers returned (its diagram). In code: `Conversation`. |
-| Conversation | One agent's own CLI conversation in a flow (its id, its transcript, one working directory at a time), started by the user or by another agent. In code: `AgentSession`. |
+| Flow | One left-pane item: the conversations the user started in it, every conversation an agent started from them, and who started which, with the prompts sent and the answers returned (its diagram). In code: `Flow`. |
+| Conversation | One agent's own CLI conversation in a flow (its id, its transcript, one working directory at a time), started by the user or by another agent. In code: `Conversation`. |
 | Turn | One user message and everything the agent does until it waits again. |
 | Backend | A coding CLI the app drives (`claude`, `codex`, `copilot`). Not an agent's *tool*. |
 | Agent | A named definition (markdown + frontmatter) the user talks to directly. |

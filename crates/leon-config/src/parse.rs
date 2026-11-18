@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::Path;
 
-use leon_domain::{BackendKind, SessionDefaults, Settings};
+use leon_domain::{BackendKind, ConversationDefaults, Settings};
 use toml::{Table, Value};
 
 /// Config format version this build reads.
@@ -123,7 +123,7 @@ fn check_version(value: &Value, warnings: &mut Vec<Warning>) {
     }
 }
 
-fn read_defaults(value: &Value, defaults: &mut SessionDefaults, warnings: &mut Vec<Warning>) {
+fn read_defaults(value: &Value, defaults: &mut ConversationDefaults, warnings: &mut Vec<Warning>) {
     let Some(table) = value.as_table() else {
         warnings.push(Warning::new("defaults", "must be a table, ignored"));
         return;
@@ -194,14 +194,14 @@ fn read_list(
 
 #[cfg(test)]
 mod tests {
-    use leon_domain::{BackendKind, SessionDefaults};
+    use leon_domain::{BackendKind, ConversationDefaults};
 
     use super::{load, parse};
 
     #[test]
     fn empty_file_gives_defaults() {
         let loaded = parse("");
-        assert_eq!(loaded.settings.defaults, SessionDefaults::default());
+        assert_eq!(loaded.settings.defaults, ConversationDefaults::default());
         assert_eq!(loaded.warnings, Vec::<super::Warning>::new());
     }
 
@@ -248,7 +248,7 @@ mod tests {
             assert_eq!(loaded.warnings[0].key, *key, "{text}");
             assert_eq!(
                 loaded.settings.defaults,
-                SessionDefaults::default(),
+                ConversationDefaults::default(),
                 "{text}"
             );
         }

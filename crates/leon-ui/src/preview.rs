@@ -10,7 +10,7 @@ use gpui::{
 };
 use gpui_component::{Root, Theme, ThemeMode};
 use leon_core::{CoreHandle, Intent};
-use leon_domain::ConversationId;
+use leon_domain::FlowId;
 
 use leon_domain::{LineKind, ReviewComment};
 
@@ -24,27 +24,27 @@ use crate::workspace::{Screen, Tab, Workspace};
 pub enum Shot {
     /// Nothing selected.
     Empty,
-    /// A conversation, on its first agent session.
-    Conversation(ConversationId),
-    /// A conversation with one picker open (picker id, e.g. `session-model`).
-    PickerOpen(ConversationId, &'static str),
-    /// A conversation's flow tab.
-    Flow(ConversationId),
-    /// The new-conversation form.
-    NewConversation,
-    /// The new-conversation form with this agent picked.
-    NewConversationWith(&'static str),
+    /// A flow, on its first conversation.
+    Conversation(FlowId),
+    /// A flow with one picker open (picker id, e.g. `conversation-model`).
+    PickerOpen(FlowId, &'static str),
+    /// A flow's Flow tab (its diagram).
+    Flow(FlowId),
+    /// The new-flow form.
+    NewFlow,
+    /// The new-flow form with this agent picked.
+    NewFlowWith(&'static str),
     /// A flow with its form for another conversation open (FLOW-7).
-    NewInFlow(ConversationId),
-    /// A conversation with the right pane closed.
-    RightClosed(ConversationId),
-    /// A conversation with this text typed in its message box.
-    Typed(ConversationId, &'static str),
-    /// A conversation with a right-pane tab open: `changes`, `branch`, `pr`
+    NewInFlow(FlowId),
+    /// A flow with the right pane closed.
+    RightClosed(FlowId),
+    /// A flow with this text typed in its message box.
+    Typed(FlowId, &'static str),
+    /// A flow with a right-pane tab open: `changes`, `branch`, `pr`
     /// or `info`.
-    Right(ConversationId, &'static str),
-    /// A conversation's changes with a pending comment and one being written.
-    Review(ConversationId),
+    Right(FlowId, &'static str),
+    /// A flow's changes with a pending comment and one being written.
+    Review(FlowId),
     /// My open pull requests in the main pane.
     MyPullRequests,
     /// My issues in the main pane, grouped by board status.
@@ -52,28 +52,24 @@ pub enum Shot {
     /// The doctor's report.
     Doctor,
     /// A left-pane row's right-click menu.
-    RowMenu(ConversationId),
+    RowMenu(FlowId),
     /// The Tools view.
     Tools,
     /// The Tools view while these CLIs are still being asked.
     ToolsAsking(Vec<leon_domain::BackendKind>),
     /// The Settings view.
     Settings,
-    /// A conversation's changed file, large in the drawer (path); side by
+    /// A flow's changed file, large in the drawer (path); side by
     /// side when `true`.
-    Drawer(ConversationId, &'static str, bool),
+    Drawer(FlowId, &'static str, bool),
     /// An issue's or a pull request's details in the drawer.
     Detail(Box<leon_core::Detail>),
 }
 
 impl Workspace {
-    fn open_first_session(&mut self, id: ConversationId) {
-        if let Some(first) = self
-            .snapshot
-            .conversation(id)
-            .and_then(|c| c.sessions.first())
-        {
-            self.tabs.insert(id, Tab::Session(*first));
+    fn open_first_conversation(&mut self, id: FlowId) {
+        if let Some(first) = self.snapshot.flow(id).and_then(|c| c.conversations.first()) {
+            self.tabs.insert(id, Tab::Conversation(*first));
         }
     }
 
@@ -97,21 +93,21 @@ impl Workspace {
             Shot::Empty => self.screen = Screen::Nothing,
             Shot::Conversation(id) => {
                 self.select(*id, cx);
-                self.open_first_session(*id);
+                self.open_first_conversation(*id);
             }
             Shot::PickerOpen(id, picker) => {
                 self.select(*id, cx);
-                self.open_first_session(*id);
+                self.open_first_conversation(*id);
                 self.open_picker = Some((*picker).into());
             }
             Shot::RightClosed(id) => {
                 self.select(*id, cx);
-                self.open_first_session(*id);
+                self.open_first_conversation(*id);
                 self.panes.right_open = false;
             }
             Shot::Typed(id, text) => {
                 self.select(*id, cx);
-                self.open_first_session(*id);
+                self.open_first_conversation(*id);
                 crate::message_input::write_in(&self.composer, (*text).to_owned(), window, cx);
                 self.composer.focus_handle(cx).focus(window, cx);
             }
@@ -119,24 +115,24 @@ impl Workspace {
                 self.select(*id, cx);
                 self.tabs.remove(id);
             }
-            Shot::NewConversation => self.show_new_conversation(cx),
+            Shot::NewFlow => self.show_new_flow(cx),
             Shot::NewInFlow(id) => {
                 self.select(*id, cx);
                 self.open_new_in_flow(*id, cx);
             }
-            Shot::NewConversationWith(agent) => {
-                self.show_new_conversation(cx);
+            Shot::NewFlowWith(agent) => {
+                self.show_new_flow(cx);
                 self.form.settings.agent = Some((*agent).to_owned());
             }
             Shot::Drawer(id, path, split) => {
                 self.select(*id, cx);
-                self.open_first_session(*id);
+                self.open_first_conversation(*id);
                 self.right.split = *split;
                 self.open_drawer(DiffSource::Changes, (*path).to_owned(), cx);
             }
             Shot::Right(id, tab) => {
                 self.select(*id, cx);
-                self.open_first_session(*id);
+                self.open_first_conversation(*id);
                 let tab = match *tab {
                     "branch" => RightTab::Branch,
                     "pr" => RightTab::Pr,
@@ -147,9 +143,9 @@ impl Workspace {
             }
             Shot::Review(id) => {
                 self.select(*id, cx);
-                self.open_first_session(*id);
+                self.open_first_conversation(*id);
                 let at = |line: u32| DraftAt {
-                    conversation: *id,
+                    flow: *id,
                     source: DiffSource::Changes,
                     path: "src/webhooks/retry.rs".into(),
                     line,
@@ -200,7 +196,7 @@ impl Workspace {
             Shot::RowMenu(id) => {
                 self.select(*id, cx);
                 self.row_menu = Some((
-                    crate::row_menu::MenuFor::Conversation(*id),
+                    crate::row_menu::MenuFor::Flow(*id),
                     gpui::point(gpui::px(200.), gpui::px(520.)),
                 ));
             }

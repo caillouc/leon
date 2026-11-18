@@ -1,4 +1,4 @@
-//! What the composer and the new-conversation form share: long pasted text
+//! What the composer and the new-flow form share: long pasted text
 //! kept as a folded chip (CONV-12) and the `/` list of skills and commands
 //! (CONV-11).
 

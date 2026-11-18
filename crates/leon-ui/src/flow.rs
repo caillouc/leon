@@ -1,6 +1,6 @@
-//! The flow tab (FLOW-4, FLOW-6): a canvas with one box per agent session
+//! The flow tab (FLOW-4, FLOW-6): a canvas with one box per conversation
 //! plus "You", arrows for prompts, reports and questions. Drag to pan, scroll
-//! or pinch to zoom, drag a box to move it; click a box to open its session,
+//! or pinch to zoom, drag a box to move it; click a box to open its conversation,
 //! click an arrow's label to read its messages.
 
 use std::cell::Cell;
@@ -13,8 +13,8 @@ use gpui::{
     div, prelude::*, px,
 };
 use gpui_component::text::TextView;
-use leon_core::SessionView;
-use leon_domain::{AgentSessionId, ConversationId};
+use leon_core::ConversationView;
+use leon_domain::{ConversationId, FlowId};
 
 use crate::flow_model::{
     self, Edge, EdgeKind, Node, Pt, Rect, View, label_at, layout, rect, route, status_text,
@@ -25,15 +25,15 @@ use crate::theme;
 use crate::widgets::button;
 use crate::workspace::{Tab, Workspace};
 
-/// What the flow tab remembers per conversation.
+/// What the flow tab remembers per flow.
 #[derive(Default)]
 pub(crate) struct FlowState {
     /// Pan and zoom, and whether the user changed it (else it fits).
-    views: HashMap<ConversationId, (View, bool)>,
+    views: HashMap<FlowId, (View, bool)>,
     /// Boxes the user moved, in diagram units.
-    moved: HashMap<(ConversationId, Node), Pt>,
+    moved: HashMap<(FlowId, Node), Pt>,
     /// The arrow whose messages are shown.
-    selected: Option<(ConversationId, Node, Node, EdgeKind)>,
+    selected: Option<(FlowId, Node, Node, EdgeKind)>,
     drag: Option<Drag>,
     /// Where the canvas was last painted, in window coordinates.
     area: Rc<Cell<Option<Bounds<Pixels>>>>,
@@ -71,19 +71,19 @@ pub(crate) fn color(kind: EdgeKind) -> Rgba {
 impl Workspace {
     pub(crate) fn render_flow(
         &mut self,
-        id: ConversationId,
+        id: FlowId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some(conversation) = self.snapshot.conversation(id) else {
+        let Some(flow) = self.snapshot.flow(id) else {
             return div().into_any_element();
         };
-        let sessions: Vec<&SessionView> = conversation
-            .sessions
+        let conversations: Vec<&ConversationView> = flow
+            .conversations
             .iter()
-            .filter_map(|s| self.snapshot.sessions.get(s))
+            .filter_map(|s| self.snapshot.conversations.get(s))
             .collect();
-        let model = flow_model::build(&sessions, &self.snapshot.transcripts);
+        let model = flow_model::build(&conversations, &self.snapshot.transcripts);
         let mut pos = layout(&model);
         for (node, at) in &mut pos {
             if let Some(moved) = self.flow.moved.get(&(id, *node)) {
@@ -205,7 +205,7 @@ impl Workspace {
             .iter()
             .filter_map(|node| {
                 let r = rects.get(node)?;
-                Some(self.flow_box(id, *node, *r, view, &sessions, cx))
+                Some(self.flow_box(id, *node, *r, view, &conversations, cx))
             })
             .collect();
         let inspector = selected.and_then(|key| {
@@ -259,11 +259,11 @@ impl Workspace {
 
     fn flow_box(
         &self,
-        id: ConversationId,
+        id: FlowId,
         node: Node,
         r: Rect,
         view: View,
-        sessions: &[&SessionView],
+        conversations: &[&ConversationView],
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let at = view.to_screen(Pt { x: r.x, y: r.y });
@@ -294,10 +294,10 @@ impl Workspace {
                     });
                 }),
             );
-        let Node::Session(sid) = node else {
-            let first = sessions
+        let Node::Conversation(sid) = node else {
+            let first = conversations
                 .first()
-                .and_then(|f| self.snapshot.transcripts.get(&f.session.id))
+                .and_then(|f| self.snapshot.transcripts.get(&f.conversation.id))
                 .and_then(|t| {
                     t.entries.iter().find_map(|e| match &e.entry {
                         leon_domain::Entry::User { text } => {
@@ -335,16 +335,18 @@ impl Workspace {
                 )
                 .into_any_element();
         };
-        let Some(session) = sessions.iter().find(|x| x.session.id == sid) else {
+        let Some(conversation) = conversations.iter().find(|x| x.conversation.id == sid) else {
             return shell.into_any_element();
         };
-        let settings = &session.session.settings;
-        let waiting_for = sessions
+        let settings = &conversation.conversation.settings;
+        let waiting_for = conversations
             .iter()
-            .find(|x| x.session.started_by == Some(sid) && x.status == leon_domain::Status::Running)
-            .map(|x| self.session_name(x));
+            .find(|x| {
+                x.conversation.started_by == Some(sid) && x.status == leon_domain::Status::Running
+            })
+            .map(|x| self.conversation_name(x));
         // Working shows as the turning loader, not as the border.
-        let border = match session.status {
+        let border = match conversation.status {
             leon_domain::Status::NeedsInput => theme::warn(),
             leon_domain::Status::Error => theme::err(),
             leon_domain::Status::Running | leon_domain::Status::Idle => theme::border_strong(),
@@ -360,7 +362,7 @@ impl Workspace {
         });
         let (model, effort) = self.model_and_effort(settings);
         let model = format!("{model} · effort {effort}");
-        let agent = agent_color(sessions, session, |x| self.session_name(x));
+        let agent = agent_color(conversations, conversation, |x| self.conversation_name(x));
         shell
             .rounded(px(10. * s))
             .line_height(gpui::relative(1.25))
@@ -394,7 +396,7 @@ impl Workspace {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(status_mark(
                         SharedString::from(format!("spin-flow-{}", sid.0)),
-                        session.status,
+                        conversation.status,
                     ))
                     .child(
                         div()
@@ -404,7 +406,7 @@ impl Workspace {
                             .whitespace_nowrap()
                             .text_ellipsis()
                             .text_color(agent)
-                            .child(self.session_name(session)),
+                            .child(self.conversation_name(conversation)),
                     )
                     .child(
                         div()
@@ -432,7 +434,7 @@ impl Workspace {
                     .items_center()
                     .gap(px(6. * s))
                     .text_size(px(12. * s))
-                    .text_color(match session.status {
+                    .text_color(match conversation.status {
                         leon_domain::Status::Running => theme::accent(),
                         leon_domain::Status::NeedsInput => theme::warn(),
                         leon_domain::Status::Error => theme::err(),
@@ -444,12 +446,15 @@ impl Workspace {
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .child(status_text(session, waiting_for.as_deref())),
+                            .child(status_text(conversation, waiting_for.as_deref())),
                     )
                     // Which agent has an answer or a question for the user,
-                    // as the left pane says it of the conversation (NAV-5).
-                    .children(crate::conv_row::attention_pill(
-                        leon_domain::Attention::of(session.status, session.session.unread),
+                    // as the left pane says it of the flow (NAV-5).
+                    .children(crate::flow_row::attention_pill(
+                        leon_domain::Attention::of(
+                            conversation.status,
+                            conversation.conversation.unread,
+                        ),
                         s,
                     )),
             )
@@ -460,15 +465,15 @@ impl Workspace {
                     .text_color(theme::fg_faint())
                     .child({
                         // The plan's progress, when the agent keeps one.
-                        let done = session
+                        let done = conversation
                             .plan
                             .iter()
                             .filter(|p| p.status == leon_domain::StepStatus::Done)
                             .count();
-                        let plan = if session.plan.is_empty() {
+                        let plan = if conversation.plan.is_empty() {
                             String::new()
                         } else {
-                            format!(" · plan {done}/{}", session.plan.len())
+                            format!(" · plan {done}/{}", conversation.plan.len())
                         };
                         format!("{messages} messages · {tools} tool calls{plan}")
                     }),
@@ -476,7 +481,7 @@ impl Workspace {
             .into_any_element()
     }
 
-    fn flow_drag(&mut self, id: ConversationId, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+    fn flow_drag(&mut self, id: FlowId, e: &MouseMoveEvent, cx: &mut Context<Self>) {
         if e.pressed_button != Some(MouseButton::Left) {
             self.flow.drag = None;
             return;
@@ -519,27 +524,27 @@ impl Workspace {
         cx.notify();
     }
 
-    /// End of a drag. A box that did not move was clicked: open its session.
+    /// End of a drag. A box that did not move was clicked: open its conversation.
     /// A click on the background (no pan) closes the message panel.
-    fn flow_release(&mut self, id: ConversationId, at: Pt, cx: &mut Context<Self>) {
+    fn flow_release(&mut self, id: FlowId, at: Pt, cx: &mut Context<Self>) {
         if let Some(Drag::Pan { from, .. }) = self.flow.drag
             && (at.x - from.x).abs() + (at.y - from.y).abs() <= 3.
         {
             self.flow.selected = None;
         }
         if let Some(Drag::Box {
-            node: Node::Session(session),
+            node: Node::Conversation(conversation),
             moved: false,
             ..
         }) = self.flow.drag
         {
-            self.tabs.insert(id, Tab::Session(session));
+            self.tabs.insert(id, Tab::Conversation(conversation));
         }
         self.flow.drag = None;
         cx.notify();
     }
 
-    fn flow_zoom(&mut self, id: ConversationId, at: Pt, factor: f32, cx: &mut Context<Self>) {
+    fn flow_zoom(&mut self, id: FlowId, at: Pt, factor: f32, cx: &mut Context<Self>) {
         let Some(area) = self.flow.area.get() else {
             return;
         };
@@ -552,7 +557,7 @@ impl Workspace {
         cx.notify();
     }
 
-    fn flow_controls(&self, id: ConversationId, view: View, cx: &mut Context<Self>) -> AnyElement {
+    fn flow_controls(&self, id: FlowId, view: View, cx: &mut Context<Self>) -> AnyElement {
         let center = self
             .flow
             .area
@@ -617,22 +622,17 @@ impl Workspace {
             .into_any_element()
     }
 
-    fn flow_inspector(
-        &self,
-        id: ConversationId,
-        edge: &Edge,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn flow_inspector(&self, id: FlowId, edge: &Edge, cx: &mut Context<Self>) -> AnyElement {
         let name = |node: Node| match node {
             Node::You => "You".to_owned(),
-            Node::Session(s) => self
+            Node::Conversation(s) => self
                 .snapshot
-                .sessions
+                .conversations
                 .get(&s)
-                .map_or_default(|v| self.session_name(v)),
+                .map_or_default(|v| self.conversation_name(v)),
         };
-        let agent: Option<AgentSessionId> = match (edge.kind, edge.from, edge.to) {
-            (EdgeKind::Prompt, _, Node::Session(s)) | (_, Node::Session(s), _) => Some(s),
+        let agent: Option<ConversationId> = match (edge.kind, edge.from, edge.to) {
+            (EdgeKind::Prompt, _, Node::Conversation(s)) | (_, Node::Conversation(s), _) => Some(s),
             _ => None,
         };
         let items = edge.items.iter().enumerate().map(|(ix, item)| {
@@ -704,9 +704,9 @@ impl Workspace {
             .children(agent.map(|s| {
                 div().pt_2().child(button(
                     "flow-open-session",
-                    format!("Open {}", name(Node::Session(s))),
+                    format!("Open {}", name(Node::Conversation(s))),
                     cx.listener(move |this, _, _, cx| {
-                        this.tabs.insert(id, Tab::Session(s));
+                        this.tabs.insert(id, Tab::Conversation(s));
                         cx.notify();
                     }),
                 ))
@@ -716,19 +716,22 @@ impl Workspace {
 }
 
 /// An agent's colour in the diagram: one per agent name, in the order the
-/// agents first appear in the conversation, so two agents never share one.
+/// agents first appear in the flow, so two agents never share one.
 fn agent_color(
-    sessions: &[&SessionView],
-    session: &SessionView,
-    name: impl Fn(&SessionView) -> String,
+    conversations: &[&ConversationView],
+    conversation: &ConversationView,
+    name: impl Fn(&ConversationView) -> String,
 ) -> Rgba {
     let mut names: Vec<String> = Vec::new();
-    for s in sessions {
+    for s in conversations {
         let n = name(s);
         if !names.contains(&n) {
             names.push(n);
         }
     }
-    let ix = names.iter().position(|n| *n == name(session)).unwrap_or(0);
+    let ix = names
+        .iter()
+        .position(|n| *n == name(conversation))
+        .unwrap_or(0);
     theme::agent_color(ix)
 }

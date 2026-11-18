@@ -1,17 +1,17 @@
 //! The CLI, model, effort and permission pickers (CONV-3, CONV-4, CONV-5),
-//! shared by the message box and the new-conversation form. A value left
+//! shared by the message box and the new-flow form. A value left
 //! unchosen shows what will be used (the core fills it in), never "default".
 
 use gpui::{AnyElement, Context, Window};
-use leon_domain::{BackendKind, SessionSettings};
+use leon_domain::{BackendKind, ConversationSettings};
 
 use crate::picker::{Choice, Look};
 use crate::workspace::Workspace;
 
 impl Workspace {
-    /// The model's name and the effort a session runs with, defaults
+    /// The model's name and the effort a conversation runs with, defaults
     /// included: what the CLI is given, never "default".
-    pub(crate) fn model_and_effort(&self, settings: &SessionSettings) -> (String, String) {
+    pub(crate) fn model_and_effort(&self, settings: &ConversationSettings) -> (String, String) {
         let options = self.backend_options(settings.backend);
         let model = settings
             .model
@@ -32,9 +32,9 @@ impl Workspace {
         &self,
         look: Look,
         prefix: &str,
-        settings: &SessionSettings,
+        settings: &ConversationSettings,
         cx: &mut Context<Self>,
-        on_change: impl Fn(&mut Self, SessionSettings, &mut Window, &mut Context<Self>)
+        on_change: impl Fn(&mut Self, ConversationSettings, &mut Window, &mut Context<Self>)
         + Clone
         + 'static,
     ) -> [AnyElement; 4] {
@@ -58,7 +58,7 @@ impl Workspace {
                         return;
                     };
                     let permission = this.backend_options(kind).permissions.first().cloned();
-                    let next = SessionSettings {
+                    let next = ConversationSettings {
                         backend: kind,
                         model: None,
                         effort: None,
@@ -86,7 +86,7 @@ impl Workspace {
                 move |this, value, w, cx| {
                     f(
                         this,
-                        SessionSettings {
+                        ConversationSettings {
                             model: Some(value),
                             ..s.clone()
                         },
@@ -118,7 +118,7 @@ impl Workspace {
                 move |this, value, w, cx| {
                     f(
                         this,
-                        SessionSettings {
+                        ConversationSettings {
                             effort: Some(value),
                             ..s.clone()
                         },
@@ -144,7 +144,7 @@ impl Workspace {
                 move |this, value, w, cx| {
                     f(
                         this,
-                        SessionSettings {
+                        ConversationSettings {
                             permission: value,
                             ..s.clone()
                         },

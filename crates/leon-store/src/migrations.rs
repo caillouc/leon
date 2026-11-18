@@ -15,7 +15,7 @@ const MIGRATIONS: &[&str] = &[
         path TEXT NOT NULL UNIQUE,
         added_at INTEGER NOT NULL
     ) STRICT;",
-    // 2: conversations, agent sessions and their transcripts (P5).
+    // 2: flows, conversations and their transcripts (P5).
     "CREATE TABLE conversations (
         id INTEGER PRIMARY KEY,
         project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -44,22 +44,29 @@ const MIGRATIONS: &[&str] = &[
         entry TEXT NOT NULL,
         PRIMARY KEY (session_id, seq)
     ) STRICT;",
-    // 3: the folder a conversation moved to (D3, P10).
+    // 3: the folder a flow moved to (D3, P10).
     "ALTER TABLE conversations ADD COLUMN working_dir TEXT;",
     // 4: projects folded in the left pane (NAV-2).
     "ALTER TABLE projects ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;",
-    // 5: the issue a conversation was started for, `owner/name#12` (GH-2).
+    // 5: the issue a flow was started for, `owner/name#12` (GH-2).
     "ALTER TABLE conversations ADD COLUMN issue TEXT;",
     // 6: groups folded in the GitHub lists: board columns, repositories (GH-2,
     // GH-3).
     "CREATE TABLE folded_groups (key TEXT PRIMARY KEY) STRICT;",
-    // 7: every folder a conversation works in, a JSON array of paths, instead
+    // 7: every folder a flow works in, a JSON array of paths, instead
     // of one (CTX-2).
     "ALTER TABLE conversations ADD COLUMN folders TEXT NOT NULL DEFAULT '[]';
     UPDATE conversations SET folders = json_array(working_dir) WHERE working_dir IS NOT NULL;
     ALTER TABLE conversations DROP COLUMN working_dir;",
-    // 8: which agent session's answer is not read yet (NAV-4, FLOW-4).
+    // 8: which conversation's answer is not read yet (NAV-4, FLOW-4).
     "ALTER TABLE agent_sessions ADD COLUMN unread INTEGER NOT NULL DEFAULT 0;",
+    // 9: the tables take the app's words (D8): a left-pane entry is a flow,
+    // an agent's own conversation in it a conversation. Renaming keeps the
+    // rows and points the foreign keys at the new names.
+    "ALTER TABLE conversations RENAME TO flows;
+    ALTER TABLE agent_sessions RENAME COLUMN conversation_id TO flow_id;
+    ALTER TABLE agent_sessions RENAME TO conversations;
+    ALTER TABLE entries RENAME COLUMN session_id TO conversation_id;",
 ];
 
 /// Latest schema version this build knows.
@@ -97,8 +104,42 @@ mod tests {
     use super::{MIGRATIONS, latest, run, version};
     use crate::StoreError;
 
+    /// Renaming the tables keeps every row and the cascades: deleting a
+    /// flow still deletes its conversations and their entries.
     #[test]
-    fn a_conversations_folder_becomes_its_first_folder() {
+    fn tables_take_the_new_names_and_keep_their_rows() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        for sql in &MIGRATIONS[..8] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 8).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, path, added_at) VALUES (1, 'api', '/code/api', 0);
+             INSERT INTO conversations (id, project_id, title, updated_at) VALUES (1, 1, 'Fix', 0);
+             INSERT INTO agent_sessions (id, conversation_id, backend, permission, working_dir)
+               VALUES (1, 1, 'codex', 'auto', '/code/api');
+             INSERT INTO entries (session_id, seq, at, entry) VALUES (1, 1, 0, '{}');",
+        )
+        .unwrap();
+        run(&mut conn).unwrap();
+        let count = |sql: &str| -> i64 { conn.query_row(sql, [], |row| row.get(0)).unwrap() };
+        assert_eq!(count("SELECT COUNT(*) FROM flows WHERE title = 'Fix'"), 1);
+        assert_eq!(
+            count("SELECT COUNT(*) FROM conversations WHERE flow_id = 1"),
+            1
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM entries WHERE conversation_id = 1"),
+            1
+        );
+        conn.execute("DELETE FROM flows WHERE id = 1", []).unwrap();
+        assert_eq!(count("SELECT COUNT(*) FROM conversations"), 0);
+        assert_eq!(count("SELECT COUNT(*) FROM entries"), 0);
+    }
+
+    #[test]
+    fn a_flows_folder_becomes_its_first_folder() {
         let mut conn = Connection::open_in_memory().unwrap();
         for sql in &MIGRATIONS[..6] {
             conn.execute_batch(sql).unwrap();
@@ -112,7 +153,7 @@ mod tests {
         .unwrap();
         run(&mut conn).unwrap();
         let folders: Vec<String> = conn
-            .prepare("SELECT folders FROM conversations ORDER BY id")
+            .prepare("SELECT folders FROM flows ORDER BY id")
             .unwrap()
             .query_map([], |row| row.get(0))
             .unwrap()
