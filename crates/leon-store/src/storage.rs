@@ -175,6 +175,14 @@ impl Storage for Store {
             .map_err(err("saving a conversation"))
     }
 
+    fn remove_project(&self, id: ProjectId) -> Result<(), PortError> {
+        // Its conversations, sessions and entries go with it (ON DELETE CASCADE).
+        self.lock()
+            .execute("DELETE FROM projects WHERE id = ?1", [id.0])
+            .map(drop)
+            .map_err(err("removing a project"))
+    }
+
     fn delete_conversation(&self, id: ConversationId) -> Result<(), PortError> {
         self.lock()
             .execute("DELETE FROM conversations WHERE id = ?1", [id.0])
@@ -429,6 +437,40 @@ mod tests {
 
         store.delete_conversation(conv.id).unwrap();
         assert!(!store.has_conversation(conv.id));
+        assert_eq!(store.entries(session.id).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn removing_a_project_removes_its_conversations_not_others() {
+        let store = Store::open_in_memory().unwrap();
+        let api = store.add_project("api", Path::new("/code/api"), 1).unwrap();
+        let web = store.add_project("web", Path::new("/code/web"), 1).unwrap();
+        let gone = store.create_conversation(api.id, "Fix", 2).unwrap();
+        let kept = store.create_conversation(web.id, "Keep", 2).unwrap();
+        let session = store
+            .create_session(&NewSession {
+                conversation: gone.id,
+                started_by: None,
+                settings: settings(),
+                working_dir: PathBuf::from("/code/api"),
+            })
+            .unwrap();
+        let entry = TimedEntry {
+            at: 3,
+            entry: Entry::User { text: "hi".into() },
+        };
+        store.append_entry(session.id, &entry).unwrap();
+
+        store.remove_project(api.id).unwrap();
+        let names: Vec<_> = store
+            .list_projects()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(names, ["web"]);
+        assert!(!store.has_conversation(gone.id));
+        assert!(store.has_conversation(kept.id));
         assert_eq!(store.entries(session.id).unwrap(), Vec::new());
     }
 

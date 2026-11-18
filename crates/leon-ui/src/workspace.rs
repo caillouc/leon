@@ -68,7 +68,7 @@ pub struct Workspace {
     /// subscription that saves on Enter.
     pub(crate) rename: Option<(ConversationId, Entity<InputState>, Subscription)>,
     /// The left-pane row whose right-click menu is open, and where.
-    pub(crate) row_menu: Option<(ConversationId, gpui::Point<gpui::Pixels>)>,
+    pub(crate) row_menu: Option<(crate::row_menu::MenuFor, gpui::Point<gpui::Pixels>)>,
     pub(crate) form: NewForm,
     pub(crate) open_picker: Option<SharedString>,
     pub(crate) show_archived: bool,

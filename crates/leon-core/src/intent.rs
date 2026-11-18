@@ -9,6 +9,8 @@ use leon_domain::{AgentSessionId, ConversationId, ProjectId, SessionSettings};
 pub enum Intent {
     /// Register a folder as a project.
     AddProject(PathBuf),
+    /// Remove a project from Leon with its conversations; the folder stays.
+    RemoveProject(ProjectId),
     /// The conversation shown in the main pane (`None`: none). Marks it read
     /// and loads its transcripts (NAV-4).
     View(Option<ConversationId>),

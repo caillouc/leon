@@ -299,3 +299,15 @@ fn unchosen_model_and_effort_get_the_defaults() {
     assert_eq!(options.model_label("m2"), "Model 2");
     assert_eq!(options.model_label("other"), "other");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_a_project_forgets_it_and_its_conversations() {
+    let h = harness();
+    new_conversation(&h, BackendKind::Codex).await;
+    h.core.send(Intent::RemoveProject(ProjectId(1)));
+    let s = until(&h.core, "project removed", |s| s.projects.is_empty()).await;
+    assert!(s.conversations.is_empty());
+    assert!(s.sessions.is_empty());
+    assert!(h.storage.projects.lock().unwrap().is_empty());
+    assert!(h.storage.conversations.lock().unwrap().is_empty());
+}

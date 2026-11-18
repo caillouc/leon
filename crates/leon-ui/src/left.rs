@@ -8,6 +8,7 @@ use leon_domain::Status;
 
 use crate::icons::{Icon, chevron, icon};
 use crate::pr_view::pr_badge;
+use crate::row_menu::MenuFor;
 use crate::theme;
 use crate::widgets::{HEADER_HEIGHT, empty, label, status_dot};
 use crate::workspace::{Screen, Workspace, value_of};
@@ -266,18 +267,16 @@ impl Workspace {
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
-                    this.row_menu = Some((id, e.position));
+                    this.row_menu = Some((MenuFor::Conversation(id), e.position));
                     cx.notify();
                 }),
             )
             .into_any_element()
     }
 
-    /// A project's group label, with a + that starts a conversation in it.
-    /// A project's group label: click to fold or unfold its conversations
-    /// (NAV-2); the + starts a conversation in it (NAV-10).
-    /// A project's row: fold chevron, name, count, a dot when a folded
-    /// conversation needs you, and + (on hover) to start one in it.
+    /// A project's row: click to fold or unfold its conversations (NAV-2);
+    /// chevron, name, count, a dot when a folded conversation needs you, +
+    /// (on hover) to start one in it (NAV-10); right-click to remove it.
     fn project_header(
         project: &leon_domain::Project,
         count: usize,
@@ -302,6 +301,13 @@ impl Workspace {
             .on_click(cx.listener(move |this, _, _, _| {
                 this.core.send(Intent::CollapseProject(id, !collapsed));
             }))
+            .on_mouse_down(
+                gpui::MouseButton::Right,
+                cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                    this.row_menu = Some((MenuFor::Project(id), e.position));
+                    cx.notify();
+                }),
+            )
             .child(chevron(!collapsed, theme::fg_muted(), 14.))
             .child(
                 div()

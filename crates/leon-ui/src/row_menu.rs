@@ -1,46 +1,38 @@
-//! Right-click menu of a conversation in the left pane (NAV-3, NAV-4,
-//! NAV-8): rename in place, pin, mark as unread, archive, delete after a
-//! confirmation.
+//! Right-click menus of the left pane: a conversation's (NAV-3, NAV-4,
+//! NAV-8: rename in place, pin, mark as unread, archive, delete) and a
+//! project's (remove it from Leon). Deleting and removing ask first.
 
 use gpui::{
-    AnyElement, Context, IntoElement, PromptLevel, Window, anchored, deferred, div, prelude::*, px,
+    AnyElement, Context, IntoElement, PromptLevel, Stateful, Window, anchored, deferred, div,
+    prelude::*, px,
 };
 use gpui_component::input::{InputEvent, InputState};
 use leon_core::Intent;
-use leon_domain::ConversationId;
+use leon_domain::{ConversationId, ProjectId};
 
 use crate::theme;
 use crate::workspace::{Workspace, value_of};
 
+/// What a right-click menu is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MenuFor {
+    Conversation(ConversationId),
+    Project(ProjectId),
+}
+
 impl Workspace {
     /// The open right-click menu, drawn above everything at the click.
     pub(crate) fn render_row_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let (id, at) = self.row_menu?;
-        let c = &self.snapshot.conversation(id)?.conversation;
-        let (pinned, archived, unread) = (c.pinned, c.archived, c.unread);
-        let item = |key: &'static str, text: &'static str, danger: bool| {
-            div()
-                .id(key)
-                .px_3()
-                .py(px(5.))
-                .rounded_md()
-                .text_size(px(12.5))
-                .when(danger, |d| d.text_color(theme::err()))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::surface_2()))
-                .child(text)
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.row_menu = None;
-                    match key {
-                        "rename" => this.start_rename(id, window, cx),
-                        "pin" => this.core.send(Intent::Pin(id, !pinned)),
-                        "unread" => this.core.send(Intent::MarkUnread(id)),
-                        "archive" => this.core.send(Intent::Archive(id, !archived)),
-                        "delete" => this.confirm_delete(id, window, cx),
-                        _ => {}
-                    }
-                    cx.notify();
-                }))
+        let (target, at) = self.row_menu?;
+        let items = match target {
+            MenuFor::Conversation(id) => self.conversation_items(id, cx)?,
+            MenuFor::Project(id) => vec![menu_item(
+                "remove-project",
+                "Remove project…",
+                true,
+                cx,
+                move |this, window, cx| this.confirm_remove_project(id, window, cx),
+            )],
         };
         let menu = div()
             .id("row-menu")
@@ -51,22 +43,9 @@ impl Workspace {
             .border_color(theme::border_strong())
             .bg(theme::surface())
             .shadow_lg()
-            .child(item("rename", "Rename", false))
-            .child(item(
-                "pin",
-                if pinned { "Unpin" } else { "Pin to top" },
-                false,
-            ))
-            .when(!unread, |d| {
-                d.child(item("unread", "Mark as unread", false))
-            })
-            .child(item(
-                "archive",
-                if archived { "Unarchive" } else { "Archive" },
-                false,
-            ))
-            .child(div().my_1().h(px(1.)).bg(theme::border()))
-            .child(item("delete", "Delete…", true))
+            .children(items)
+            // A pick does not also click the row under the menu.
+            .occlude()
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                 this.row_menu = None;
                 cx.notify();
@@ -81,6 +60,60 @@ impl Workspace {
             .with_priority(2)
             .into_any_element(),
         )
+    }
+
+    fn conversation_items(
+        &self,
+        id: ConversationId,
+        cx: &mut Context<Self>,
+    ) -> Option<Vec<AnyElement>> {
+        let c = &self.snapshot.conversation(id)?.conversation;
+        let (pinned, archived, unread) = (c.pinned, c.archived, c.unread);
+        let mut items = vec![
+            menu_item("rename", "Rename", false, cx, move |this, window, cx| {
+                this.start_rename(id, window, cx);
+            }),
+            menu_item(
+                "pin",
+                if pinned { "Unpin" } else { "Pin to top" },
+                false,
+                cx,
+                move |this, _, _| this.core.send(Intent::Pin(id, !pinned)),
+            ),
+        ];
+        if !unread {
+            items.push(menu_item(
+                "unread",
+                "Mark as unread",
+                false,
+                cx,
+                move |this, _, _| this.core.send(Intent::MarkUnread(id)),
+            ));
+        }
+        items.push(menu_item(
+            "archive",
+            if archived { "Unarchive" } else { "Archive" },
+            false,
+            cx,
+            move |this, _, _| this.core.send(Intent::Archive(id, !archived)),
+        ));
+        items.push(
+            div()
+                .my_1()
+                .h(px(1.))
+                .bg(theme::border())
+                .into_any_element(),
+        );
+        items.push(menu_item(
+            "delete",
+            "Delete…",
+            true,
+            cx,
+            move |this, window, cx| {
+                this.confirm_delete(id, window, cx);
+            },
+        ));
+        Some(items)
     }
 
     /// Turns the row's title into an input; Enter saves.
@@ -114,25 +147,103 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Asks with the system's own dialog before deleting.
     fn confirm_delete(&mut self, id: ConversationId, window: &mut Window, cx: &mut Context<Self>) {
         let title = self
             .snapshot
             .conversation(id)
             .map_or_default(|c| c.conversation.title.clone());
+        self.confirm(
+            &format!("Delete \u{201c}{title}\u{201d}?"),
+            "Its transcripts are removed from Leon. Files and the CLIs' own sessions stay.",
+            "Delete",
+            Intent::Delete(id),
+            window,
+            cx,
+        );
+    }
+
+    fn confirm_remove_project(
+        &mut self,
+        id: ProjectId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = self.snapshot.projects.iter().find(|p| p.id == id) else {
+            return;
+        };
+        let count = self
+            .snapshot
+            .conversations
+            .iter()
+            .filter(|c| c.conversation.project == id)
+            .count();
+        let conversations = match count {
+            0 => String::new(),
+            1 => "Its conversation is deleted from Leon. ".to_owned(),
+            n => format!("Its {n} conversations are deleted from Leon. "),
+        };
+        self.confirm(
+            &format!("Remove \u{201c}{}\u{201d} from Leon?", project.name),
+            &format!(
+                "{conversations}The folder {} and the CLIs' own sessions stay.",
+                project.path.display()
+            ),
+            "Remove",
+            Intent::RemoveProject(id),
+            window,
+            cx,
+        );
+    }
+
+    /// Asks with the system's own dialog, then sends `intent` on `yes`.
+    fn confirm(
+        &self,
+        question: &str,
+        detail: &str,
+        yes: &str,
+        intent: Intent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let answer = window.prompt(
             PromptLevel::Warning,
-            &format!("Delete \u{201c}{title}\u{201d}?"),
-            Some("Its transcripts are removed from Leon. Files and the CLIs' own sessions stay."),
-            &["Delete", "Cancel"],
+            question,
+            Some(detail),
+            &[yes, "Cancel"],
             cx,
         );
         let core = self.core.clone();
         cx.spawn(async move |_, _| {
             if answer.await == Ok(0) {
-                core.send(Intent::Delete(id));
+                core.send(intent);
             }
         })
         .detach();
     }
+}
+
+/// One entry of a right-click menu: closes the menu, then runs `on_pick`.
+fn menu_item(
+    key: &'static str,
+    text: &'static str,
+    danger: bool,
+    cx: &mut Context<Workspace>,
+    on_pick: impl Fn(&mut Workspace, &mut Window, &mut Context<Workspace>) + 'static,
+) -> AnyElement {
+    let item: Stateful<gpui::Div> = div()
+        .id(key)
+        .px_3()
+        .py(px(5.))
+        .rounded_md()
+        .text_size(px(12.5))
+        .when(danger, |d| d.text_color(theme::err()))
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::surface_2()))
+        .child(text);
+    item.on_click(cx.listener(move |this, _, window, cx| {
+        this.row_menu = None;
+        on_pick(this, window, cx);
+        cx.notify();
+    }))
+    .into_any_element()
 }

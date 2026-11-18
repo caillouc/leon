@@ -273,7 +273,11 @@ fn sample() -> Snapshot {
             },
             AgentDefinition {
                 name: "coder".into(),
-                description: "Implements an approved plan.".into(),
+                description: "Implements an approved plan in the worktree it is given: \
+                              writes the code and its tests, runs them, and reports what \
+                              changed. Use it once the plan is approved, never to explore \
+                              or to decide what to build."
+                    .into(),
                 instructions: String::new(),
             },
         ],
@@ -364,6 +368,10 @@ fn main() {
         ),
         ("flow".to_owned(), Shot::Flow(ConversationId(1))),
         ("new-conversation".to_owned(), Shot::NewConversation),
+        (
+            "new-conversation-agent".to_owned(),
+            Shot::NewConversationWith("coder"),
+        ),
         (
             "right-branch".to_owned(),
             Shot::Right(ConversationId(1), "branch"),

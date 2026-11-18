@@ -133,11 +133,23 @@ impl Workspace {
                     .child("New conversation"),
             )
             .child(pair(
-                field("Project", project_picker, None),
-                field("Agent", agent_picker, Some(description)),
+                field("Project", project_picker),
+                field("Agent", agent_picker),
             ))
-            .child(pair(field("CLI", backend, None), field("Model", model, None)))
-            .child(pair(field("Effort", effort, None), field("Permission", permission, None)))
+            // Two lines at most, always the same height: picking another
+            // agent does not move the form.
+            .child(
+                div()
+                    .h(px(34.))
+                    .text_size(px(11.5))
+                    .line_height(px(17.))
+                    .text_color(theme::fg_faint())
+                    .line_clamp(2)
+                    .text_ellipsis()
+                    .child(description),
+            )
+            .child(pair(field("CLI", backend), field("Model", model)))
+            .child(pair(field("Effort", effort), field("Permission", permission)))
             .child(
                 field(
                     "First message",
@@ -181,7 +193,6 @@ impl Workspace {
                                 .children(ghost),
                         )
                         .into_any_element(),
-                    None,
                 ),
             )
             .child(
@@ -250,8 +261,8 @@ impl Workspace {
     }
 }
 
-/// A labelled form field, with an optional hint under it.
-fn field(name: &str, control: AnyElement, hint: Option<String>) -> AnyElement {
+/// A labelled form field.
+fn field(name: &str, control: AnyElement) -> AnyElement {
     div()
         .flex_1()
         .min_w_0()
@@ -265,12 +276,6 @@ fn field(name: &str, control: AnyElement, hint: Option<String>) -> AnyElement {
                 .child(name.to_owned()),
         )
         .child(control)
-        .children(hint.map(|h| {
-            div()
-                .text_size(px(11.5))
-                .text_color(theme::fg_faint())
-                .child(h)
-        }))
         .into_any_element()
 }
 

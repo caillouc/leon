@@ -141,6 +141,9 @@ impl Workspace {
                 .bg(theme::surface())
                 .shadow_lg()
                 .children(items)
+                // A pick does not also click what lies under the list (it
+                // opened the picker below).
+                .occlude()
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     this.open_picker = None;
                     cx.notify();

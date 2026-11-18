@@ -311,6 +311,7 @@ impl Core {
                 self.change_settings(session, &settings);
             }
             Intent::CollapseProject(id, collapsed) => self.collapse_project(id, collapsed),
+            Intent::RemoveProject(id) => self.remove_project(id),
             Intent::Rename(id, title) => self.edit(id, |c| title.trim().clone_into(&mut c.title)),
             Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
@@ -684,13 +685,39 @@ impl Core {
     }
 
     fn delete(&mut self, id: ConversationId) {
+        self.forget(id);
+        let storage = Arc::clone(&self.ports.storage);
+        Self::report(blocking(|| storage.delete_conversation(id)));
+    }
+
+    /// Drops a conversation and its sessions from memory, stopping their CLIs.
+    fn forget(&mut self, id: ConversationId) {
         for session in self.state.sessions_of(id) {
             self.live.remove(&session);
             self.state.sessions.remove(&session);
         }
         self.state.conversations.retain(|c| c.id != id);
+    }
+
+    fn remove_project(&mut self, id: leon_domain::ProjectId) {
         let storage = Arc::clone(&self.ports.storage);
-        Self::report(blocking(|| storage.delete_conversation(id)));
+        if Self::report(blocking(|| storage.remove_project(id))).is_none() {
+            return;
+        }
+        let conversations: Vec<ConversationId> = self
+            .state
+            .conversations
+            .iter()
+            .filter(|c| c.project == id)
+            .map(|c| c.id)
+            .collect();
+        for conversation in conversations {
+            self.forget(conversation);
+        }
+        Arc::make_mut(&mut self.state.projects).retain(|p| p.id != id);
+        Arc::make_mut(&mut self.state.agents).remove(&id);
+        Arc::make_mut(&mut self.state.commands).remove(&id);
+        Arc::make_mut(&mut self.state.project_repos).remove(&id);
     }
 
     fn on_event(&mut self, id: AgentSessionId, event: Option<BackendEvent>) {

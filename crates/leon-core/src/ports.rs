@@ -41,6 +41,9 @@ pub trait Storage: Send + Sync + 'static {
     fn add_project(&self, name: &str, path: &Path, now: i64) -> Result<Project, PortError>;
     /// Folds or unfolds a project's conversations in the left pane.
     fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError>;
+    /// Removes a project from Leon with its conversations, their sessions
+    /// and transcripts. The folder stays on disk.
+    fn remove_project(&self, id: ProjectId) -> Result<(), PortError>;
     /// Every conversation, most recent first.
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError>;
     /// Every agent session, oldest first.

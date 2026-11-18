@@ -32,6 +32,8 @@ pub enum Shot {
     Flow(ConversationId),
     /// The new-conversation form.
     NewConversation,
+    /// The new-conversation form with this agent picked.
+    NewConversationWith(&'static str),
     /// A conversation with this text typed in its message box.
     Typed(ConversationId, &'static str),
     /// A conversation with a right-pane tab open: `changes`, `branch`, `pr`
@@ -106,6 +108,10 @@ impl Workspace {
                 self.tabs.remove(id);
             }
             Shot::NewConversation => self.show_new_conversation(cx),
+            Shot::NewConversationWith(agent) => {
+                self.show_new_conversation(cx);
+                self.form.settings.agent = Some((*agent).to_owned());
+            }
             Shot::Drawer(id, path, split) => {
                 self.select(*id, cx);
                 self.open_first_session(*id);
@@ -168,7 +174,10 @@ impl Workspace {
             Shot::Settings => self.open_screen(Screen::Settings, window, cx),
             Shot::RowMenu(id) => {
                 self.select(*id, cx);
-                self.row_menu = Some((*id, gpui::point(gpui::px(200.), gpui::px(520.))));
+                self.row_menu = Some((
+                    crate::row_menu::MenuFor::Conversation(*id),
+                    gpui::point(gpui::px(200.), gpui::px(520.)),
+                ));
             }
         }
         self.core.send(Intent::View(None));

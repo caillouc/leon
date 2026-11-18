@@ -59,6 +59,14 @@ impl Storage for FakeStorage {
         }
         Ok(())
     }
+    fn remove_project(&self, id: ProjectId) -> Result<(), PortError> {
+        self.projects.lock().unwrap().retain(|p| p.id != id);
+        self.conversations
+            .lock()
+            .unwrap()
+            .retain(|c| c.project != id);
+        Ok(())
+    }
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError> {
         Ok(self.conversations.lock().unwrap().clone())
     }
