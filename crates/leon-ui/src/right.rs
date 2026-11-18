@@ -17,7 +17,7 @@ use crate::diff_view::{DiffSource, DraftAt};
 use crate::github::pr_icon;
 use crate::icons::{Icon, icon};
 use crate::theme;
-use crate::widgets::{HEADER_HEIGHT, button, empty, label, primary, status_dot};
+use crate::widgets::{HEADER_HEIGHT, button, empty, label, primary};
 use crate::workspace::{Screen, Workspace};
 
 /// The right pane's tabs.
@@ -368,7 +368,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(status_dot(s.status))
+                    .child(self.status_mark(s.status))
                     .child(
                         div()
                             .flex_1()

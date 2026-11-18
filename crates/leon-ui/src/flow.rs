@@ -21,7 +21,7 @@ use crate::flow_model::{
 };
 use crate::flow_paint::{Arrow, legend};
 use crate::theme;
-use crate::widgets::{button, status_dot};
+use crate::widgets::button;
 use crate::workspace::{Tab, Workspace};
 
 /// What the flow tab remembers per conversation.
@@ -391,7 +391,7 @@ impl Workspace {
                     .gap(px(6. * s))
                     .text_size(px(13. * s))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(status_dot(session.status))
+                    .child(self.status_mark(session.status))
                     .child(
                         div()
                             .flex_1()

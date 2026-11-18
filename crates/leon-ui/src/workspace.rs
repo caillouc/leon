@@ -92,6 +92,10 @@ pub struct Workspace {
     flash: Option<(u64, String)>,
     /// Open the next new conversation when it shows up.
     pub(crate) pending_open: bool,
+    /// The loader's step, while an agent works (NAV-5).
+    pub(crate) spin: u8,
+    /// Ticks `spin` while an agent works.
+    pub(crate) spinner: Option<gpui::Task<()>>,
     shown_notifications: u64,
     started: Option<Instant>,
     _updates: Task<()>,
@@ -201,6 +205,8 @@ impl Workspace {
             settings_form,
             flash: None,
             pending_open: false,
+            spin: 0,
+            spinner: None,
             shown_notifications: 0,
             started: Some(started),
             _updates: updates,
@@ -216,6 +222,7 @@ impl Workspace {
             .map(|c| c.conversation.id)
             .find(|id| self.snapshot.conversation(*id).is_none());
         self.snapshot = next;
+        self.keep_spinning(cx);
         if let Some(id) = new_conversation.filter(|_| self.pending_open) {
             self.pending_open = false;
             self.select(id, cx);

@@ -141,7 +141,11 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(attention_icon(attention))
+                    .child(if attention == Attention::Working {
+                        self.spinner(theme::accent(), 14.)
+                    } else {
+                        attention_icon(attention)
+                    })
                     .child(title)
                     .children(attention_pill(attention))
                     .children(self.snapshot.prs.get(&id).map(pr_badge)),

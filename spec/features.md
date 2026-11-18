@@ -46,7 +46,7 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **NAV-4** Unread indicator per conversation; the user can also mark one as
   unread.
 - **NAV-5** Each conversation's row says what it asks of the user: working
-  (loader icon, "Working…"), needs you — an answer or a decision — (amber
+  (a turning loader, also on the agent's tab and Flow box, "Working…"), needs you — an answer or a decision — (amber
   edge, "Needs you"), to review — done and not looked at yet — (green edge,
   "To review"), failed (red), or nothing. A folded project shows its most
   pressing colour.

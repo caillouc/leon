@@ -9,7 +9,7 @@ use leon_domain::{ConversationId, Status};
 
 use crate::icons::{Icon, icon};
 use crate::theme;
-use crate::widgets::{HEADER_HEIGHT, empty, status_dot};
+use crate::widgets::{HEADER_HEIGHT, empty};
 use crate::workspace::{Tab, Workspace};
 
 impl Workspace {
@@ -115,7 +115,7 @@ impl Workspace {
                 tabs = tabs.child(Self::tab_button(
                     &format!("tab-{}", sid.0),
                     text,
-                    Some(s.status),
+                    Some(self.status_mark(s.status)),
                     selected,
                     id,
                     Tab::Session(*sid),
@@ -171,7 +171,7 @@ impl Workspace {
     fn tab_button(
         id: &str,
         text: SharedString,
-        status: Option<Status>,
+        mark: Option<AnyElement>,
         selected: bool,
         conversation: ConversationId,
         tab: Tab,
@@ -198,7 +198,7 @@ impl Workspace {
             })
             .cursor_pointer()
             .hover(|s| s.text_color(theme::fg()))
-            .when_some(status, |d, st| d.child(status_dot(st)))
+            .children(mark)
             .child(text)
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.tabs.insert(conversation, tab);
