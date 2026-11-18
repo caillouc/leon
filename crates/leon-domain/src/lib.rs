@@ -16,7 +16,10 @@ mod settings;
 mod transcript;
 
 pub use backend::BackendKind;
-pub use connectors::{CliConnectors, Connector, ConnectorKind, ConnectorState};
+pub use connectors::{
+    CliConnectors, Connector, ConnectorKind, ConnectorRow, ConnectorState, connector_key,
+    connector_table,
+};
 pub use conversation::{
     AgentSession, AgentSessionId, Conversation, ConversationId, SessionSettings, Status,
 };

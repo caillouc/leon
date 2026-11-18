@@ -81,7 +81,9 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     // The planner is still in its turn: the coder's answer waits for it.
     end_turn(&h, 1, "Step 1 done.");
     let s = until(&h.core, "coder idle", |s| {
-        s.sessions[&AgentSessionId(2)].status == Status::Idle
+        s.sessions
+            .get(&AgentSessionId(2))
+            .is_some_and(|x| x.status == Status::Idle)
     })
     .await;
     assert_eq!(

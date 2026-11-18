@@ -28,6 +28,8 @@ const ROW_GAP: f32 = 64.;
 const RING_GAP: f32 = 270.;
 /// Smallest ring radius.
 const RING_MIN: f32 = 180.;
+/// How far apart, sideways, the two directions of a curved arrow leave a box.
+const ARC_SPREAD: f32 = 12.;
 
 fn size_of(node: Node) -> Pt {
     match node {
@@ -311,25 +313,45 @@ pub(crate) fn arc(a: Rect, b: Rect, bend: f32) -> [Pt; 4] {
         y: r.y + r.h / 2.,
     };
     let (ca, cb) = (centre(a), centre(b));
-    // Where the line between the centres leaves a box.
-    let border = |r: Rect, from: Pt, to: Pt| {
-        let (dx, dy) = (to.x - from.x, to.y - from.y);
-        let t = (r.w / 2. / dx.abs().max(f32::EPSILON)).min(r.h / 2. / dy.abs().max(f32::EPSILON));
-        Pt {
-            x: from.x + dx * t.min(1.),
-            y: from.y + dy * t.min(1.),
-        }
-    };
-    let (start, end) = (border(a, ca, cb), border(b, cb, ca));
-    let length = distance(start, end).max(1.);
+    let span = distance(ca, cb).max(1.);
     // The left of the direction of travel (screen y points down).
-    let (nx, ny) = ((end.y - start.y) / length, -(end.x - start.x) / length);
+    let (nx, ny) = ((cb.y - ca.y) / span, -(cb.x - ca.x) / span);
+    // Each direction leaves and arrives on its own side of the line between
+    // the centres, so the way there and the way back never share an end.
+    let side = ARC_SPREAD * bend / 0.2;
+    let shift = |p: Pt| Pt {
+        x: p.x + nx * side,
+        y: p.y + ny * side,
+    };
+    let (start, end) = (exit(a, shift(ca), shift(cb)), exit(b, shift(cb), shift(ca)));
+    let length = distance(start, end).max(1.);
     let push = bend * length;
     let along = |t: f32| Pt {
         x: start.x + (end.x - start.x) * t + nx * push,
         y: start.y + (end.y - start.y) * t + ny * push,
     };
     [start, along(0.25), along(0.75), end]
+}
+
+/// Where the ray from `from` (inside `r`) towards `to` leaves `r`.
+fn exit(r: Rect, from: Pt, to: Pt) -> Pt {
+    let (dx, dy) = (to.x - from.x, to.y - from.y);
+    let reach = |d: f32, from: f32, low: f32, high: f32| {
+        if d > f32::EPSILON {
+            (high - from) / d
+        } else if d < -f32::EPSILON {
+            (low - from) / d
+        } else {
+            f32::INFINITY
+        }
+    };
+    let t = reach(dx, from.x, r.x, r.x + r.w)
+        .min(reach(dy, from.y, r.y, r.y + r.h))
+        .clamp(0., 1.);
+    Pt {
+        x: from.x + dx * t,
+        y: from.y + dy * t,
+    }
 }
 
 /// The point halfway along a cubic curve.

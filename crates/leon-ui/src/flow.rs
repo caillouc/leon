@@ -273,7 +273,7 @@ impl Workspace {
             .children(boxes)
             .children(labels)
             .child(self.flow_controls(id, view, cx))
-            .child(legend())
+            .child(legend(self.arrow_toggle()))
             .children(inspector)
             .into_any_element()
     }
@@ -584,7 +584,6 @@ impl Workspace {
             .border_color(theme::border_strong())
             .bg(theme::surface())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(self.arrow_toggle())
             .child(button(
                 "flow-zoom-out",
                 "−",
@@ -607,7 +606,7 @@ impl Workspace {
             ))
             .child(button(
                 "flow-reset-view",
-                "Reset view",
+                "Fit",
                 cx.listener(move |this, _, _, cx| {
                     this.flow.views.remove(&id);
                     cx.notify();

@@ -147,10 +147,10 @@ conversation**: one item in the left pane (D5).
 
 ### Connectors
 
-- **TOOLS-1** A Connectors view: for each CLI, read-only, what it can reach —
-  its plugins, its own MCP servers and its account's connectors (Slack,
-  Gmail…) — with their state; connectors offered by the account but not
-  connected stay folded behind a count. Then Leon's shared MCP list, which
+- **TOOLS-1** A Connectors view: one table, read-only, with a row per
+  service (Slack, Gmail, Metabase…) and a column per CLI saying whether it
+  works there (as a plugin, an MCP server or an account connector); working
+  ones only by default, a search by name. Then Leon's shared MCP list, which
   every CLI's sessions get (add and remove servers there, I14).
 
 ### Settings

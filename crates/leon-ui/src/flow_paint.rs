@@ -7,8 +7,9 @@ use crate::flow::color;
 use crate::flow_model::{EdgeKind, Pt, Step, bends};
 use crate::theme;
 
-/// Legend and gestures, bottom left.
-pub(crate) fn legend() -> AnyElement {
+/// The legend, bottom left, with `arrows` (the arrow style toggle) after
+/// it.
+pub(crate) fn legend(arrows: AnyElement) -> AnyElement {
     let key = |text: &'static str, kind: EdgeKind| {
         div()
             .flex()
@@ -20,7 +21,7 @@ pub(crate) fn legend() -> AnyElement {
     div()
         .absolute()
         .left_3()
-        .top_3()
+        .bottom_3()
         .flex()
         .items_center()
         .gap_3()
@@ -35,6 +36,10 @@ pub(crate) fn legend() -> AnyElement {
         .child(key("prompt", EdgeKind::Prompt))
         .child(key("report", EdgeKind::Report))
         .child(key("question", EdgeKind::Question))
+        .child(div().w(px(1.)).h(px(16.)).bg(theme::border()))
+        .child(arrows)
+        // Clicks here do not start dragging the diagram.
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .into_any_element()
 }
 

@@ -340,16 +340,15 @@ fn arcs_join_the_borders_and_bow_apart() {
     };
     let (a, b) = (rect(0., 0.), rect(300., 0.));
     let [start, out, into, end] = arc(a, b, 0.2);
-    // From a's right edge to b's left edge, on the line between the centres.
-    assert_eq!(
-        (start, end),
-        (Pt { x: 100., y: 25. }, Pt { x: 300., y: 25. })
-    );
-    // Going right, the left is up: the controls sit above the line.
-    assert!(out.y < 25. && into.y < 25., "{out:?} {into:?}");
-    // The way back bows the other side, so the two never overlap.
-    let [_, back_out, back_into, _] = arc(b, a, 0.2);
-    assert!(back_out.y > 25. && back_into.y > 25.);
+    // From a's right edge to b's left edge, a little to the left of travel
+    // (up, going right).
+    assert!((start.x - 100.).abs() < 0.01 && (end.x - 300.).abs() < 0.01);
+    assert!(start.y < 25. && end.y < 25., "{start:?} {end:?}");
+    // The controls bow further that way.
+    assert!(out.y < start.y && into.y < end.y, "{out:?} {into:?}");
+    // The way back leaves and arrives on the other side: no shared end.
+    let [back_start, back_out, _, back_end] = arc(b, a, 0.2);
+    assert!(back_start.y > 25. && back_end.y > 25. && back_out.y > 25.);
     let middle = curve_middle([start, out, into, end]);
-    assert!((middle.x - 200.).abs() < 0.01 && middle.y < 25.);
+    assert!((middle.x - 200.).abs() < 0.01 && middle.y < start.y);
 }

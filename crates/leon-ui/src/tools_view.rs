@@ -3,7 +3,6 @@
 //! read from the CLIs; then Leon's shared list of servers, which every CLI
 //! gets (add and remove here, I14).
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use gpui::{
@@ -12,19 +11,21 @@ use gpui::{
 use gpui_component::input::{Input, InputState};
 use leon_core::Intent;
 use leon_domain::{
-    BackendKind, CliConnectors, Connector, ConnectorKind, ConnectorState, McpServer, split_command,
+    BackendKind, CliConnectors, Connector, ConnectorKind, ConnectorState, McpServer,
+    connector_table, split_command,
 };
 
-use crate::icons::{Icon, icon};
 use crate::left::since;
 use crate::theme;
-use crate::widgets::{button, empty, pane_header, primary};
+use crate::widgets::{OnClick, button, empty, pane_header, primary, segmented};
 use crate::workspace::{Workspace, value_of};
 
 /// The add form's inputs and its last error.
 pub(crate) struct ToolsForm {
-    /// CLIs whose not-connected account connectors are shown.
-    pub show_offered: HashSet<BackendKind>,
+    /// Filters the connectors table by name.
+    search: Entity<InputState>,
+    /// The table shows every connector, not only the working ones.
+    all: bool,
     name: Entity<InputState>,
     command: Entity<InputState>,
     env: Entity<InputState>,
@@ -38,7 +39,8 @@ impl ToolsForm {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
         };
         Self {
-            show_offered: HashSet::new(),
+            search: input("Find a connector: Slack, Metabase…", window, cx),
+            all: false,
             name: input("Name, e.g. metabase", window, cx),
             command: input("Command, e.g. npx -y @org/metabase-mcp", window, cx),
             env: input(
@@ -95,9 +97,9 @@ impl Workspace {
             )
             .when(running, |b| b.opacity(0.6)),
         );
-        let clis: Vec<AnyElement> = match &self.snapshot.tools {
-            Some((_, clis)) => clis.iter().map(|c| self.cli_card(c, cx)).collect(),
-            None => vec![empty("Asking each CLI…")],
+        let table = match &self.snapshot.tools {
+            Some((_, clis)) => self.connectors_table(clis, cx),
+            None => empty("Asking each CLI…"),
         };
         let shared = self.render_shared(cx);
         div()
@@ -117,104 +119,138 @@ impl Workspace {
                         .flex_col()
                         .gap_4()
                         .text_size(px(13.))
-                        .children(clis)
+                        .child(table)
                         .child(shared),
                 ),
             )
             .into_any_element()
     }
 
-    /// One CLI: its working connectors, then the disabled and failing ones;
-    /// the account's connectors not logged in stay folded behind a count.
-    fn cli_card(&self, cli: &CliConnectors, cx: &mut Context<Self>) -> AnyElement {
-        let backend = cli.backend;
-        let of = |state| cli.connectors.iter().filter(move |c| c.state == state);
-        let on = of(ConnectorState::On).count();
-        let offered: Vec<&Connector> = of(ConnectorState::NeedsLogin).collect();
-        let open = self.tools_form.show_offered.contains(&backend);
-        let rows = of(ConnectorState::On)
-            .chain(of(ConnectorState::Failed))
-            .chain(of(ConnectorState::Off))
-            .map(connector_row);
+    /// One row per service (Slack, Metabase…), one column per CLI: whether
+    /// it works there. Working ones only unless "All" is chosen; a search
+    /// narrows by name.
+    fn connectors_table(&self, clis: &[CliConnectors], cx: &mut Context<Self>) -> AnyElement {
+        let query = value_of(&self.tools_form.search, cx).to_lowercase();
+        let all = self.tools_form.all;
+        let rows: Vec<_> = connector_table(clis)
+            .into_iter()
+            .filter(|r| all || r.connected())
+            .filter(|r| query.is_empty() || r.name.to_lowercase().contains(&query))
+            .collect();
+        let backends: Vec<BackendKind> = clis.iter().map(|c| c.backend).collect();
+        let filter = segmented(
+            "connectors-filter",
+            [(false, "Working"), (true, "All")]
+                .into_iter()
+                .map(|(value, text)| {
+                    let view = cx.entity().downgrade();
+                    let click: OnClick = Box::new(move |_, _, cx| {
+                        view.update(cx, |this, cx| {
+                            this.tools_form.all = value;
+                            cx.notify();
+                        })
+                        .ok();
+                    });
+                    (text.into(), all == value, click)
+                })
+                .collect(),
+        );
+        let problems = clis.iter().filter_map(|c| {
+            c.problem.as_ref().map(|p| {
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme::warn())
+                    .child(format!("{}: {p}", c.backend.display_name()))
+            })
+        });
+        let head = div()
+            .flex()
+            .items_center()
+            .px_4()
+            .py_2()
+            .border_b_1()
+            .border_color(theme::border())
+            .text_size(px(12.))
+            .text_color(theme::fg_muted())
+            .child(div().flex_1().child("Connector"))
+            .children(
+                backends
+                    .iter()
+                    .map(|b| div().w(px(COLUMN)).flex_none().child(b.display_name())),
+            );
+        let body = rows.iter().enumerate().map(|(ix, row)| {
+            let kinds: Vec<&str> = {
+                let mut k: Vec<&str> = row.entries.iter().map(|(_, c)| kind_name(c.kind)).collect();
+                k.sort_unstable();
+                k.dedup();
+                k
+            };
+            div()
+                .flex()
+                .items_center()
+                .px_4()
+                .py(px(8.))
+                .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(row.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .text_color(theme::fg_faint())
+                                .child(kinds.join(" · ")),
+                        ),
+                )
+                .children(
+                    backends
+                        .iter()
+                        .map(|b| cell(&row.of(*b).collect::<Vec<_>>())),
+                )
+        });
+        let count = rows.len();
         div()
-            .p_4()
             .flex()
             .flex_col()
-            .gap_2()
-            .rounded_xl()
-            .border_1()
-            .border_color(theme::border())
-            .bg(theme::panel())
+            .gap_3()
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_size(px(14.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(backend.display_name()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(theme::fg_muted())
-                            .child(format!("{on} working")),
-                    ),
+                    .gap_3()
+                    .child(div().flex_1().child(Input::new(&self.tools_form.search)))
+                    .child(filter),
             )
-            .children(cli.problem.as_ref().map(|p| {
+            .children(problems)
+            .child(
                 div()
-                    .text_size(px(12.))
-                    .text_color(theme::warn())
-                    .child(p.clone())
-            }))
-            .when(cli.connectors.is_empty() && cli.problem.is_none(), |d| {
-                d.child(hint("No plugin, server or connector."))
-            })
-            .child(div().flex().flex_col().children(rows))
-            .when(!offered.is_empty(), |d| {
-                let n = offered.len();
-                d.child(
-                    div()
-                        .id(SharedString::from(format!("offered-{}", backend.id())))
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .py_1()
-                        .cursor_pointer()
-                        .text_size(px(12.5))
-                        .text_color(theme::fg_muted())
-                        .hover(|s| s.text_color(theme::fg()))
-                        .child(icon(
-                            if open {
-                                Icon::ChevronDown
-                            } else {
-                                Icon::ChevronRight
-                            },
-                            theme::fg_muted(),
-                            14.,
-                        ))
-                        .child(format!(
-                            "{n} more offered by your account, not connected — log in to one from the CLI"
-                        ))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            let shown = &mut this.tools_form.show_offered;
-                            if !shown.remove(&backend) {
-                                shown.insert(backend);
-                            }
-                            cx.notify();
-                        })),
-                )
-                .when(open, |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .children(offered.into_iter().map(connector_row)),
-                    )
-                })
-            })
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(theme::border())
+                    .bg(theme::panel())
+                    .overflow_hidden()
+                    .text_size(px(13.))
+                    .child(head)
+                    .children(body)
+                    .when(count == 0, |d| {
+                        d.child(empty(if all {
+                            "No connector matches."
+                        } else {
+                            "No working connector matches. Choose All to see the others."
+                        }))
+                    }),
+            )
+            .child(hint(
+                "Account connectors (Slack, Gmail…) are connected on the CLI's account, e.g. \
+                 claude.ai for Claude Code; plugins and servers in each CLI.",
+            ))
             .into_any_element()
     }
 
@@ -360,64 +396,50 @@ impl Workspace {
     }
 }
 
-/// One connector: a dot for its state, its name, what it is, a detail.
-fn connector_row(c: &Connector) -> gpui::Div {
-    let (color, state) = match c.state {
-        ConnectorState::On => (theme::ok(), "on"),
-        ConnectorState::Off => (theme::fg_faint(), "off"),
-        ConnectorState::NeedsLogin => (theme::fg_faint(), "not connected"),
-        ConnectorState::Failed => (theme::err(), "failing"),
-    };
-    let kind = match c.kind {
+/// Width of a CLI's column in the connectors table.
+const COLUMN: f32 = 132.;
+
+fn kind_name(kind: ConnectorKind) -> &'static str {
+    match kind {
         ConnectorKind::Plugin => "Plugin",
         ConnectorKind::Server => "Server",
         ConnectorKind::Account => "Account",
+    }
+}
+
+/// What one CLI has for a service: the best state among its entries, as a
+/// dot and a word, or a dash when it has nothing.
+fn cell(entries: &[&Connector]) -> gpui::Div {
+    let rank = |s: ConnectorState| match s {
+        ConnectorState::On => 0,
+        ConnectorState::Failed => 1,
+        ConnectorState::NeedsLogin => 2,
+        ConnectorState::Off => 3,
+    };
+    let best = entries.iter().map(|c| c.state).min_by_key(|s| rank(*s));
+    let (color, text) = match best {
+        Some(ConnectorState::On) => (theme::ok(), "connected"),
+        Some(ConnectorState::Failed) => (theme::err(), "failing"),
+        Some(ConnectorState::NeedsLogin) => (theme::warn(), "log in"),
+        Some(ConnectorState::Off) => (theme::fg_faint(), "off"),
+        None => (theme::border_strong(), "—"),
     };
     div()
+        .w(px(COLUMN))
+        .flex_none()
         .flex()
         .items_center()
-        .gap_3()
-        .py(px(6.))
-        .border_t_1()
-        .border_color(theme::border())
-        .child(div().size(px(8.)).flex_none().rounded_full().bg(color))
-        .child(
-            div()
-                .w(px(220.))
-                .flex_none()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .font_weight(FontWeight::MEDIUM)
-                .child(c.name.clone()),
-        )
-        .child(
-            div()
-                .w(px(64.))
-                .flex_none()
-                .text_size(px(11.5))
-                .text_color(theme::fg_faint())
-                .child(kind),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_size(px(12.))
-                .text_color(theme::fg_muted())
-                .child(c.detail.clone()),
-        )
-        .child(
-            div()
-                .flex_none()
-                .text_size(px(11.5))
-                .text_color(color)
-                .child(state),
-        )
+        .gap(px(6.))
+        .text_size(px(12.5))
+        .text_color(if best.is_some() {
+            theme::fg_muted()
+        } else {
+            theme::fg_faint()
+        })
+        .when(best.is_some(), |d| {
+            d.child(div().size(px(8.)).rounded_full().bg(color))
+        })
+        .child(text)
 }
 
 fn hint(text: &str) -> gpui::Div {
