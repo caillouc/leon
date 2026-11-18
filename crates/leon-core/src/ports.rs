@@ -103,6 +103,9 @@ pub struct SlashCommand {
     pub name: String,
     /// One-line description.
     pub description: String,
+    /// The arguments it takes, from its `argument-hint` field, e.g.
+    /// `[environment] [version]`.
+    pub argument_hint: Option<String>,
 }
 
 /// A folder the user registered in the plugin layout (P3, EXT-2): `agents/`,

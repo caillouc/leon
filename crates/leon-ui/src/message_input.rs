@@ -3,8 +3,8 @@
 //! (CONV-11).
 
 use gpui::{
-    AnyElement, App, ClipboardItem, Context, Entity, Focusable, IntoElement, SharedString, Window,
-    div, prelude::*, px,
+    AnyElement, App, ClipboardItem, ContentMask, Context, Entity, Focusable, IntoElement,
+    SharedString, TextAlign, TextRun, Window, canvas, deferred, div, point, prelude::*, px,
 };
 use gpui_component::input::{Paste, TextareaState};
 use leon_core::ports::SlashCommand;
@@ -154,8 +154,7 @@ impl Workspace {
                     )
                 })
                 .on_click(move |_, window, cx: &mut App| {
-                    let text = SharedString::from(format!("/{name} "));
-                    input.update(cx, |state, cx| state.set_value(text, window, cx));
+                    write_in(&input, format!("/{name} "), window, cx);
                     input.focus_handle(cx).focus(window, cx);
                 })
         });
@@ -192,6 +191,52 @@ pub(crate) fn slash_matches<'a>(
     (!matches.is_empty()).then_some(matches)
 }
 
+/// What is left to give of a `/` command's arguments, to show after the
+/// text: `None` before the command's name and a space, for a command without
+/// an `argument-hint`, or once every argument is typed.
+pub(crate) fn argument_hint(typed: &str, commands: &[SlashCommand]) -> Option<String> {
+    let (name, args) = typed.strip_prefix('/')?.split_once(char::is_whitespace)?;
+    let hint = commands
+        .iter()
+        .find(|c| c.name == name)?
+        .argument_hint
+        .as_deref()?;
+    let left: Vec<&str> = hint_parts(hint)
+        .into_iter()
+        .skip(args.split_whitespace().count())
+        .collect();
+    if left.is_empty() {
+        return None;
+    }
+    let gap = if typed.ends_with(char::is_whitespace) {
+        ""
+    } else {
+        " "
+    };
+    Some(format!("{gap}{}", left.join(" ")))
+}
+
+/// One part per argument: `[environment name] <file> force` gives
+/// `[environment name]`, `<file>` and `force`.
+fn hint_parts(hint: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut rest = hint.trim_start();
+    while !rest.is_empty() {
+        let close = match rest.chars().next() {
+            Some('[') => rest.find(']'),
+            Some('<') => rest.find('>'),
+            _ => None,
+        };
+        let end = close
+            .map(|i| i + 1)
+            .or_else(|| rest.find(char::is_whitespace))
+            .unwrap_or(rest.len());
+        parts.push(&rest[..end]);
+        rest = rest[end..].trim_start();
+    }
+    parts
+}
+
 /// What Tab writes in the box: the first matching command and a space.
 pub(crate) fn slash_completion(typed: &str, commands: &[SlashCommand]) -> Option<String> {
     let first = slash_matches(typed, commands)?.into_iter().next()?;
@@ -215,8 +260,65 @@ impl Workspace {
         let Some(text) = completion else {
             return false;
         };
-        input.update(cx, |state, cx| state.set_value(text, window, cx));
+        write_in(input, text, window, cx);
         true
+    }
+
+    /// The arguments the `/` command in `input` still takes, in grey right
+    /// after the caret while the caret is at the end of the text.
+    pub(crate) fn argument_ghost(
+        &self,
+        input: &Entity<TextareaState>,
+        project: Option<ProjectId>,
+        cx: &App,
+    ) -> Option<AnyElement> {
+        let state = input.read(cx);
+        if state.cursor() != state.text().len() {
+            return None;
+        }
+        let commands = self.snapshot.commands.get(&project?)?;
+        let hint = argument_hint(&state.value(), commands)?;
+        let input = input.downgrade();
+        // Deferred: drawn after the box has placed its caret this frame.
+        let ghost = canvas(
+            |_, _, _| (),
+            move |_, (), window, cx| {
+                let Some(caret) = input
+                    .upgrade()
+                    .and_then(|input| input.read(cx).prepaint_caret_geometry())
+                else {
+                    return;
+                };
+                let style = window.text_style();
+                let run = TextRun {
+                    color: theme::fg_faint().into(),
+                    ..style.to_run(hint.len())
+                };
+                let size = style.font_size.to_pixels(window.rem_size());
+                let line = window
+                    .text_system()
+                    .shape_line(hint.into(), size, &[run], None);
+                let bounds = caret.cursor_bounds();
+                // The caret is shorter than the line and centred on it.
+                let inset = (caret.line_height() - bounds.size.height) / 2.;
+                let at = point(
+                    bounds.right(),
+                    bounds.origin.y + caret.scroll_offset().y - inset,
+                );
+                let mask = ContentMask {
+                    bounds: caret.input_bounds(),
+                };
+                window.with_content_mask(Some(mask), |window| {
+                    let painted =
+                        line.paint(at, caret.line_height(), TextAlign::Left, None, window, cx);
+                    if let Err(error) = painted {
+                        tracing::debug!(%error, "could not draw the argument hint");
+                    }
+                });
+            },
+        );
+        // The box's text size, out of the box's layout.
+        Some(deferred(div().absolute().text_sm().child(ghost.size_0())).into_any_element())
     }
 
     /// The agent's suggested next message (CONV-10) shows as the message
@@ -252,10 +354,22 @@ impl Workspace {
             return;
         }
         cx.stop_propagation();
-        let text = text.to_owned();
-        self.composer
-            .update(cx, |state, cx| state.set_value(text, window, cx));
+        write_in(&self.composer, text.to_owned(), window, cx);
     }
+}
+
+/// Puts `text` in `input`, the caret after it.
+pub(crate) fn write_in(
+    input: &Entity<TextareaState>,
+    text: String,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let end = text.len();
+    input.update(cx, |state, cx| {
+        state.set_value(text, window, cx);
+        state.set_selected_range(end..end, cx);
+    });
 }
 
 /// The message box's placeholder without a suggestion.
@@ -265,7 +379,7 @@ pub(crate) const PLACEHOLDER: &str = "Message the agent";
 mod tests {
     use leon_core::ports::SlashCommand;
 
-    use super::{folds, message, slash_completion, slash_matches};
+    use super::{argument_hint, folds, message, slash_completion, slash_matches};
 
     #[test]
     fn long_pastes_fold_and_join_the_message() {
@@ -286,6 +400,7 @@ mod tests {
         let command = |name: &str| SlashCommand {
             name: name.into(),
             description: String::new(),
+            argument_hint: None,
         };
         let commands = [command("review"), command("release"), command("deploy")];
         let names = |typed: &str| {
@@ -302,5 +417,35 @@ mod tests {
             Some("/release ")
         );
         assert_eq!(slash_completion("/release now", &commands), None);
+    }
+
+    #[test]
+    fn argument_hints_fill_in_as_arguments_are_typed() {
+        let deploy = SlashCommand {
+            name: "deploy".into(),
+            description: String::new(),
+            argument_hint: Some("[environment name] <version>  force".into()),
+        };
+        let commands = [deploy];
+        let cases = [
+            ("/deploy ", Some("[environment name] <version> force")),
+            // An argument being typed takes its place.
+            ("/deploy prod", Some(" <version> force")),
+            ("/deploy prod ", Some("<version> force")),
+            ("/deploy prod 1.2 ", Some("force")),
+            // Every argument given: nothing left to show.
+            ("/deploy prod 1.2 force", None),
+            // Only after the full command name and a space.
+            ("/deploy", None),
+            ("/dep ", None),
+            ("deploy ", None),
+        ];
+        for (typed, expected) in cases {
+            assert_eq!(
+                argument_hint(typed, &commands).as_deref(),
+                expected,
+                "{typed:?}"
+            );
+        }
     }
 }

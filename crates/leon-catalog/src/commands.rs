@@ -91,6 +91,10 @@ fn read(file: &Path, fallback: String) -> Option<SlashCommand> {
             .filter(|n| !n.is_empty())
             .unwrap_or(fallback),
         description,
+        argument_hint: fields
+            .get("argument-hint")
+            .cloned()
+            .filter(|h| !h.is_empty()),
     })
 }
 
@@ -139,7 +143,7 @@ mod tests {
         write(
             source.path(),
             "skills/deploy/SKILL.md",
-            "---\ndescription: Deploy\n---\n",
+            "---\ndescription: Deploy\nargument-hint: [environment] [version]\n---\n",
         );
         let list = commands(home.path(), &[source.path().to_path_buf()], project.path());
         let got: Vec<(&str, &str)> = list
@@ -154,5 +158,11 @@ mod tests {
                 ("review", "Project review")
             ]
         );
+        // The arguments a command takes, when its file says so.
+        assert_eq!(
+            list[0].argument_hint.as_deref(),
+            Some("[environment] [version]")
+        );
+        assert_eq!(list[1].argument_hint, None);
     }
 }

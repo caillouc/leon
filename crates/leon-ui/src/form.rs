@@ -42,13 +42,15 @@ impl Workspace {
         let Some(project) = project else {
             return empty("No project.");
         };
-        let slash = self.slash_list(&self.form_text.clone(), Some(project.id), cx);
+        let project_id = project.id;
+        let slash = self.slash_list(&self.form_text, Some(project_id), cx);
+        let ghost = self.argument_ghost(&self.form_text, Some(project_id), cx);
         let chips = self.pasted_chips(cx);
         // Tab writes in the first `/` command while the list shows.
         let input_box = Self::paste_aware(div(), cx).capture_action(cx.listener(
-            |this, _: &IndentInline, window, cx| {
+            move |this, _: &IndentInline, window, cx| {
                 let input = this.form_text.clone();
-                if this.complete_slash(&input, this.form.project, window, cx) {
+                if this.complete_slash(&input, Some(project_id), window, cx) {
                     cx.stop_propagation();
                 }
             },
@@ -175,7 +177,8 @@ impl Workspace {
                                 .flex_col()
                                 .gap_2()
                                 .children(chips)
-                                .child(Textarea::new(&self.form_text).appearance(false)),
+                                .child(Textarea::new(&self.form_text).appearance(false))
+                                .children(ghost),
                         )
                         .into_any_element(),
                     None,

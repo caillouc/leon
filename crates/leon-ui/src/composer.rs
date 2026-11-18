@@ -169,6 +169,7 @@ impl Workspace {
             .conversation(s.session.conversation)
             .map(|c| c.conversation.project);
         let slash = self.slash_list(&self.composer.clone(), project, cx);
+        let ghost = self.argument_ghost(&self.composer, project, cx);
         let chips = self.pasted_chips(cx);
         let suggestion = (!running && self.rewind.is_none())
             .then(|| s.suggestions.first().cloned())
@@ -200,6 +201,7 @@ impl Workspace {
                     .gap_2()
                     .children(chips)
                     .child(Textarea::new(&self.composer).appearance(false))
+                    .children(ghost)
                     .child(
                         div()
                             .flex()

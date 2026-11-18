@@ -5,7 +5,9 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use gpui::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, point, px, size};
+use gpui::{
+    App, AppContext as _, Bounds, Focusable as _, WindowBounds, WindowOptions, point, px, size,
+};
 use gpui_component::{Root, Theme, ThemeMode};
 use leon_core::{CoreHandle, Intent};
 use leon_domain::ConversationId;
@@ -30,6 +32,8 @@ pub enum Shot {
     Flow(ConversationId),
     /// The new-conversation form.
     NewConversation,
+    /// A conversation with this text typed in its message box.
+    Typed(ConversationId, &'static str),
     /// A conversation with a right-pane tab open: `changes`, `branch`, `pr`
     /// or `info`.
     Right(ConversationId, &'static str),
@@ -72,6 +76,7 @@ impl Workspace {
         self.right.review.clear();
         self.right.tab = RightTab::Changes;
         self.right.drawer = None;
+        crate::message_input::write_in(&self.composer, String::new(), window, cx);
         // A details drawer from an earlier shot does not stay open.
         if self.snapshot.detail.is_some() {
             self.snapshot = std::sync::Arc::new(leon_core::Snapshot {
@@ -89,6 +94,12 @@ impl Workspace {
                 self.select(*id, cx);
                 self.open_first_session(*id);
                 self.open_picker = Some((*picker).into());
+            }
+            Shot::Typed(id, text) => {
+                self.select(*id, cx);
+                self.open_first_session(*id);
+                crate::message_input::write_in(&self.composer, (*text).to_owned(), window, cx);
+                self.composer.focus_handle(cx).focus(window, cx);
             }
             Shot::Flow(id) => {
                 self.select(*id, cx);

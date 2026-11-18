@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use leon_core::ports::{AgentDefinition, BackendOptions};
+use leon_core::ports::{AgentDefinition, BackendOptions, SlashCommand};
 use leon_core::{ConversationView, Detail, Question, SessionView, Snapshot, TranscriptView};
 use leon_domain::{
     AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Entry, PlanStep,
@@ -278,8 +278,22 @@ fn sample() -> Snapshot {
             },
         ],
     )]);
+    let command = |name: &str, description: &str, hint: Option<&str>| SlashCommand {
+        name: name.into(),
+        description: description.into(),
+        argument_hint: hint.map(Into::into),
+    };
+    let commands = HashMap::from([(
+        ProjectId(1),
+        vec![
+            command("deploy", "Deploy a branch", Some("[environment] [version]")),
+            command("deps-audit", "Check dependencies for advisories", None),
+            command("review", "Review the current branch", Some("[pr-number]")),
+        ],
+    )]);
     Snapshot {
         loaded: true,
+        commands: Arc::new(commands),
         settings: Settings {
             diff_fold: vec!["glob:**/*.lock".into()],
             sources: vec!["~/agent-kit".into()],
@@ -336,6 +350,14 @@ fn main() {
             Shot::Conversation(ConversationId(1)),
         ),
         ("question".to_owned(), Shot::Conversation(ConversationId(2))),
+        (
+            "slash-list".to_owned(),
+            Shot::Typed(ConversationId(1), "/dep"),
+        ),
+        (
+            "slash-arguments".to_owned(),
+            Shot::Typed(ConversationId(1), "/deploy staging"),
+        ),
         (
             "picker".to_owned(),
             Shot::PickerOpen(ConversationId(1), "session-model"),
