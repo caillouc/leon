@@ -213,11 +213,27 @@ impl Workspace {
     }
 }
 
-/// The first `n` lines of `text`, for a folded message (CONV-12), never
-/// cutting a code block: the cut moves up to just before the block, or,
-/// when the text starts with one, the block is closed after its first lines.
-pub(crate) fn first_lines(text: &str, n: usize) -> String {
-    let mut lines: Vec<&str> = text.lines().take(n).collect();
+/// The start of `text` for a folded message (CONV-12): its first `n` lines
+/// and about `chars` characters at most, a first line longer than that cut
+/// at a space with "…". Never cutting a code block: the cut moves up to
+/// just before the block, or, when the text starts with one, the block is
+/// closed after its first lines.
+pub(crate) fn first_lines(text: &str, n: usize, chars: usize) -> String {
+    let mut lines: Vec<&str> = Vec::new();
+    let mut used = 0;
+    for line in text.lines().take(n) {
+        used += line.chars().count();
+        if used > chars && !lines.is_empty() {
+            break;
+        }
+        lines.push(line);
+    }
+    if let [only] = lines.as_slice()
+        && only.chars().count() > chars
+        && fence(only).is_none()
+    {
+        return shorten(only, chars);
+    }
     // The code block still open at the cut: where it starts, its fence.
     let mut open: Option<(usize, &str)> = None;
     for (ix, line) in lines.iter().enumerate() {
@@ -240,6 +256,18 @@ pub(crate) fn first_lines(text: &str, n: usize) -> String {
         .rposition(|l| !l.trim().is_empty())
         .map_or(0, |ix| ix + 1);
     lines[..end].join("\n")
+}
+
+/// `line` cut to about `chars` characters, at a space when it has one, with
+/// "…".
+fn shorten(line: &str, chars: usize) -> String {
+    let head: String = line.chars().take(chars).collect();
+    let next = line.chars().nth(chars);
+    let head = match (next, head.rfind(char::is_whitespace)) {
+        (Some(c), Some(space)) if !c.is_whitespace() => &head[..space],
+        _ => head.as_str(),
+    };
+    format!("{}…", head.trim_end())
 }
 
 /// The fence opening or closing a code block on `line`: three or more
@@ -284,7 +312,18 @@ mod tests {
             ("~~~\nx\ny", 2, "~~~\nx\n~~~"),
         ];
         for (text, n, shown) in cases {
-            assert_eq!(first_lines(text, n), shown, "{text:?}");
+            assert_eq!(first_lines(text, n, usize::MAX), shown, "{text:?}");
+        }
+        // A few long lines fold too: as many as fit, a too long first one
+        // cut at a space.
+        let chars = [
+            ("one\ntwo\nthree", 7, "one\ntwo"),
+            ("aaaa bbbb cccc", 9, "aaaa bbbb…"),
+            ("aaaa bbbbbb", 7, "aaaa…"),
+            ("aaaaaaaaaa", 4, "aaaa…"),
+        ];
+        for (text, budget, shown) in chars {
+            assert_eq!(first_lines(text, 6, budget), shown, "{text:?}");
         }
     }
 

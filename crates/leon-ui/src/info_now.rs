@@ -46,16 +46,6 @@ impl Workspace {
             Status::Error => ("Stopped with an error", theme::err()),
             Status::Idle => ("Idle", theme::fg_muted()),
         };
-        // Calls without a result mean something only while a turn runs.
-        let live = matches!(s.status, Status::Running | Status::NeedsInput);
-        let tools: Vec<RunningTool> = self
-            .snapshot
-            .transcripts
-            .get(&s.conversation.id)
-            .filter(|_| live)
-            .map_or_default(|t| running_tools(&t.entries));
-        let (started, running) = s.subagents;
-        let thinking = s.status == Status::Running && tools.is_empty() && running == 0;
         let (model, _) = self.model_and_effort(&s.conversation.settings);
         div()
             .flex()
@@ -107,26 +97,10 @@ impl Workspace {
                     ),
             )
             .children(
-                tools
+                self.live_lines("now", s)
                     .into_iter()
-                    .enumerate()
-                    .map(|(ix, tool)| running_line(&format!("spin-tool-{id}-{ix}"), &tool)),
+                    .map(|line| line.pl(px(20.))),
             )
-            .when(running > 0, |d| {
-                d.child(activity(
-                    &format!("spin-sub-{id}"),
-                    format!(
-                        "{running} subagent{} running · {started} started",
-                        if running == 1 { "" } else { "s" }
-                    ),
-                ))
-            })
-            .when(thinking, |d| {
-                d.child(activity(
-                    &format!("spin-think-{id}"),
-                    "Thinking…".to_owned(),
-                ))
-            })
             .children(s.question.as_ref().map(|q| {
                 div()
                     .pl(px(20.))
@@ -137,10 +111,50 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// What a conversation is doing this moment, a line each, with the
+    /// turning loader: the commands and edits it runs and for how long, its
+    /// subagents, or thinking; none when it is not working. `place` keeps
+    /// the loaders' ids apart where it shows twice (Info, the message box).
+    pub(crate) fn live_lines(&self, place: &str, s: &ConversationView) -> Vec<Div> {
+        let id = s.conversation.id.0;
+        // Calls without a result mean something only while a turn runs.
+        let live = matches!(s.status, Status::Running | Status::NeedsInput);
+        let tools: Vec<RunningTool> = self
+            .snapshot
+            .transcripts
+            .get(&s.conversation.id)
+            .filter(|_| live)
+            .map_or_default(|t| running_tools(&t.entries));
+        let (started, running) = s.subagents;
+        let thinking = s.status == Status::Running && tools.is_empty() && running == 0;
+        let mut lines: Vec<Div> = tools
+            .iter()
+            .enumerate()
+            .map(|(ix, tool)| running_line(&format!("spin-{place}-tool-{id}-{ix}"), tool))
+            .collect();
+        if running > 0 {
+            lines.push(activity(
+                &format!("spin-{place}-sub-{id}"),
+                format!(
+                    "{running} subagent{} running · {started} started",
+                    if running == 1 { "" } else { "s" }
+                ),
+            ));
+        }
+        if thinking {
+            lines.push(activity(
+                &format!("spin-{place}-think-{id}"),
+                "Thinking…".to_owned(),
+            ));
+        }
+        lines
+    }
+}
+
 /// A command or edit still running, with how long it has run.
 fn running_line(key: &str, tool: &RunningTool) -> Div {
     div()
-        .pl(px(20.))
         .flex()
         .items_center()
         .gap_2()
@@ -171,10 +185,9 @@ fn running_line(key: &str, tool: &RunningTool) -> Div {
         )
 }
 
-/// A line of activity under an agent, with the turning loader.
+/// A line of activity, with the turning loader.
 fn activity(key: &str, text: String) -> Div {
     div()
-        .pl(px(20.))
         .flex()
         .items_center()
         .gap_2()

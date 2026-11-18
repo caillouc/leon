@@ -16,9 +16,11 @@ window:
 - **The Flow tab** — Leon's signature. Each flow is drawn as a live diagram:
   you, every agent, and the prompts, reports and questions flowing
   between them, laid out live by the forces of CS Academy's graph editor:
-  drag a box and the others make room. Click a box to talk to that agent,
+  drag a box and the others make room, the arrows curving round it. Click a box to talk to that agent,
   an arrow to read what was said; the one with an answer for you is marked
   "To review".
+- **What each agent does now**, live at the bottom of its conversation:
+  the command it runs and for how long, its subagents, its plan.
 - **Agents that start agents.** Any agent can start or message another
   through Leon's own tools, whichever CLI it runs on: a Claude Code planner
   can hand work to a Codex coder.

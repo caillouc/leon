@@ -114,8 +114,12 @@ pub fn hours_ago(hours: i64) -> i64 {
     now - hours * 3_600_000
 }
 
+/// An entry from two minutes ago: a command still running shows "2m".
 fn timed(entry: Entry) -> TimedEntry {
-    TimedEntry { at: 0, entry }
+    TimedEntry {
+        at: hours_ago(0) - 2 * 60_000,
+        entry,
+    }
 }
 
 /// Transcripts of the sample conversations.

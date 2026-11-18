@@ -434,18 +434,21 @@ impl Workspace {
                     .gap(px(6. * s))
                     .text_size(px(13. * s))
                     .font_weight(FontWeight::SEMIBOLD)
-                    // The left pane's icon: the turning loader while it
-                    // works, the green check for an answer to read.
-                    .child(if attention == leon_domain::Attention::Working {
-                        status_mark(
+                    // The left pane's icon, the green check for an answer
+                    // to read; none while its colour goes round the box,
+                    // the turning loader when motion is reduced.
+                    .children(match attention {
+                        leon_domain::Attention::Working if circles => None,
+                        leon_domain::Attention::Working => Some(status_mark(
                             SharedString::from(format!("spin-flow-{}", sid.0)),
                             conversation.status,
-                        )
-                    } else {
-                        crate::flow_row::attention_icon(attention)
-                            .size(px(14. * s))
-                            .flex_none()
-                            .into_any_element()
+                        )),
+                        _ => Some(
+                            crate::flow_row::attention_icon(attention)
+                                .size(px(14. * s))
+                                .flex_none()
+                                .into_any_element(),
+                        ),
                     })
                     .child(
                         div()

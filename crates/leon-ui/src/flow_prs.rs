@@ -64,7 +64,9 @@ impl Render for PrList {
             .rounded_lg()
             .border_1()
             .border_color(theme::border_strong())
-            .bg(theme::surface())
+            // Lighter than the panes it opens over, its text bright.
+            .bg(theme::surface_2())
+            .text_color(theme::fg())
             .shadow_lg()
             .flex()
             .flex_col()
@@ -88,11 +90,15 @@ fn row(ix: usize, pr: &PullRequest) -> Stateful<Div> {
         .py(px(6.))
         .rounded_md()
         .cursor_pointer()
-        .hover(|s| s.bg(theme::surface_2()))
+        .hover(|s| s.bg(theme::accent_soft()))
         .flex()
         .flex_col()
         .gap(px(2.))
-        .child(ellipsis(div().text_size(px(13.))).child(pr.title.clone()))
+        .child(
+            ellipsis(div().text_size(px(13.)))
+                .font_weight(gpui::FontWeight::MEDIUM)
+                .child(pr.title.clone()),
+        )
         .child(
             div()
                 .flex()

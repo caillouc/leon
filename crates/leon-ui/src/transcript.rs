@@ -342,9 +342,12 @@ fn entry_view(
     }
 }
 
-/// A message longer than [`FOLD_LINES`] shows its first lines and a toggle
-/// (CONV-12).
+/// A message longer than [`FOLD_LINES`] lines or [`FOLD_CHARS`] characters
+/// shows its start and a toggle (CONV-12).
 const FOLD_LINES: usize = 12;
+const FOLD_CHARS: usize = 900;
+/// How much of a folded message shows: lines, characters.
+const START: (usize, usize) = (6, 400);
 
 fn long_text(
     conversation: ConversationId,
@@ -355,13 +358,13 @@ fn long_text(
     view: &gpui::WeakEntity<Workspace>,
 ) -> AnyElement {
     let lines = text.lines().count();
-    if lines <= FOLD_LINES {
+    if lines <= FOLD_LINES && text.chars().count() <= FOLD_CHARS {
         return markdown(id, text);
     }
     let shown = if expanded {
         text.to_owned()
     } else {
-        crate::markdown::first_lines(text, 6)
+        crate::markdown::first_lines(text, START.0, START.1)
     };
     let view = view.clone();
     div()

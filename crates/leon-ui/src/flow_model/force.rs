@@ -4,9 +4,10 @@
 //! v742, read 2026-11-18). Every frame each box moves by the sum of:
 //! - along each arrow, `EDGE · (d − IDEAL) / d` toward the other end;
 //! - from each box it has no arrow with and is nearer than `IDEAL`,
-//!   `CHARGE · (IDEAL − d) / d` away;
-//! - `GRAVITY ·` its distance to the middle, toward it, except while a box
-//!   is dragged.
+//!   `CHARGE · (IDEAL − d) / d` away.
+//!
+//! CS Academy also pulls every node toward the middle of its canvas; Leon
+//! leaves that out, so the diagram stays where its boxes are put.
 //!
 //! No momentum: a box moves by what pulls it, so it glides back to its place
 //! when let go; as boxes only push the ones near them, one dragged far
@@ -26,8 +27,6 @@ use super::{FlowModel, Node};
 const EDGE: f32 = 15.;
 /// CS Academy's `chargeStrength`.
 const CHARGE: f32 = 10.;
-/// CS Academy's `gravityStrength`.
-const GRAVITY: f32 = 0.007;
 /// CS Academy's `idealEdgeDistance`, also its `repulsionDistance`.
 const IDEAL: f32 = 140.;
 /// CS Academy's node radius.
@@ -35,7 +34,7 @@ const RADIUS: f32 = 19.;
 /// CS Academy's `idlePauseThreshold`.
 const STILL: f32 = 0.05;
 /// How long an arrow is, from border to border.
-const LENGTH: f32 = 170.;
+const LENGTH: f32 = 230.;
 /// From CS Academy's units to the diagram's.
 const SCALE: f32 = LENGTH / (IDEAL - 2. * RADIUS);
 /// Most steps run at once when a flow first shows: it appears settled.
@@ -48,8 +47,6 @@ const GAP: f32 = 44.;
 pub(crate) struct Sim {
     nodes: Vec<Node>,
     size: Vec<Pt>,
-    /// What the boxes are pulled toward: the middle of where they started.
-    middle: Pt,
     at: Vec<Pt>,
     /// How far each box moved in the last step, the held one aside.
     step: Vec<Pt>,
@@ -63,7 +60,6 @@ impl Sim {
         let mut sim = Self {
             nodes: Vec::new(),
             size: Vec::new(),
-            middle: Pt { x: 0., y: 0. },
             at: Vec::new(),
             step: Vec::new(),
             springs: Vec::new(),
@@ -103,7 +99,6 @@ impl Sim {
             })
             .collect();
         self.size = nodes.iter().map(|n| size_of(*n)).collect();
-        self.middle = mean(&at);
         self.step = vec![Pt { x: 0., y: 0. }; nodes.len()];
         (self.nodes, self.at, self.springs) = (nodes, at, springs);
     }
@@ -136,7 +131,7 @@ impl Sim {
             ))
         });
         let before = self.at.clone();
-        let force = self.forces(held.is_some());
+        let force = self.forces();
         for i in 0..self.nodes.len() {
             match held {
                 Some((h, at)) if h == i => self.at[i] = at,
@@ -169,7 +164,7 @@ impl Sim {
     }
 
     /// How far the forces move each box this step.
-    fn forces(&self, dragging: bool) -> Vec<Pt> {
+    fn forces(&self) -> Vec<Pt> {
         let mut step = vec![Pt { x: 0., y: 0. }; self.nodes.len()];
         for i in 0..self.nodes.len() {
             for j in i + 1..self.nodes.len() {
@@ -184,15 +179,6 @@ impl Sim {
                 } * SCALE;
                 add(&mut step[i], ux * pull, uy * pull);
                 add(&mut step[j], -ux * pull, -uy * pull);
-            }
-        }
-        if !dragging {
-            for (i, s) in step.iter_mut().enumerate() {
-                add(
-                    s,
-                    GRAVITY * (self.middle.x - self.at[i].x),
-                    GRAVITY * (self.middle.y - self.at[i].y),
-                );
             }
         }
         step
@@ -287,15 +273,6 @@ fn apart(at: &mut [Pt], size: &[Pt], fixed: &[bool]) {
 fn add(p: &mut Pt, x: f32, y: f32) {
     p.x += x;
     p.y += y;
-}
-
-#[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
-fn mean(points: &[Pt]) -> Pt {
-    let n = points.len().max(1) as f32;
-    Pt {
-        x: points.iter().map(|p| p.x).sum::<f32>() / n,
-        y: points.iter().map(|p| p.y).sum::<f32>() / n,
-    }
 }
 
 /// No two boxes overlap.

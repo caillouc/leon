@@ -129,7 +129,16 @@ impl Workspace {
         if !s.plan.is_empty() {
             column = column.child(plan_card(&s.plan));
         }
-        if let Some(line) = Self::status_line(&s) {
+        // While it works, what it is doing this moment, live; else what it
+        // waits for or why it stopped.
+        let live = if running {
+            self.live_lines("composer", &s)
+        } else {
+            Vec::new()
+        };
+        if !live.is_empty() {
+            column = column.child(div().flex().flex_col().gap(px(4.)).children(live));
+        } else if let Some(line) = Self::status_line(&s) {
             column = column.child(
                 div()
                     .text_size(px(12.))

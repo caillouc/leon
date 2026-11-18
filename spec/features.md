@@ -49,7 +49,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   another app — is unread until the user opens that agent's tab or replies to
   it; the flow stays unread while one of its agents' answers is.
 - **NAV-5** Each flow's row says what it asks of the user: working
-  (a turning loader, also on the agent's tab and Flow box, "Working…"), needs you — an answer or a decision — (amber
+  (a turning loader, also on the agent's tab; on its Flow box, its colour
+  going round it; "Working…"), needs you — an answer or a decision — (amber
   edge, "Needs you"), to review — done and not looked at yet — (green edge,
   "To review"), failed (red), or nothing. A folded project shows its most
   pressing colour.
@@ -92,15 +93,20 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   the caret after it. The arguments a command takes (its `argument-hint`)
   show greyed after the caret until each is typed.
 - **CONV-12** Long pasted text is folded into a "Pasted text · N lines" block,
-  expandable, as in the Claude CLI.
+  expandable, as in the Claude CLI. A long message in a conversation (more than 12
+  lines or about 900 characters) shows its start, a few lines that never
+  cut a code block, and "Show all".
 - **CONV-14** An agent's plan, when its CLI keeps one (Claude Code's task
   list, Codex's plan): its steps above the message box — done, in progress,
   to do — and its progress on the agent's box in the Flow tab. Per
   conversation, while Leon runs.
 - **CONV-15** Your messages stand out from the agents'. Once an answer
-  follows your last message, a button just above the message box, on its
-  right, scrolls back to it, to read the answer from its start; what the
-  agent is doing shows on the left of that line.
+  follows your last message, a button next to Send scrolls back to it, to
+  read the answer from its start.
+- **CONV-16** While an agent works, the bottom of its conversation, just
+  above the message box, shows live what it does this moment, as Info's
+  "Now" does: each command or edit it runs and for how long, its running
+  subagents, or "Thinking…"; under its plan when it keeps one.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the
@@ -125,21 +131,24 @@ flow**: one item in the left pane (D5).
   highlighted arrow for a question waiting for you, and live status on each
   box, with "To review" or "Needs you" on the agent whose answer or question
   waits for you; while an agent works, its colour goes round its box's
-  border, starting from the band at its top. What needs you shows with the
+  border, starting from the band at its top, in place of the turning
+  loader. What needs you shows with the
   left pane's icon (a green check for "To review") and coloured line along
   the box's left side, exactly as the left pane shows them. Click a box to open its
   conversation; click an arrow to read its prompts or reports. Each agent has
   its own colour, the same in the right pane. Laid out by forces, after the
   "force" mode of CS Academy's graph editor: boxes push each other away, the
-  arrows between them pull like springs, a light pull keeps everything near
-  the middle, and boxes never overlap. So the boxes a conversation talks to
+  arrows between them pull like springs, and boxes never overlap. So the boxes a conversation talks to
   spread all around it, every arrow about the same length (measured between
   the boxes' borders, as boxes are wide). The forces are CS Academy's own: their
   rules and strengths, scaled to Leon's boxes, no momentum, boxes pushing
-  only the ones near them. It starts with each box's linked boxes spread
+  only the ones near them, without its pull toward the middle: the diagram
+  stays where its boxes are put. It starts with each box's linked boxes spread
   evenly around it, each agent's conversations side by side, and the same
   flow always gets the same layout. Readability comes first; an arrow may
-  cross another. Arrows are straight lines from box to box; those between the
+  cross another. Arrows are straight lines from box to box; a box sitting on
+  one pushes it into a curve round its other side, as CS Academy bends an
+  edge a node sits on. Those between the
   same two boxes (prompts one way, reports back) run side by side as one
   bundle under one label, put where it covers no box and no other label. A
   bar sums up the whole flow: its conversations, how many work, their

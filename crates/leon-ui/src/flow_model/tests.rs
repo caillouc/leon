@@ -250,10 +250,15 @@ fn boxes_settle_apart_and_bounce_back() {
     pulled.tick(Some((s(4), away(1.4))));
     assert_eq!(pulled.positions()[&s(4)], away(1.4));
     pulled.settle();
-    let back = pulled.positions()[&s(4)];
+    // Nothing pulls the diagram to the middle: measured from the planner.
+    let (now, back) = (pulled.positions()[&s(1)], pulled.positions()[&s(4)]);
+    let (was, is) = (
+        (home.x - hub.x, home.y - hub.y),
+        (back.x - now.x, back.y - now.y),
+    );
     assert!(
-        (back.x - home.x).abs() < 30. && (back.y - home.y).abs() < 30.,
-        "{home:?} → {back:?}"
+        (is.0 - was.0).abs() < 30. && (is.1 - was.1).abs() < 30.,
+        "{was:?} → {is:?}"
     );
     // Dragged around the planner to its other side: it stays on that side.
     let mut dragged = sim.clone();
@@ -331,4 +336,33 @@ fn a_hub_has_its_boxes_all_around_it() {
     // No half of the space around it is empty (in columns, everything
     // stood on its right).
     assert!(widest < 170., "{angles:?}");
+}
+
+/// A box sitting on an arrow pushes it into a curve round its other side,
+/// as in CS Academy's graph editor; a box beside it leaves it straight.
+#[test]
+fn a_box_on_an_arrow_bends_it_round() {
+    let r = |x, y| Rect {
+        x,
+        y,
+        w: 100.,
+        h: 50.,
+    };
+    let (a, b) = (r(0., 0.), r(600., 0.));
+    // Its middle a little above the line: the arrow goes below it.
+    let on = r(250., -10.);
+    let bend = super::arrows::bulge(a, b, &[on]);
+    assert!(bend > 0., "{bend}");
+    let curve = super::arrows::path(a, b, 0., bend);
+    let lowest = curve.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+    assert!(lowest > on.y + on.h, "{curve:?}");
+    // Its ends still leave and enter the boxes.
+    assert!(
+        curve[0].x > a.x + a.w && curve[curve.len() - 1].x < b.x,
+        "{curve:?}"
+    );
+    // Well beside the line, or at an end: no bend.
+    assert!(super::arrows::bulge(a, b, &[r(250., 200.)]).abs() < f32::EPSILON);
+    assert!(super::arrows::bulge(a, b, &[r(30., 0.)]).abs() < f32::EPSILON);
+    assert_eq!(super::arrows::path(a, b, 0., 0.).len(), 2);
 }
