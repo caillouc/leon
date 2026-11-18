@@ -280,7 +280,11 @@ fn sample() -> Snapshot {
     )]);
     Snapshot {
         loaded: true,
-        settings: Settings::default(),
+        settings: Settings {
+            diff_fold: vec!["glob:**/*.lock".into()],
+            sources: vec!["~/agent-kit".into()],
+            ..Settings::default()
+        },
         projects: Arc::new(vec![
             Project {
                 id: ProjectId(1),
@@ -354,6 +358,7 @@ fn main() {
         ("review".to_owned(), Shot::Review(ConversationId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),
         ("my-issues".to_owned(), Shot::MyIssues),
+        ("settings".to_owned(), Shot::Settings),
         ("doctor".to_owned(), Shot::Doctor),
         ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
         ("tools".to_owned(), Shot::Tools),

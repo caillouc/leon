@@ -47,6 +47,8 @@ pub enum Shot {
     RowMenu(ConversationId),
     /// The Tools view.
     Tools,
+    /// The Settings view.
+    Settings,
     /// A conversation's changed file, large in the drawer (path).
     Drawer(ConversationId, &'static str),
     /// An issue's or a pull request's details in the drawer.
@@ -151,6 +153,7 @@ impl Workspace {
             }
             Shot::Doctor => self.screen = Screen::Doctor,
             Shot::Tools => self.screen = Screen::Tools,
+            Shot::Settings => self.open_screen(Screen::Settings, window, cx),
             Shot::RowMenu(id) => {
                 self.select(*id, cx);
                 self.row_menu = Some((*id, gpui::point(gpui::px(200.), gpui::px(520.))));
