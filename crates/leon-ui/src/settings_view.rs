@@ -84,6 +84,7 @@ impl Workspace {
                     this.save(Settings {
                         defaults: SessionDefaults {
                             backend: next.backend,
+                            agent: settings.defaults.agent.clone(),
                             model: next.model,
                             effort: next.effort,
                             permission: next.permission,
@@ -137,6 +138,7 @@ impl Workspace {
                     .flex()
                     .flex_col()
                     .gap_3()
+                    .child(field("Agent", self.default_agent_picker(&settings, cx)))
                     .child(field("CLI", cli))
                     .child(field("Model", model))
                     .child(field("Effort", effort))
@@ -176,8 +178,11 @@ impl Workspace {
                 self.agent_folders(&settings, cx),
             ))
             .child(section(
-                "CLI for an agent's model",
-                "An agent file's model runs on the first CLI in this order that offers it.",
+                "Which CLI runs an agent",
+                "When an agent file names a model (model: opus, model: gpt-6-luna…), \
+                 Leon starts that agent on the first CLI below that offers the model. \
+                 Drag the boxes to change the order. Agents without a model run on the \
+                 CLI picked in the new-conversation form.",
                 Self::cli_order(&settings, cx),
             ))
             .children(path.map(|path| {

@@ -28,11 +28,15 @@ impl Workspace {
             Detail::Issue(issue) => self.issue_body(issue, cx).into_any_element(),
             Detail::PullRequest(pr) => self.pr_body(pr, &input, cx).into_any_element(),
         };
-        // What Leon can do with it sits in the header, next to GitHub.
-        let action = match &detail {
-            Detail::Issue(issue) => Some(self.issue_action(issue, cx)),
-            Detail::PullRequest(pr) => Some(self.pr_action(pr, cx)),
-            Detail::Loading(_) | Detail::Failed(..) => None,
+        // What Leon can do with it sits in the header, left of GitHub.
+        let actions = match &detail {
+            Detail::Issue(issue) => vec![self.issue_action(issue, cx)],
+            Detail::PullRequest(pr) => {
+                let mut actions = Self::pr_actions(pr, cx);
+                actions.push(self.pr_action(pr, cx));
+                actions
+            }
+            Detail::Loading(_) | Detail::Failed(..) => Vec::new(),
         };
         let glyph = match &detail {
             Detail::PullRequest(pr) => pr_icon(pr.state, 16.),
@@ -55,24 +59,8 @@ impl Workspace {
                     .child(item.text()),
             )
             .child(div().flex_1())
-            .children(action)
-            .child(
-                div()
-                    .id("detail-on-github")
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .px_2()
-                    .py(px(3.))
-                    .rounded_md()
-                    .text_size(px(12.))
-                    .text_color(theme::fg_muted())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
-                    .child(icon(Icon::External, theme::fg_muted(), 13.))
-                    .child("Open on GitHub")
-                    .on_click(move |_, _, cx| cx.open_url(&url)),
-            );
+            .children(actions)
+            .child(github_link(url));
         let scroll = div()
             .id("detail-body")
             .flex_1()
@@ -165,6 +153,27 @@ impl Workspace {
             })
             .child(self.comments(&issue.comments, item, &self.gh.comment, cx))
     }
+}
+
+/// "Open on GitHub", opening `url` in the browser.
+pub(crate) fn github_link(url: String) -> AnyElement {
+    div()
+        .id("detail-on-github")
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(5.))
+        .px_2()
+        .py(px(3.))
+        .rounded_md()
+        .text_size(px(12.))
+        .text_color(theme::fg_muted())
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
+        .child(icon(Icon::External, theme::fg_muted(), 13.))
+        .child("Open on GitHub")
+        .on_click(move |_, _, cx| cx.open_url(&url))
+        .into_any_element()
 }
 
 /// The item's page on GitHub.

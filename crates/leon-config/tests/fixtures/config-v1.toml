@@ -3,6 +3,7 @@ version = 1
 
 [defaults]
 backend = "codex"
+agent = "planner"
 model = "gpt-5.5-codex"
 effort = "high"
 permission = "on-request"

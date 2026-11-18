@@ -105,6 +105,7 @@ fn pull_request_node(pr: &Value) -> Option<PullRequest> {
         comments: comments(pr),
         body: text(&pr["body"]).unwrap_or_default(),
         threads: threads(pr),
+        author: text(&pr["author"]["login"]).unwrap_or_default(),
     })
 }
 

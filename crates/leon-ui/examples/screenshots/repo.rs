@@ -145,15 +145,42 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
                - retry::caps_the_delay ok\n- retry::gives_up_after_15_minutes ok\n\
                </details>"
             .into(),
-        threads: vec![ReviewThread {
-            path: "src/webhooks/retry.rs".into(),
-            line: Some(14),
-            comments: vec![Comment {
-                author: "reviewer-a".into(),
-                body: "Should `MAX_DELAY` come from the config?".into(),
-                at: crate::hours_ago(2),
-            }],
-        }],
+        threads: vec![
+            ReviewThread {
+                path: "src/webhooks/retry.rs".into(),
+                line: Some(14),
+                comments: vec![
+                    Comment {
+                        author: "reviewer-a".into(),
+                        body: "Should `MAX_DELAY` come from the config? Ops may want 5 minutes."
+                            .into(),
+                        at: crate::hours_ago(2),
+                    },
+                    Comment {
+                        author: "octocat".into(),
+                        body: "Good point, I'll read it from `RetryConfig`.".into(),
+                        at: crate::hours_ago(1),
+                    },
+                ],
+                code: vec![
+                    " fn next_delay(attempt: u32) -> Duration {".into(),
+                    "-    Duration::from_secs(2u64.pow(attempt))".into(),
+                    "+    let delay = Duration::from_secs(2u64.pow(attempt));".into(),
+                    "+    delay.min(MAX_DELAY)".into(),
+                ],
+            },
+            ReviewThread {
+                path: "src/webhooks/mod.rs".into(),
+                line: None,
+                comments: vec![Comment {
+                    author: "copilot-pull-request-reviewer".into(),
+                    body: "This log line repeats the payload; consider dropping it.".into(),
+                    at: crate::hours_ago(5),
+                }],
+                code: Vec::new(),
+            },
+        ],
+        author: "octocat".into(),
     }
 }
 

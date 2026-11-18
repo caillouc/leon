@@ -145,6 +145,7 @@ fn read_defaults(value: &Value, defaults: &mut SessionDefaults, warnings: &mut V
                     ),
                 )),
             },
+            "agent" => defaults.agent = Some(text.to_owned()).filter(|a| !a.is_empty()),
             "model" => defaults.model = Some(text.to_owned()),
             "effort" => defaults.effort = Some(text.to_owned()),
             "permission" => text.clone_into(&mut defaults.permission),
@@ -210,6 +211,7 @@ mod tests {
         assert_eq!(loaded.warnings, Vec::<super::Warning>::new());
         let d = loaded.settings.defaults;
         assert_eq!(d.backend, BackendKind::Codex);
+        assert_eq!(d.agent.as_deref(), Some("planner"));
         assert_eq!(d.model.as_deref(), Some("gpt-5.5-codex"));
         assert_eq!(d.effort.as_deref(), Some("high"));
         assert_eq!(d.permission, "on-request");

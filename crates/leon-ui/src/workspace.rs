@@ -312,6 +312,7 @@ impl Workspace {
         if self.form.project.is_none() {
             self.form.project = self.snapshot.projects.first().map(|p| p.id);
         }
+        self.default_agent();
         self.core.send(Intent::View(None));
         cx.notify();
     }

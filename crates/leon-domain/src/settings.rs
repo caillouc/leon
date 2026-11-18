@@ -23,6 +23,8 @@ pub struct Settings {
 pub struct SessionDefaults {
     /// CLI to use.
     pub backend: BackendKind,
+    /// Agent picked when the project has it; `None`: the CLI's own agent.
+    pub agent: Option<String>,
     /// Model id; `None` lets the CLI pick its default.
     pub model: Option<String>,
     /// Effort level; `None` lets the CLI pick its default.
@@ -35,6 +37,7 @@ impl Default for SessionDefaults {
     fn default() -> Self {
         Self {
             backend: BackendKind::ClaudeCode,
+            agent: None,
             model: None,
             effort: None,
             permission: "auto".to_owned(),

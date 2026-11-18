@@ -33,7 +33,7 @@ pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold
 pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
 pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,
-    ReviewThread, issues_by_status,
+    ReviewThread, issues_by_status, prs_by_repo,
 };
 pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};

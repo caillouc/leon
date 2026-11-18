@@ -17,7 +17,7 @@ pub(crate) enum Internal {
     /// Fresh git state of a conversation's working directory.
     Git(ConversationId, GitView),
     /// The pull request of a conversation's branch, or none.
-    Pr(ConversationId, Option<PullRequest>),
+    Pr(ConversationId, Option<Box<PullRequest>>),
     /// My issues and pull requests (GH-2, GH-3), or why they failed.
     Lists(Result<(Vec<Issue>, Vec<PullRequest>), String>),
     /// A GitHub action on an item finished: say so, and read the item again
@@ -81,7 +81,7 @@ impl Core {
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || match github.pull_request(&dir, &branch) {
             Ok(pr) => {
-                let _ = tx.send(Internal::Pr(id, pr));
+                let _ = tx.send(Internal::Pr(id, pr.map(Box::new)));
             }
             Err(error) => tracing::debug!(%error, "pull request refresh"),
         });
@@ -184,7 +184,7 @@ impl Core {
             Internal::Pr(id, pr) => {
                 let prs = Arc::make_mut(&mut self.state.prs);
                 match pr {
-                    Some(pr) => prs.insert(id, pr),
+                    Some(pr) => prs.insert(id, *pr),
                     None => prs.remove(&id),
                 };
             }

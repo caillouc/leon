@@ -41,6 +41,7 @@ fn recorded_open_pull_request() {
         rollup: None,
         body: String::new(),
         threads: vec![],
+        author: String::new(),
     };
     assert_eq!(pr, expected);
     assert_eq!(pr.checks_state(), Some(CheckState::Pass));

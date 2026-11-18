@@ -30,6 +30,7 @@ mod message_input;
 mod nav;
 mod panes;
 mod picker;
+mod pr_page;
 mod pr_view;
 #[cfg(feature = "preview")]
 pub mod preview;

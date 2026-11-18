@@ -152,6 +152,8 @@ pub struct PullRequest {
     /// Review threads not resolved yet, oldest first. Read with the pull
     /// request alone (details).
     pub threads: Vec<ReviewThread>,
+    /// Who opened it, by login; empty when GitHub did not say.
+    pub author: String,
 }
 
 /// A review thread on a pull request's code, not resolved yet.
@@ -163,6 +165,9 @@ pub struct ReviewThread {
     pub line: Option<u32>,
     /// Its comments, oldest first.
     pub comments: Vec<Comment>,
+    /// The last lines of the code it is on, the commented line last, each
+    /// with its diff sign (`+`, `-` or a space); empty when unknown.
+    pub code: Vec<String>,
 }
 
 impl PullRequest {
@@ -232,9 +237,38 @@ pub fn issues_by_status(issues: &[Issue]) -> Vec<(Option<&BoardOption>, Vec<&Iss
     groups
 }
 
+/// Pull requests grouped by repository (GH-3), repositories by name, each
+/// keeping the order given.
+pub fn prs_by_repo(prs: &[PullRequest]) -> Vec<(&str, Vec<&PullRequest>)> {
+    let mut groups: std::collections::BTreeMap<&str, Vec<&PullRequest>> =
+        std::collections::BTreeMap::new();
+    for pr in prs {
+        groups.entry(pr.repo.as_str()).or_default().push(pr);
+    }
+    groups.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{BoardOption, Check, CheckState, Issue, PrState, PullRequest, issues_by_status};
+    use super::{
+        BoardOption, Check, CheckState, Issue, PrState, PullRequest, issues_by_status, prs_by_repo,
+    };
+
+    #[test]
+    fn pull_requests_group_by_repository() {
+        let pr = |repo: &str, number| PullRequest {
+            repo: repo.into(),
+            number,
+            ..pr(&[])
+        };
+        let prs = [pr("acme/web", 1), pr("acme/api", 2), pr("acme/web", 3)];
+        let got: Vec<(&str, Vec<u64>)> = prs_by_repo(&prs)
+            .into_iter()
+            .map(|(repo, list)| (repo, list.iter().map(|p| p.number).collect()))
+            .collect();
+        assert_eq!(got, [("acme/api", vec![2]), ("acme/web", vec![1, 3])]);
+        assert_eq!(prs_by_repo(&[]).len(), 0);
+    }
 
     fn pr(states: &[CheckState]) -> PullRequest {
         PullRequest {
@@ -258,6 +292,7 @@ mod tests {
             comments: vec![],
             body: String::new(),
             threads: vec![],
+            author: String::new(),
         }
     }
 

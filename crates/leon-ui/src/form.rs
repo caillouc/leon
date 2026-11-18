@@ -70,6 +70,7 @@ impl Workspace {
             |this, value, _, _| {
                 this.form.project = value.parse().ok().map(leon_domain::ProjectId);
                 this.form.settings.agent = None;
+                this.default_agent();
             },
         );
         let agents = self
@@ -254,6 +255,30 @@ impl Workspace {
             .pb_6()
             .child(card)
             .into_any_element()
+    }
+
+    /// Picks the default agent (Settings) when none is picked and the
+    /// form's project has it, with the CLI and model its file asks for.
+    pub(crate) fn default_agent(&mut self) {
+        let Some(name) = self.snapshot.settings.defaults.agent.clone() else {
+            return;
+        };
+        if self.form.settings.agent.is_some() {
+            return;
+        }
+        let agent = self
+            .form
+            .project
+            .and_then(|p| self.snapshot.agents.get(&p))
+            .and_then(|list| list.iter().find(|a| a.name == name));
+        let Some(agent) = agent else {
+            return;
+        };
+        let model = agent.model.clone();
+        self.form.settings.agent = Some(name);
+        if let Some(next) = self.agent_settings(model.as_deref()) {
+            self.form.settings = next;
+        }
     }
 
     /// The form's settings for an agent file's `model`, as the user's CLI

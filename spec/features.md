@@ -145,11 +145,14 @@ conversation**: one item in the left pane (D5).
   (`owner/repo#12` and a blank line, the caret on it); the
   conversation remembers the issue, and the issue then offers "Open
   conversation".
-- **GH-3** My open PRs, with their state icon and checks. Clicking one opens
-  its details in a drawer: the checks summed up with the failing ones named,
-  its description (GitHub's folded sections stay folded), the review threads
-  still open, and its actions; one with a conversation has "Open
-  conversation".
+- **GH-3** My open PRs, grouped by repository (each group foldable), with
+  their state icon and checks. Clicking one opens its details in a drawer,
+  laid out like its GitHub page: title and state pill, who wants to merge
+  which branch into which, the checks box (how they went, the failing ones
+  named), its description (GitHub's folded sections stay folded) and each
+  review thread still open with the code it is on, people as coloured
+  avatars, a box to comment. Its actions (ready or draft, Copilot review,
+  "Open conversation" when it has one) sit left of "Open on GitHub".
 - **GH-4** Labels of issues and PRs.
 - **GH-5** Request a Copilot review on a PR.
 - **GH-6** Post a comment.
@@ -171,10 +174,11 @@ conversation**: one item in the left pane (D5).
 ### Settings
 
 - **SETTINGS-1** A Settings view edits the config file: new-conversation
-  defaults, diff auto-fold patterns, the folders of agents and skills (the
+  defaults (agent — picked when the project has it —, CLI, model, effort,
+  permission), diff auto-fold patterns, the folders of agents and skills (the
   ones Leon finds itself and the ones the user adds, each with how many
   agents and skills it holds), the order in which CLIs are tried for an
-  agent's model (EXT-6). Saved at
+  agent's model (EXT-6), changed by dragging the CLIs' boxes. Saved at
   once into `config.toml`, keeping the rest of the file.
 
 ### Doctor

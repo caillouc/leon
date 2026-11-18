@@ -123,6 +123,7 @@ pub fn update(text: &str, settings: &Settings) -> Result<String, String> {
         "backend",
         changed(d.backend == defaults.backend, value(d.backend.id())),
     );
+    set(&mut doc, "defaults", "agent", d.agent.as_deref().map(value));
     set(&mut doc, "defaults", "model", d.model.as_deref().map(value));
     set(
         &mut doc,

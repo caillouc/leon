@@ -1,5 +1,6 @@
 fragment pr on PullRequest {
   number title url state isDraft headRefName baseRefName
+  author { login }
   repository { nameWithOwner }
   labels(first: 20) { nodes { name color } }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }

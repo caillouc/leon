@@ -22,7 +22,25 @@ fn thread(node: &Value) -> Option<ReviewThread> {
         path: text(&node["path"])?,
         line: node["line"].as_u64().and_then(|l| u32::try_from(l).ok()),
         comments: comments(node),
+        code: code(node),
     })
+}
+
+/// How many lines of code a thread shows, the commented one last.
+const CODE_LINES: usize = 4;
+
+/// The last lines of the first comment's `diffHunk` (its `@@` header left
+/// out): GitHub's hunk ends on the commented line (checked on cli/cli,
+/// 2026-11-18).
+fn code(node: &Value) -> Vec<String> {
+    let hunk = nodes(&node["hunk"])
+        .find_map(|c| c["diffHunk"].as_str())
+        .unwrap_or_default();
+    let lines: Vec<&str> = hunk.lines().filter(|l| !l.starts_with("@@")).collect();
+    lines[lines.len().saturating_sub(CODE_LINES)..]
+        .iter()
+        .map(|l| (*l).to_owned())
+        .collect()
 }
 
 #[cfg(test)]
@@ -42,6 +60,21 @@ mod tests {
     }
 
     #[test]
+    fn a_thread_shows_the_last_lines_of_its_code() {
+        let hunk = "@@ -10,6 +10,7 @@ fn retry\n fn a() {\n-    old()\n+    new()\n+    more()\n     end()";
+        let node = json!({ "isResolved": false, "path": "src/a.rs", "line": 14,
+            "comments": { "nodes": [] }, "hunk": { "nodes": [{ "diffHunk": hunk }] } });
+        let pr = json!({ "reviewThreads": { "nodes": [node] } });
+        assert_eq!(
+            threads(&pr)[0].code,
+            ["-    old()", "+    new()", "+    more()", "     end()"]
+        );
+        let without =
+            json!({ "reviewThreads": { "nodes": [{ "isResolved": false, "path": "a" }] } });
+        assert_eq!(threads(&without)[0].code, Vec::<String>::new());
+    }
+
+    #[test]
     fn unresolved_threads_only() {
         let node = |resolved: Value, path: Value, line: Value| {
             json!({ "isResolved": resolved, "path": path, "line": line, "comments": { "nodes": [
@@ -56,6 +89,7 @@ mod tests {
                 comment("octocat", "Why?", 1000),
                 comment("ghost", "Fixed.", 2000),
             ],
+            code: Vec::new(),
         };
         let cases = [
             (
@@ -113,6 +147,7 @@ mod tests {
                 body,
                 1_794_936_316_000,
             )],
+            code: Vec::new(),
         };
         assert_eq!(
             pr.threads,

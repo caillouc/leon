@@ -75,6 +75,7 @@ impl GitHub for FakeGitHub {
             comments: vec![],
             body: String::new(),
             threads: vec![],
+            author: String::new(),
         }))
     }
     fn my_issues(&self) -> Result<Vec<Issue>, PortError> {

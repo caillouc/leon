@@ -42,11 +42,13 @@ fn reads_review_threads() {
                 .all(|t| !t.path.is_empty() && !t.comments.is_empty())
         );
         eprintln!(
-            "cli/cli#{number}: body {} chars, {} unresolved threads ({} without a line), {} comments in them",
+            "cli/cli#{number}: body {} chars, {} unresolved threads ({} without a line), {} comments in them, {} code lines, author {:?}",
             pr.body.len(),
             pr.threads.len(),
             pr.threads.iter().filter(|t| t.line.is_none()).count(),
             pr.threads.iter().map(|t| t.comments.len()).sum::<usize>(),
+            pr.threads.iter().map(|t| t.code.len()).sum::<usize>(),
+            pr.author,
         );
     }
 }

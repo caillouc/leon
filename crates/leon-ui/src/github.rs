@@ -143,14 +143,10 @@ impl Workspace {
                 .into_iter()
                 .map(|(status, issues)| self.issue_group(status, &issues, cx))
                 .collect(),
-            GhList::PullRequests => vec![
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .children(self.snapshot.my_prs.iter().map(|pr| self.pr_row(pr, cx)))
-                    .into_any_element(),
-            ],
+            GhList::PullRequests => leon_domain::prs_by_repo(&self.snapshot.my_prs)
+                .into_iter()
+                .map(|(repo, prs)| self.repo_group(repo, &prs, cx))
+                .collect(),
         };
         let empty_text = match (&self.snapshot.github_error, list) {
             (Some(error), _) => Some(error.clone()),
@@ -196,15 +192,66 @@ impl Workspace {
     ) -> AnyElement {
         let color = status.map_or(theme::fg_faint(), |s| self.status_color(s));
         let name = status.map_or("No status", |s| s.name.as_str()).to_owned();
-        let folded = self.gh.folded.contains(&name);
-        let key = name.clone();
+        let title = div()
+            .text_size(px(13.5))
+            .font_weight(FontWeight::SEMIBOLD)
+            .child(name.clone());
+        let rows = issues
+            .iter()
+            .map(|i| self.issue_row(i, color, cx))
+            .collect();
+        self.group(name, color, title.into_any_element(), rows, cx)
+    }
+
+    /// One repository of my pull requests: a foldable header, then its pull
+    /// requests (GH-3).
+    fn repo_group(&self, repo: &str, prs: &[&PullRequest], cx: &mut Context<Self>) -> AnyElement {
+        let (owner, name) = repo.split_once('/').unwrap_or(("", repo));
+        let title = div()
+            .flex()
+            .items_center()
+            .font_family(theme::MONO)
+            .text_size(px(13.))
+            .child(
+                div()
+                    .text_color(theme::fg_muted())
+                    .child(format!("{owner}/")),
+            )
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(name.to_owned()),
+            );
+        let color = theme::agent_color(repo.bytes().map(usize::from).sum());
+        let rows = prs.iter().map(|pr| self.pr_row(pr, cx)).collect();
+        self.group(
+            format!("repo:{repo}"),
+            color,
+            title.into_any_element(),
+            rows,
+            cx,
+        )
+    }
+
+    /// A foldable group of rows: chevron, a dot in `color`, `title`, the
+    /// count; `key` remembers it folded while the window is open.
+    fn group(
+        &self,
+        key: String,
+        color: Rgba,
+        title: AnyElement,
+        rows: Vec<AnyElement>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let folded = self.gh.folded.contains(&key);
+        let count = rows.len();
         div()
             .flex()
             .flex_col()
             .gap_1()
             .child(
                 div()
-                    .id(SharedString::from(format!("gh-group-{name}")))
+                    .id(SharedString::from(format!("gh-group-{key}")))
                     .flex()
                     .items_center()
                     .gap_2()
@@ -223,12 +270,7 @@ impl Workspace {
                         15.,
                     ))
                     .child(div().size(px(10.)).rounded_full().bg(color))
-                    .child(
-                        div()
-                            .text_size(px(13.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(name),
-                    )
+                    .child(title)
                     .child(
                         div()
                             .px(px(7.))
@@ -236,7 +278,7 @@ impl Workspace {
                             .bg(theme::surface_2())
                             .text_size(px(11.5))
                             .text_color(theme::fg_muted())
-                            .child(issues.len().to_string()),
+                            .child(count.to_string()),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !this.gh.folded.remove(&key) {
@@ -245,9 +287,7 @@ impl Workspace {
                         cx.notify();
                     })),
             )
-            .when(!folded, |d| {
-                d.children(issues.iter().map(|i| self.issue_row(i, color, cx)))
-            })
+            .when(!folded, |d| d.children(rows))
             .into_any_element()
     }
 
@@ -303,7 +343,6 @@ impl Workspace {
             .flex_wrap()
             .items_center()
             .gap_2()
-            .child(repo_text(&pr.repo))
             .child(
                 div()
                     .font_family(theme::MONO)
@@ -384,15 +423,19 @@ fn open_conversation(
     .into_any_element()
 }
 
-/// A pull request's icon in its state's colour.
-pub(crate) fn pr_icon(state: PrState, size: f32) -> gpui::Svg {
-    let glyph = match state {
+/// A pull request state's icon.
+pub(crate) fn pr_glyph(state: PrState) -> Icon {
+    match state {
         PrState::Open => Icon::PullRequest,
         PrState::Draft => Icon::PullRequestDraft,
         PrState::Merged => Icon::Merged,
         PrState::Closed => Icon::PullRequestClosed,
-    };
-    icon(glyph, pr_state(state).0, size)
+    }
+}
+
+/// A pull request's icon in its state's colour.
+pub(crate) fn pr_icon(state: PrState, size: f32) -> gpui::Svg {
+    icon(pr_glyph(state), pr_state(state).0, size)
 }
 
 /// The checks summed up: an icon in their colour and what it means.

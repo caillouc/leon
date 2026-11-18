@@ -3,6 +3,7 @@ fragment prDetails on PullRequest {
   comments(last: 30) { nodes { author { login } body createdAt } }
   reviewThreads(first: 50) { nodes { isResolved path line
     comments(first: 30) { nodes { author { login } body createdAt } }
+    hunk: comments(first: 1) { nodes { diffHunk } }
   } }
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
     __typename
