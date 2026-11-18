@@ -194,7 +194,7 @@ impl Workspace {
         issues: &[&Issue],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let color = status.map_or(theme::fg_faint(), |s| theme::status_color(&s.name, s.order));
+        let color = status.map_or(theme::fg_faint(), |s| self.status_color(s));
         let name = status.map_or("No status", |s| s.name.as_str()).to_owned();
         let folded = self.gh.folded.contains(&name);
         let key = name.clone();
@@ -258,7 +258,7 @@ impl Workspace {
             .items_center()
             .gap_2()
             .child(repo_text(&issue.repo))
-            .children(board_chips(issue, today()))
+            .children(board_chips(issue))
             .child(labels(&issue.labels));
         let item = GhRef::issue(&issue.repo, issue.number);
         // A linked conversation is a link in the details line; otherwise
@@ -285,22 +285,13 @@ impl Workspace {
             return open_conversation(id, conversation, cx);
         }
         let project = self.project_for_repo(&issue.repo);
-        let message = format!(
-            "Issue {}#{}: {}\n{}\n\n",
-            issue.repo, issue.number, issue.title, issue.url
-        );
         button(
             id,
             "Start conversation",
             cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
                 this.core.send(Intent::ShowDetail(None));
-                this.open_new_conversation(
-                    project,
-                    Some((item.clone(), message.clone())),
-                    window,
-                    cx,
-                );
+                this.open_new_conversation(project, Some(item.clone()), window, cx);
             }),
         )
         .into_any_element()

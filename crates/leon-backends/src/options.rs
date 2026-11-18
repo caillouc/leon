@@ -46,8 +46,19 @@ fn models(items: &[(&str, &str)]) -> Vec<ModelOption> {
         .map(|(id, label)| ModelOption {
             id: (*id).to_owned(),
             label: (*label).to_owned(),
+            aliases: Vec::new(),
         })
         .collect()
+}
+
+/// Gives `models` their aliases, as `(alias, id)`.
+fn with_aliases(mut models: Vec<ModelOption>, aliases: &[(&str, &str)]) -> Vec<ModelOption> {
+    for (alias, id) in aliases {
+        if let Some(model) = models.iter_mut().find(|m| m.id == *id) {
+            model.aliases.push((*alias).to_owned());
+        }
+    }
+    models
 }
 
 pub(crate) fn for_backend(backend: BackendKind) -> BackendOptions {
@@ -57,11 +68,19 @@ pub(crate) fn for_backend(backend: BackendKind) -> BackendOptions {
         // `sonnet` claude-sonnet-5-5, `haiku` claude-haiku-4-5. Claude Code
         // does not report its default effort: Leon uses `high`.
         BackendKind::ClaudeCode => BackendOptions {
-            models: models(&[
-                ("claude-opus-5-5", "Opus 5.5"),
-                ("claude-sonnet-5-5", "Sonnet 5.5"),
-                ("claude-haiku-4-5", "Haiku 4.5"),
-            ]),
+            // `fable` is an alias too (`--help`), for a model not listed here.
+            models: with_aliases(
+                models(&[
+                    ("claude-opus-5-5", "Opus 5.5"),
+                    ("claude-sonnet-5-5", "Sonnet 5.5"),
+                    ("claude-haiku-4-5", "Haiku 4.5"),
+                ]),
+                &[
+                    ("opus", "claude-opus-5-5"),
+                    ("sonnet", "claude-sonnet-5-5"),
+                    ("haiku", "claude-haiku-4-5"),
+                ],
+            ),
             efforts: list(&["low", "medium", "high", "xhigh", "max"]),
             default_effort: Some("high".to_owned()),
             permissions: list(&["auto", "bypassPermissions", "acceptEdits", "plan", "manual"]),

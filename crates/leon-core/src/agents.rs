@@ -108,6 +108,21 @@ impl Core {
             .map(|s| s.session.settings.clone())
             .ok_or_else(|| "Leon does not know this agent session.".to_owned())?;
         settings.agent = Some(agent.to_owned());
+        // Its file's model picks its CLI (EXT-6); else the caller's (I7).
+        let model = self
+            .state
+            .agents
+            .get(&project)
+            .and_then(|list| list.iter().find(|a| a.name == agent))
+            .and_then(|a| a.model.clone());
+        if let Some(next) = crate::settings_for_agent(
+            &settings,
+            model.as_deref(),
+            &self.state.settings.cli_order,
+            &self.state.options,
+        ) {
+            settings = next;
+        }
         let new = NewSession {
             conversation,
             started_by: Some(caller),

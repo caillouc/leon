@@ -12,3 +12,6 @@ fold = ["glob:**/*.lock", "re:^generated/"]
 
 [sources]
 folders = ["~/agent-kit"]
+
+[agents]
+cli_order = ["codex", "claude"]

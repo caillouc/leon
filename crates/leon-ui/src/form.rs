@@ -88,24 +88,44 @@ impl Workspace {
             .agent
             .clone()
             .unwrap_or_else(|| "The CLI's own agent".to_owned());
-        let description = self
+        let chosen = self
             .form
             .settings
             .agent
             .as_ref()
-            .and_then(|name| agents.iter().find(|a| &a.name == name))
-            .map_or_else(
-                || "No agent file: the CLI as it comes.".to_owned(),
-                |a| a.description.clone(),
-            );
+            .and_then(|name| agents.iter().find(|a| &a.name == name));
+        let description = chosen.map_or_else(
+            || "No agent file: the CLI as it comes.".to_owned(),
+            |a| {
+                // A model no CLI offers: the CLI and model below run it (EXT-6).
+                let unknown = a.model.as_deref().filter(|m| {
+                    *m != "inherit" && self.agent_settings(Some(m)).is_none()
+                });
+                match unknown {
+                    Some(model) => format!(
+                        "{} (Its model {model} is offered by no CLI: the CLI and model below run it.)",
+                        a.description
+                    ),
+                    None => a.description.clone(),
+                }
+            },
+        );
         let agent_picker = self.picker_look(
             Look::Field,
             "form-agent",
             &agent_label,
             agent_choices,
             cx,
-            |this, value, _, _| {
-                this.form.settings.agent = (!value.is_empty()).then_some(value);
+            move |this, value, _, _| {
+                this.form.settings.agent = (!value.is_empty()).then_some(value.clone());
+                // Its file's model picks the CLI and the model (EXT-6).
+                let model = agents
+                    .iter()
+                    .find(|a| a.name == value)
+                    .and_then(|a| a.model.clone());
+                if let Some(next) = this.agent_settings(model.as_deref()) {
+                    this.form.settings = next;
+                }
             },
         );
         let settings = self.form.settings.clone();
@@ -234,6 +254,17 @@ impl Workspace {
             .pb_6()
             .child(card)
             .into_any_element()
+    }
+
+    /// The form's settings for an agent file's `model`, as the user's CLI
+    /// order picks them (EXT-6); `None` when the model picks nothing.
+    fn agent_settings(&self, model: Option<&str>) -> Option<leon_domain::SessionSettings> {
+        leon_core::settings_for_agent(
+            &self.form.settings,
+            model,
+            &self.snapshot.settings.cli_order,
+            &self.snapshot.options,
+        )
     }
 
     pub(crate) fn start_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {

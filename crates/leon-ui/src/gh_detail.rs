@@ -11,7 +11,7 @@ use crate::drawer::drawer;
 use crate::github::pr_icon;
 use crate::icons::{Icon, icon};
 use crate::pr_view::labels;
-use crate::sprints::{board_chips, today};
+use crate::sprints::board_chips;
 use crate::theme;
 use crate::widgets::{empty, label};
 use crate::workspace::Workspace;
@@ -92,7 +92,7 @@ impl Workspace {
     /// button, its text and its comments.
     fn issue_body(&self, issue: &Issue, cx: &mut Context<Self>) -> Div {
         let status = issue.status.as_ref().map(|s| {
-            let color = theme::status_color(&s.name, s.order);
+            let color = self.status_color(s);
             div()
                 .flex()
                 .items_center()
@@ -114,7 +114,7 @@ impl Workspace {
             .items_center()
             .gap_2()
             .children(status)
-            .children(board_chips(issue, today()))
+            .children(board_chips(issue))
             .child(labels(&issue.labels));
         let item = GhRef::issue(&issue.repo, issue.number);
         div()

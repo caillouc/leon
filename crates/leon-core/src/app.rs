@@ -267,6 +267,8 @@ impl Core {
         self.state.commands = Arc::new(commands);
         let catalog = Arc::clone(&self.ports.catalog);
         self.state.sources = Arc::new(blocking(|| catalog.sources()));
+        let catalog = Arc::clone(&self.ports.catalog);
+        self.state.folders = Arc::new(blocking(|| catalog.folders()));
         self.load_shared();
         let (git, projects) = (
             Arc::clone(&self.ports.git),
@@ -539,20 +541,24 @@ impl Core {
             return false;
         };
         let session = &s.session;
+        let project = self
+            .state
+            .conversations
+            .iter()
+            .find(|c| c.id == session.conversation)
+            .and_then(|c| self.state.project(c.project));
         let agent = session.settings.agent.as_ref().and_then(|name| {
-            let project = self
-                .state
-                .conversations
-                .iter()
-                .find(|c| c.id == session.conversation)?
-                .project;
             self.state
                 .agents
-                .get(&project)?
+                .get(&project?.id)?
                 .iter()
                 .find(|a| &a.name == name)
                 .cloned()
         });
+        // Read at each start: a skill file added since shows up (EXT-5).
+        let catalog = Arc::clone(&self.ports.catalog);
+        let project_dir = project.map(|p| p.path.clone());
+        let skills = blocking(|| project_dir.map_or_default(|dir| catalog.skills(&dir)));
         let spec = SessionSpec {
             settings: session.settings.clone(),
             agent,
@@ -560,6 +566,7 @@ impl Core {
             resume: session.cli_session.clone(),
             mcp_servers: self.session_servers(self.ports.app_tools.as_ref().map(|t| t.server(id))),
             sources: self.state.sources.to_vec(),
+            skills,
         };
         match self.ports.backends.start(spec) {
             Ok(channel) => {

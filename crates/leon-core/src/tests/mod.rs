@@ -219,6 +219,12 @@ impl Backends for FakeBackends {
 struct FakeCatalog;
 
 impl Catalog for FakeCatalog {
+    fn skills(&self, _project: &Path) -> Vec<crate::ports::SkillFile> {
+        Vec::new()
+    }
+    fn folders(&self) -> Vec<crate::ports::AgentFolder> {
+        Vec::new()
+    }
     fn commands(&self, _project: &Path) -> Vec<crate::ports::SlashCommand> {
         Vec::new()
     }
@@ -234,11 +240,13 @@ impl Catalog for FakeCatalog {
                 name: "planner".into(),
                 description: "Plans".into(),
                 instructions: "Plan carefully.".into(),
+                ..Default::default()
             },
             AgentDefinition {
                 name: "coder".into(),
                 description: "Codes".into(),
                 instructions: "Code carefully.".into(),
+                ..Default::default()
             },
         ]
     }

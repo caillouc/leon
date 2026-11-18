@@ -20,6 +20,7 @@ fn models(items: &[(&str, &str)]) -> Vec<leon_core::ports::ModelOption> {
     items
         .iter()
         .map(|(id, label)| leon_core::ports::ModelOption {
+            aliases: Vec::new(),
             id: (*id).into(),
             label: (*label).into(),
         })
@@ -270,6 +271,7 @@ fn sample() -> Snapshot {
                 name: "planner".into(),
                 description: "Understands the issue and writes the plan.".into(),
                 instructions: String::new(),
+                ..Default::default()
             },
             AgentDefinition {
                 name: "coder".into(),
@@ -279,6 +281,7 @@ fn sample() -> Snapshot {
                               or to decide what to build."
                     .into(),
                 instructions: String::new(),
+                ..Default::default()
             },
         ],
     )]);
@@ -301,6 +304,7 @@ fn sample() -> Snapshot {
         settings: Settings {
             diff_fold: vec!["glob:**/*.lock".into()],
             sources: vec!["~/agent-kit".into()],
+            cli_order: vec![leon_domain::BackendKind::Codex],
             ..Settings::default()
         },
         projects: Arc::new(vec![
@@ -331,6 +335,26 @@ fn sample() -> Snapshot {
         shared_tools: repo::shared_tools(),
         shared_tools_path: "~/.config/leon/mcp.json".into(),
         tools: Some(repo::tools()),
+        folders: Arc::new(vec![
+            leon_core::ports::AgentFolder {
+                label: "~/.agents".into(),
+                added: false,
+                agents: 3,
+                skills: 5,
+            },
+            leon_core::ports::AgentFolder {
+                label: "~/.claude".into(),
+                added: false,
+                agents: 5,
+                skills: 1,
+            },
+            leon_core::ports::AgentFolder {
+                label: "/home/user/agent-kit".into(),
+                added: true,
+                agents: 1,
+                skills: 2,
+            },
+        ]),
         notifications: Arc::new(Vec::new()),
         ..Snapshot::default()
     }

@@ -89,7 +89,7 @@ pub struct NewSession {
 }
 
 /// An agent definition the user can talk to (CONV-2), from the user's files.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AgentDefinition {
     /// Name, as the CLIs know it.
     pub name: String,
@@ -97,6 +97,38 @@ pub struct AgentDefinition {
     pub description: String,
     /// Body of the file: the agent's instructions.
     pub instructions: String,
+    /// Its `model`, as written: it picks the CLI (EXT-6).
+    pub model: Option<String>,
+    /// What its `tools` allow (EXT-7); `None`: everything its CLI has.
+    pub tools: Option<Vec<leon_domain::Capability>>,
+}
+
+/// A folder Leon reads agents and skills from, with what it holds
+/// (SETTINGS-1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentFolder {
+    /// As shown: `~/.claude`, or as the user wrote it in the config.
+    pub label: String,
+    /// The user added it (`[sources] folders`); else Leon reads it anyway.
+    pub added: bool,
+    /// Agent files in it.
+    pub agents: usize,
+    /// Skills and commands in it.
+    pub skills: usize,
+}
+
+/// A skill Leon hands to every CLI (EXT-5): from `.agents/skills/` (the
+/// user's or the project's) or a source folder's `skills/`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillFile {
+    /// Its name.
+    pub name: String,
+    /// Its `SKILL.md`, or the `<name>.md` file that is the whole skill.
+    pub file: PathBuf,
+    /// The skill's folder, when it is one (`<name>/SKILL.md` and its files).
+    pub folder: Option<PathBuf>,
+    /// From a source folder, which Claude Code loads itself (I10).
+    pub from_source: bool,
 }
 
 /// A skill or a command the user can type after `/` (CONV-11).
@@ -148,8 +180,15 @@ pub trait Catalog: Send + Sync + 'static {
     fn agents(&self, project: &Path) -> Vec<AgentDefinition>;
     /// Skills and commands for the `/` list of a project (CONV-11).
     fn commands(&self, project: &Path) -> Vec<SlashCommand>;
+    /// The skills every CLI of a project gets (EXT-5), one per name: the
+    /// user's, then the source folders', then the project's, a later one
+    /// hiding an earlier one.
+    fn skills(&self, project: &Path) -> Vec<SkillFile>;
     /// The user's source folders, with their MCP servers (EXT-2).
     fn sources(&self) -> Vec<Source>;
+    /// The user-level folders Leon reads (the ones it finds, then the ones
+    /// the user added), with what each holds.
+    fn folders(&self) -> Vec<AgentFolder>;
     /// Doctor: the source folders and what was found in them.
     fn doctor(&self) -> Vec<DoctorCheck>;
 }
@@ -169,6 +208,8 @@ pub struct SessionSpec {
     pub mcp_servers: Vec<McpServer>,
     /// The user's source folders (EXT-2): each CLI loads what it can.
     pub sources: Vec<Source>,
+    /// The generic skills every CLI should see (EXT-5).
+    pub skills: Vec<SkillFile>,
 }
 
 /// Something the CLI did, normalized across backends.
@@ -270,6 +311,8 @@ pub struct ModelOption {
     pub id: String,
     /// Shown in the pickers, e.g. `Opus 5.5`.
     pub label: String,
+    /// Other names the CLI takes for it, e.g. `opus` (EXT-6).
+    pub aliases: Vec<String>,
 }
 
 /// Models, efforts and permission modes a backend offers (pickers, CONV-4).
@@ -295,6 +338,18 @@ impl BackendOptions {
         if settings.effort.is_none() {
             settings.effort.clone_from(&self.default_effort);
         }
+    }
+
+    /// Every name this CLI takes for a model, with the id it stands for.
+    pub fn model_names(&self) -> Vec<(String, String)> {
+        self.models
+            .iter()
+            .flat_map(|m| {
+                std::iter::once(&m.id)
+                    .chain(&m.aliases)
+                    .map(|name| (name.clone(), m.id.clone()))
+            })
+            .collect()
     }
 
     /// The name shown for a model id (the id itself when unknown).

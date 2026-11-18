@@ -27,6 +27,7 @@ fn spec(resume: Option<&str>) -> SessionSpec {
         resume: resume.map(str::to_owned),
         mcp_servers: Vec::new(),
         sources: Vec::new(),
+        skills: Vec::new(),
     }
 }
 
@@ -151,6 +152,7 @@ fn agent_instructions_go_in_the_system_prompt_or_the_first_prompt() {
         name: "reviewer".into(),
         description: String::new(),
         instructions: "Focus on security issues.".into(),
+        ..Default::default()
     });
     let with_system_prompt = include_str!("../../fixtures/acp/1.32.0/system-prompt.jsonl");
     let commands = || vec![(0, send("first")), (2, send("second"))];
@@ -233,7 +235,7 @@ fn copilot_flags() {
     s.settings.effort = Some("low".into());
     s.mcp_servers = vec![server("leon", "/bin/leon")];
     assert_eq!(
-        copilot(&s).args,
+        copilot(&s, None).args,
         [
             "--acp",
             "--stdio",
@@ -242,5 +244,23 @@ fn copilot_flags() {
             "--allow-all-tools",
             "--allow-tool=leon",
         ]
+    );
+    // An agent that may read and run commands only (EXT-7).
+    s.agent = Some(leon_core::ports::AgentDefinition {
+        tools: Some(vec![
+            leon_domain::Capability::Read,
+            leon_domain::Capability::Execute,
+        ]),
+        ..Default::default()
+    });
+    assert!(
+        copilot(&s, None)
+            .args
+            .ends_with(&["--deny-tool=write".to_owned(), "--deny-tool=url".to_owned()])
+    );
+    let skills = std::path::Path::new("/data/skills/copilot/ab");
+    assert_eq!(
+        copilot(&s, Some(skills)).args.last().map(String::as_str),
+        Some("--plugin-dir=/data/skills/copilot/ab")
     );
 }

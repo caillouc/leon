@@ -84,6 +84,8 @@ pub(crate) struct State {
     pub commands: Arc<HashMap<ProjectId, Vec<crate::ports::SlashCommand>>>,
     /// The user's source folders (EXT-2), given to every session.
     pub sources: Arc<Vec<crate::ports::Source>>,
+    /// The user-level folders of agents and skills (SETTINGS-1).
+    pub folders: Arc<Vec<crate::ports::AgentFolder>>,
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     pub notifications: Arc<Vec<Notification>>,
     pub next_notification: u64,
@@ -196,6 +198,7 @@ impl State {
             transcripts,
             agents: Arc::clone(&self.agents),
             commands: Arc::clone(&self.commands),
+            folders: Arc::clone(&self.folders),
             options: Arc::clone(&self.options),
             notifications: Arc::clone(&self.notifications),
             git: Arc::clone(&self.git),

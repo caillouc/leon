@@ -6,9 +6,10 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
+use std::path::Path;
 
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
-use leon_domain::{PlanStep, StepStatus, Usage};
+use leon_domain::{Capability, PlanStep, StepStatus, Usage};
 use serde_json::{Value, json};
 
 use crate::options::codex_policy;
@@ -19,6 +20,8 @@ use crate::summary::{OUTPUT_MAX, compact};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
     Initialize,
+    /// Leon's generic skills folder (EXT-5), set before the thread starts.
+    SkillRoots,
     Thread,
     Turn,
     Other,
@@ -29,6 +32,8 @@ enum Pending {
 pub(crate) struct Session {
     next_id: i64,
     pending: HashMap<i64, Pending>,
+    /// `skills/extraRoots/set` params, when Leon hands skills to Codex.
+    skill_roots: Option<Value>,
     thread_request: (String, Value),
     thread: Option<String>,
     turn: Option<String>,
@@ -42,10 +47,16 @@ pub(crate) struct Session {
 }
 
 impl Session {
-    /// A new session and the messages to send first.
-    pub(crate) fn new(spec: &SessionSpec) -> (Self, Vec<Value>) {
+    /// A new session and the messages to send first. `skills` is the folder
+    /// of Leon's generic skills made for Codex (EXT-5), if any.
+    pub(crate) fn new(spec: &SessionSpec, skills: Option<&Path>) -> (Self, Vec<Value>) {
         let s = &spec.settings;
-        let (approval, sandbox) = codex_policy(&s.permission);
+        let (approval, mut sandbox) = codex_policy(&s.permission);
+        let tools = spec.agent.as_ref().and_then(|a| a.tools.as_deref());
+        // No `edit` (EXT-7): Codex writes files through its shell and patches.
+        if tools.is_some_and(|t| !t.contains(&Capability::Edit)) {
+            sandbox = "read-only";
+        }
         let mut params = json!({
             "cwd": spec.working_dir.to_string_lossy(),
             "approvalPolicy": approval,
@@ -80,6 +91,9 @@ impl Session {
                 params["config"] = json!({ "mcp_servers": servers });
             }
         }
+        if let Some(tools) = tools {
+            limit(&mut params, tools);
+        }
         let method = match &spec.resume {
             Some(id) => {
                 params["threadId"] = json!(id);
@@ -90,6 +104,9 @@ impl Session {
         let mut session = Self {
             next_id: 0,
             pending: HashMap::new(),
+            // Checked on 0.160.0 (2026-11-18): the folder's skills then
+            // show in `skills/list`.
+            skill_roots: skills.map(|dir| json!({ "extraRoots": [dir.to_string_lossy()] })),
             thread_request: (method.to_owned(), params),
             thread: None,
             turn: None,
@@ -107,6 +124,11 @@ impl Session {
             &json!({ "clientInfo": { "name": "leon", "version": env!("CARGO_PKG_VERSION") } }),
         );
         (session, vec![init])
+    }
+
+    fn thread_start(&mut self) -> Value {
+        let (method, params) = self.thread_request.clone();
+        self.request(Pending::Thread, &method, &params)
     }
 
     fn request(&mut self, kind: Pending, method: &str, params: &Value) -> Value {
@@ -194,11 +216,16 @@ impl Session {
         let result = &msg["result"];
         match kind {
             Pending::Initialize => {
-                let (method, params) = self.thread_request.clone();
                 let initialized = json!({ "jsonrpc": "2.0", "method": "initialized" });
-                let thread = self.request(Pending::Thread, &method, &params);
-                (Vec::new(), vec![initialized, thread])
+                let next = match self.skill_roots.take() {
+                    Some(roots) => {
+                        self.request(Pending::SkillRoots, "skills/extraRoots/set", &roots)
+                    }
+                    None => self.thread_start(),
+                };
+                (Vec::new(), vec![initialized, next])
             }
+            Pending::SkillRoots => (Vec::new(), vec![self.thread_start()]),
             Pending::Thread => {
                 let Some(thread) = result["thread"]["id"].as_str().map(str::to_owned) else {
                     return (
@@ -422,11 +449,36 @@ fn changed_paths(changes: &Value) -> String {
     clip(&paths.join(", "), 200)
 }
 
+/// Turns off what an agent file's `tools` leaves out (EXT-7), in the
+/// thread's config (keys from Codex's config reference, 2026-11-18; ⚠️ their
+/// effect through `thread/start` not checked in a real turn). Codex reads
+/// and searches through its shell and always keeps its plan: `read`,
+/// `search` and `todo` cannot be taken away.
+fn limit(params: &mut Value, tools: &[Capability]) {
+    let mut config = params["config"].take();
+    if !config.is_object() {
+        config = json!({});
+    }
+    if !tools.contains(&Capability::Execute) {
+        config["features"]["shell_tool"] = json!(false);
+    }
+    if !tools.contains(&Capability::Web) {
+        config["web_search"] = json!("disabled");
+    }
+    if !tools.contains(&Capability::Agent) {
+        config["features"]["multi_agent"] = json!(false);
+    }
+    if config.as_object().is_some_and(|c| !c.is_empty()) {
+        params["config"] = config;
+    }
+}
+
 pub(crate) fn start(
     spec: &SessionSpec,
     path: Option<&OsString>,
+    skills: Option<&Path>,
 ) -> Result<BackendChannel, PortError> {
-    let (session, first) = Session::new(spec);
+    let (session, first) = Session::new(spec, skills);
     let launch = Launch {
         path,
         program: "codex",
@@ -451,6 +503,7 @@ mod tests {
     use std::path::PathBuf;
 
     use leon_core::ports::{AgentDefinition, BackendCommand, BackendEvent, SessionSpec};
+    use leon_domain::Capability;
     use leon_domain::{BackendKind, PlanStep, SessionSettings, StepStatus, Usage};
     use serde_json::{Value, json};
 
@@ -469,11 +522,13 @@ mod tests {
                 name: "coder".into(),
                 description: String::new(),
                 instructions: "Write code.".into(),
+                ..Default::default()
             }),
             working_dir: PathBuf::from("/tmp/project"),
             resume: resume.map(str::to_owned),
             mcp_servers: Vec::new(),
             sources: Vec::new(),
+            skills: Vec::new(),
         }
     }
 
@@ -487,20 +542,54 @@ mod tests {
             env: vec![],
             trusted: true,
         }];
-        let (session, _) = Session::new(&with_tools);
+        let (session, _) = Session::new(&with_tools, None);
         assert_eq!(
             session.thread_request.1["config"]["mcp_servers"]["leon"]["command"],
             "/bin/leon"
         );
-        let (session, _) = Session::new(&spec(None));
+        let (session, _) = Session::new(&spec(None), None);
         assert!(session.thread_request.1.get("config").is_none());
+    }
+
+    #[test]
+    fn an_agent_without_edit_and_execute_reads_only() {
+        let mut limited = spec(None);
+        if let Some(agent) = limited.agent.as_mut() {
+            agent.tools = Some(vec![Capability::Read, Capability::Search, Capability::Web]);
+        }
+        let (session, _) = Session::new(&limited, None);
+        let params = &session.thread_request.1;
+        assert_eq!(params["sandbox"], "read-only");
+        assert_eq!(
+            params["config"],
+            json!({ "features": { "shell_tool": false, "multi_agent": false } })
+        );
+        // No `tools`: the permission's sandbox, no config.
+        let (session, _) = Session::new(&spec(None), None);
+        assert_eq!(session.thread_request.1["sandbox"], "workspace-write");
+        assert!(session.thread_request.1.get("config").is_none());
+    }
+
+    #[test]
+    fn the_skills_folder_is_set_before_the_thread_starts() {
+        let dir = std::path::Path::new("/data/skills/codex/ab");
+        let (mut session, first) = Session::new(&spec(None), Some(dir));
+        let (_, sent) = session.handle(&json!({ "id": first[0]["id"], "result": {} }));
+        let methods: Vec<_> = sent.iter().map(|m| m["method"].clone()).collect();
+        assert_eq!(methods, ["initialized", "skills/extraRoots/set"]);
+        assert_eq!(
+            sent[1]["params"],
+            json!({ "extraRoots": ["/data/skills/codex/ab"] })
+        );
+        let (_, sent) = session.handle(&json!({ "id": sent[1]["id"], "result": {} }));
+        assert_eq!(sent[0]["method"], "thread/start");
     }
 
     /// Replays the recorded Codex 0.160.0 exchange ("Reply with the single
     /// word: pong"), answering requests in the order the probe sent them.
     #[test]
     fn recorded_pong_turn() {
-        let (mut session, first) = Session::new(&spec(None));
+        let (mut session, first) = Session::new(&spec(None), None);
         assert_eq!(first[0]["method"], "initialize");
         let mut events = Vec::new();
         let mut sent = first;
@@ -557,7 +646,7 @@ mod tests {
 
     #[test]
     fn resume_uses_thread_resume() {
-        let (mut session, _) = Session::new(&spec(Some("t-1")));
+        let (mut session, _) = Session::new(&spec(Some("t-1")), None);
         let (_, replies) = session.handle(&json!({ "id": 1, "result": {} }));
         assert_eq!(replies[1]["method"], "thread/resume");
         assert_eq!(replies[1]["params"]["threadId"], "t-1");
@@ -565,7 +654,7 @@ mod tests {
 
     #[test]
     fn messages_before_the_thread_are_queued() {
-        let (mut session, _) = Session::new(&spec(None));
+        let (mut session, _) = Session::new(&spec(None), None);
         assert_eq!(
             session.command(BackendCommand::Send("hi".into())),
             [] as [serde_json::Value; 0]
@@ -585,7 +674,7 @@ mod tests {
 
     #[test]
     fn approvals_become_questions_and_answers_go_back() {
-        let (mut session, _) = Session::new(&spec(None));
+        let (mut session, _) = Session::new(&spec(None), None);
         let (events, _) = session.handle(&json!({
             "id": 7, "method": "item/commandExecution/requestApproval", "params": { "command": "rm -rf build" }
         }));
@@ -605,7 +694,7 @@ mod tests {
 
     #[test]
     fn commands_and_failures_map_to_events() {
-        let (mut session, _) = Session::new(&spec(None));
+        let (mut session, _) = Session::new(&spec(None), None);
         let started = json!({ "method": "item/started", "params": { "item": { "type": "commandExecution", "id": "c1", "command": "cargo test" } } });
         let done = json!({ "method": "item/completed", "params": { "item": { "type": "commandExecution", "id": "c1", "aggregatedOutput": "ok", "exitCode": 1 } } });
         let failed = json!({ "method": "turn/completed", "params": { "turn": { "status": "failed", "error": { "message": "boom" } } } });
@@ -639,7 +728,7 @@ mod tests {
 
     #[test]
     fn plan_updates_become_the_plan() {
-        let (mut session, _) = Session::new(&spec(None));
+        let (mut session, _) = Session::new(&spec(None), None);
         let update = json!({ "method": "turn/plan/updated", "params": {
             "threadId": "t", "turnId": "u", "explanation": null,
             "plan": [

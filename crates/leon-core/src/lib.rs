@@ -13,6 +13,7 @@ mod doctor;
 mod events;
 mod idle;
 mod intent;
+mod model_pick;
 pub mod ports;
 mod repo;
 mod settings;
@@ -23,6 +24,7 @@ mod tools;
 pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use doctor::About;
 pub use intent::Intent;
+pub use model_pick::settings_for_agent;
 pub use snapshot::{
     ConversationView, Detail, GitView, Notification, Question, SessionView, Snapshot,
     TranscriptView,

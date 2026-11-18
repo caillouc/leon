@@ -9,6 +9,7 @@
 //! field leave this crate.
 
 mod acp;
+mod bridge;
 mod claude;
 mod codex;
 mod connectors;
@@ -29,12 +30,23 @@ use leon_domain::{BackendKind, CliConnectors, DoctorSection};
 #[derive(Debug, Clone)]
 pub struct Clis {
     path: SearchPath,
+    /// Where Leon copies its generic skills for the CLIs (EXT-5); none in
+    /// tests.
+    skills: Option<std::path::PathBuf>,
 }
 
 impl Clis {
     /// Runs the CLIs with the `PATH` that `path` gives.
     pub fn new(path: SearchPath) -> Self {
-        Self { path }
+        Self { path, skills: None }
+    }
+
+    /// Hands Leon's generic skills to the CLIs through copies in `folder`,
+    /// a folder of Leon's own (EXT-5).
+    #[must_use]
+    pub fn with_skills_folder(mut self, folder: std::path::PathBuf) -> Self {
+        self.skills = Some(folder);
+        self
     }
 }
 
@@ -47,10 +59,18 @@ impl Default for Clis {
 
 impl Backends for Clis {
     fn start(&self, spec: SessionSpec) -> Result<BackendChannel, PortError> {
-        match spec.settings.backend {
-            BackendKind::ClaudeCode => claude::start(&spec, (self.path)()),
-            BackendKind::Codex => codex::start(&spec, (self.path)()),
-            BackendKind::CopilotCli => acp::start(&spec, &acp::copilot(&spec), (self.path)()),
+        let backend = spec.settings.backend;
+        let skills = self
+            .skills
+            .as_deref()
+            .and_then(|root| bridge::prepare(root, backend, &spec.skills));
+        let skills = skills.as_deref();
+        match backend {
+            BackendKind::ClaudeCode => claude::start(&spec, (self.path)(), skills),
+            BackendKind::Codex => codex::start(&spec, (self.path)(), skills),
+            BackendKind::CopilotCli => {
+                acp::start(&spec, &acp::copilot(&spec, skills), (self.path)())
+            }
         }
     }
 

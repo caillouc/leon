@@ -6,9 +6,10 @@
 
 use std::collections::HashSet;
 use std::ffi::OsString;
+use std::path::Path;
 
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
-use leon_domain::{PlanStep, StepStatus, Usage};
+use leon_domain::{Capability, PlanStep, StepStatus, Usage};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -16,7 +17,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use crate::process::{clip, spawn, stderr_tail};
 use crate::summary::{OUTPUT_MAX, claude_tool, result_text};
 
-pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
+/// The command line; `skills` is the folder of Leon's generic skills made
+/// for Claude Code (EXT-5), if any.
+pub(crate) fn args(spec: &SessionSpec, skills: Option<&Path>) -> Vec<String> {
     let s = &spec.settings;
     let mut args: Vec<String> = [
         "-p",
@@ -72,17 +75,52 @@ pub(crate) fn args(spec: &SessionSpec) -> Vec<String> {
             source.dir.to_string_lossy().into_owned(),
         ]);
     }
+    // What the agent file's `tools` leaves out (EXT-7).
+    let denied = spec
+        .agent
+        .as_ref()
+        .and_then(|a| a.tools.as_deref())
+        .map_or_default(denied_tools);
+    if !denied.is_empty() {
+        args.push(format!("--disallowedTools={}", denied.join(",")));
+    }
+    // Its `.claude/skills/` loads like a project's (docs, skills page;
+    // checked on 2.1.288, 2026-11-18). One value: the flag takes several.
+    if let Some(dir) = skills {
+        args.push(format!("--add-dir={}", dir.display()));
+    }
     if let Some(id) = &spec.resume {
         args.extend(["--resume".to_owned(), id.clone()]);
     }
     args
 }
 
+/// Claude Code's tools for the capabilities an agent does not have, by
+/// GitHub's alias table (custom-agents reference, 2026-11-18); task tools as
+/// 2.1.288 names them.
+fn denied_tools(allowed: &[Capability]) -> Vec<&'static str> {
+    Capability::ALL
+        .into_iter()
+        .filter(|c| !allowed.contains(c))
+        .flat_map(|c| match c {
+            Capability::Read => &["Read"][..],
+            Capability::Search => &["Grep", "Glob"],
+            Capability::Edit => &["Edit", "Write", "NotebookEdit"],
+            Capability::Execute => &["Bash"],
+            Capability::Web => &["WebFetch", "WebSearch"],
+            Capability::Agent => &["Agent"],
+            Capability::Todo => &["TodoWrite", "TaskCreate", "TaskUpdate"],
+        })
+        .copied()
+        .collect()
+}
+
 pub(crate) fn start(
     spec: &SessionSpec,
     path: Option<&OsString>,
+    skills: Option<&Path>,
 ) -> Result<BackendChannel, PortError> {
-    let mut child = spawn(path, "claude", &args(spec), &spec.working_dir)
+    let mut child = spawn(path, "claude", &args(spec, skills), &spec.working_dir)
         .map_err(|e| PortError::new("starting Claude Code", e))?;
     let (Some(stdin), Some(stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())
@@ -454,6 +492,7 @@ mod tests {
                 name: "planner".into(),
                 description: "Plans".into(),
                 instructions: "Plan.".into(),
+                ..Default::default()
             }),
             working_dir: PathBuf::from("/tmp"),
             resume: Some("s1".into()),
@@ -468,8 +507,9 @@ mod tests {
                 dir: PathBuf::from("/kit"),
                 mcp_servers: Vec::new(),
             }],
+            skills: Vec::new(),
         };
-        let list = args(&spec);
+        let list = args(&spec, None);
         assert!(list.join(" ").contains("--plugin-dir /kit --resume s1"));
         let at = list.iter().position(|a| a == "--mcp-config").unwrap();
         let config: Value = serde_json::from_str(&list[at + 1]).unwrap();
@@ -485,6 +525,26 @@ mod tests {
         assert!(a.contains("--agent planner"));
         assert!(a.contains(r#"--agents {"planner":{"description":"Plans","prompt":"Plan."}}"#));
         assert!(a.ends_with("--resume s1"));
+        // An agent that may only read and search (EXT-7).
+        let mut limited = spec.clone();
+        if let Some(agent) = limited.agent.as_mut() {
+            agent.tools = Some(vec![
+                leon_domain::Capability::Read,
+                leon_domain::Capability::Search,
+            ]);
+        }
+        assert!(args(&limited, None).contains(
+            &"--disallowedTools=Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch,Agent,TodoWrite,TaskCreate,TaskUpdate"
+                .to_owned()
+        ));
+        assert!(!a.contains("--disallowedTools"));
+        // Leon's generic skills folder (EXT-5), as one value.
+        let with_skills = args(&spec, Some(std::path::Path::new("/data/skills/claude/ab")));
+        assert!(
+            with_skills
+                .join(" ")
+                .contains("--add-dir=/data/skills/claude/ab --resume s1")
+        );
     }
 
     #[test]

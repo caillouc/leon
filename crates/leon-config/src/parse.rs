@@ -83,6 +83,17 @@ pub fn parse(text: &str) -> Loaded {
                         .ok_or_else(|| format!("\"{p}\" is not a valid glob or regex, ignored"))
                 });
             }
+            "agents" => {
+                out.settings.cli_order =
+                    read_list(value, "agents", "cli_order", &mut out.warnings, |id| {
+                        BackendKind::from_id(id)
+                            .map(drop)
+                            .ok_or_else(|| format!("unknown CLI \"{id}\", ignored"))
+                    })
+                    .iter()
+                    .filter_map(|id| BackendKind::from_id(id))
+                    .collect();
+            }
             "sources" => {
                 out.settings.sources =
                     read_list(value, "sources", "folders", &mut out.warnings, |f| {
@@ -204,6 +215,10 @@ mod tests {
         assert_eq!(d.permission, "on-request");
         assert_eq!(loaded.settings.sources, ["~/agent-kit"]);
         assert_eq!(
+            loaded.settings.cli_order,
+            [BackendKind::Codex, BackendKind::ClaudeCode]
+        );
+        assert_eq!(
             loaded.settings.diff_fold,
             ["glob:**/*.lock", "re:^generated/"]
         );
@@ -223,6 +238,7 @@ mod tests {
             ("[sources]\nfolders = \"~/kit\"", "sources.folders"),
             ("[sources]\nfolders = [\"\"]", "sources.folders"),
             ("[sources]\npaths = []", "sources.paths"),
+            ("[agents]\ncli_order = [\"gemini\"]", "agents.cli_order"),
         ];
         for (text, key) in cases {
             let loaded = parse(text);

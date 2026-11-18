@@ -30,6 +30,9 @@ pub struct Snapshot {
     pub agents: Arc<HashMap<ProjectId, Vec<AgentDefinition>>>,
     /// Skills and commands per project, for the `/` list (CONV-11).
     pub commands: Arc<HashMap<ProjectId, Vec<crate::ports::SlashCommand>>>,
+    /// The user-level folders of agents and skills, with what each holds
+    /// (SETTINGS-1).
+    pub folders: Arc<Vec<crate::ports::AgentFolder>>,
     /// What each backend's pickers offer (CONV-4).
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     /// Git state of each conversation's working directory (GIT-*, CONV-14).

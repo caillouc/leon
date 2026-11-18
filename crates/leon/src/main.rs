@@ -49,7 +49,9 @@ fn main() -> anyhow::Result<()> {
         .collect();
     let ports = leon_core::Ports {
         storage: Arc::new(store),
-        backends: Arc::new(leon_backends::Clis::new(login_path)),
+        backends: Arc::new(
+            leon_backends::Clis::new(login_path).with_skills_folder(data.join("skills")),
+        ),
         catalog: Arc::new(leon_catalog::AgentFiles::new(home, sources)),
         git: Arc::new(leon_git::GitCli::new(login_path)),
         github: Arc::new(leon_github::GhCli::new(login_path)),

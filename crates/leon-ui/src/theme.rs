@@ -97,37 +97,68 @@ pub fn hex(digits: &str) -> Option<Rgba> {
     (digits.trim_start_matches('#').len() == 6).then(|| rgb(value))
 }
 
-/// A board column's colour, as its name means it and in the colours pull
-/// requests use: backlog grey (like a draft), to do blue, in progress amber,
-/// in review green (like a ready pull request), done purple (like merged).
-/// Other names take the next colour by their place on the board. Never red:
-/// red means an error.
-pub fn status_color(name: &str, order: usize) -> Rgba {
+/// Board columns' colours, in the colours pull requests use, as each name
+/// means it: backlog grey (like a draft), to do blue, in progress amber, in
+/// review or QA green (like a ready pull request), done or in production
+/// purple (like merged). Two columns never share a colour: in board order,
+/// each column first gets the colour its name means unless an earlier one
+/// took it; the others then get the colours no column has. Never red: red means an
+/// error. `columns` are (name, place on the board).
+pub fn status_colors(columns: &[(&str, usize)]) -> Vec<Rgba> {
+    let palette = [
+        fg_muted(),
+        accent(),
+        warn(),
+        ok(),
+        merged(),
+        rgb(0x0073_c6d9),
+        rgb(0x00f0_9a4f),
+        rgb(0x00e8_8fc4),
+    ];
+    let mut order: Vec<usize> = (0..columns.len()).collect();
+    order.sort_by_key(|&i| columns[i].1);
+    let mut colors: Vec<Option<Rgba>> = vec![None; columns.len()];
+    // First the colours names mean, then the rest from what is left.
+    for &i in &order {
+        if let Some(color) = meaning(columns[i].0).filter(|c| !colors.contains(&Some(*c))) {
+            colors[i] = Some(color);
+        }
+    }
+    for &i in &order {
+        if colors[i].is_none() {
+            colors[i] = palette
+                .iter()
+                .copied()
+                .find(|c| !colors.contains(&Some(*c)));
+        }
+    }
+    colors
+        .into_iter()
+        .map(|c| c.unwrap_or_else(fg_muted))
+        .collect()
+}
+
+/// The colour a column's name means, if any.
+fn meaning(name: &str) -> Option<Rgba> {
     let name = name.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
-    if has(&["review"]) {
-        ok()
-    } else if has(&["progress", "doing", "wip", "working"]) {
-        warn()
-    } else if has(&[
-        "done", "closed", "merged", "shipped", "complete", "released",
-    ]) {
-        merged()
-    } else if has(&["backlog", "icebox", "triage", "later", "someday"]) {
-        fg_muted()
-    } else if has(&["todo", "to do", "ready", "next", "planned", "selected"]) {
-        accent()
-    } else {
-        let palette = [
-            fg_muted(),
-            accent(),
-            warn(),
-            ok(),
-            merged(),
-            rgb(0x0073_c6d9),
-        ];
-        palette[order % palette.len()]
-    }
+    Some(
+        if has(&[
+            "done", "closed", "merged", "shipped", "complete", "released", "prod", "deployed",
+        ]) {
+            merged()
+        } else if has(&["review", "qa", "test", "validat"]) {
+            ok()
+        } else if has(&["progress", "doing", "wip", "working", "dev"]) {
+            warn()
+        } else if has(&["backlog", "icebox", "triage", "later", "someday"]) {
+            fg_muted()
+        } else if has(&["todo", "to do", "ready", "next", "planned", "selected"]) {
+            accent()
+        } else {
+            return None;
+        },
+    )
 }
 
 /// A board option's GitHub colour (`BLUE`, `RED`…) in the app's palette.
@@ -191,25 +222,45 @@ pub fn install(cx: &mut gpui::App) {
 
 #[cfg(test)]
 mod tests {
-    use super::{accent, err, fg_muted, github_color, merged, ok, rgb, status_color, warn};
+    use super::{accent, err, fg_muted, github_color, merged, ok, rgb, status_colors, warn};
 
     #[test]
-    fn board_columns_get_the_colour_their_name_means() {
+    fn board_columns_get_their_meaning_and_never_share_a_colour() {
+        let one = |name: &str| status_colors(&[(name, 0)])[0];
         let cases = [
             ("Backlog", fg_muted()),
             ("Todo", accent()),
             ("Ready", accent()),
             ("In progress", warn()),
+            ("In DEV", warn()),
             ("In review", ok()),
+            ("In QA | to validate", ok()),
             ("Done", merged()),
+            ("In PROD | tech to validate", merged()),
         ];
         for (name, colour) in cases {
-            assert_eq!(status_color(name, 9), colour, "{name}");
+            assert_eq!(one(name), colour, "{name}");
         }
-        // Unknown names, whatever their place: never red.
-        for order in 0..12 {
-            assert_ne!(status_color("Blocked by legal", order), err());
+        // A real board: "To do" and "In PROD" used to share blue.
+        let board = [
+            ("Backlog", 0),
+            ("To do", 1),
+            ("In DEV", 2),
+            ("In progress", 3),
+            ("In review", 4),
+            ("In QA | to validate", 5),
+            ("In PROD | tech to validate", 6),
+            ("Blocked by legal", 7),
+        ];
+        let colors = status_colors(&board);
+        for (i, a) in colors.iter().enumerate() {
+            assert_ne!(*a, err(), "{}", board[i].0);
+            for (j, b) in colors.iter().enumerate().skip(i + 1) {
+                assert_ne!(a, b, "{} and {}", board[i].0, board[j].0);
+            }
         }
+        // The earlier column keeps the colour its name means.
+        assert_eq!((colors[2], colors[4]), (warn(), ok()));
     }
 
     #[test]

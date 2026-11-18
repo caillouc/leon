@@ -10,6 +10,9 @@ pub struct Settings {
     /// `sources.folders`: the user's agents, skills and MCP servers in the
     /// plugin layout (P3, EXT-2), as written (`~/` allowed).
     pub sources: Vec<String>,
+    /// `agents.cli_order`: the CLIs tried, in order, for an agent file's
+    /// model (EXT-6), as written; [`crate::full_cli_order`] completes it.
+    pub cli_order: Vec<BackendKind>,
 }
 
 /// Choices prefilled when the user starts a conversation (CONV-3, CONV-4).

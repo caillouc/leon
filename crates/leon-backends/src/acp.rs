@@ -16,8 +16,10 @@ mod turn;
 mod tests;
 
 use std::ffi::OsString;
+use std::path::Path;
 
 use leon_core::ports::{BackendChannel, PortError, SessionSpec};
+use leon_domain::Capability;
 
 use crate::options::copilot_flags;
 use crate::rpc::{self, Launch};
@@ -37,7 +39,11 @@ pub(crate) struct Cli {
 /// permission are server flags, applied to every session it starts.
 /// ⚠️ `--model`, the permission flags and `--allow-tool` are documented for
 /// the CLI, not verified with `--acp`.
-pub(crate) fn copilot(spec: &SessionSpec) -> Cli {
+///
+/// `skills` is the folder of Leon's generic skills made for it (EXT-5), a
+/// plugin folder (`--plugin-dir`, checked with `copilot skill list` on
+/// 1.0.113, 2026-11-18; ⚠️ not with `--acp`).
+pub(crate) fn copilot(spec: &SessionSpec, skills: Option<&Path>) -> Cli {
     let s = &spec.settings;
     let mut args = vec!["--acp".to_owned(), "--stdio".to_owned()];
     if let Some(model) = &s.model {
@@ -57,6 +63,25 @@ pub(crate) fn copilot(spec: &SessionSpec) -> Cli {
         .collect();
     if !trusted.is_empty() {
         args.push(format!("--allow-tool={}", trusted.join(",")));
+    }
+    // What the agent file's `tools` leaves out (EXT-7), as permission rules
+    // (`copilot help permissions`, 1.0.113): there is none for starting an
+    // agent or keeping a task list.
+    if let Some(tools) = spec.agent.as_ref().and_then(|a| a.tools.as_deref()) {
+        let rules = [
+            (Capability::Read, "read"),
+            (Capability::Edit, "write"),
+            (Capability::Execute, "shell"),
+            (Capability::Web, "url"),
+        ];
+        for (capability, rule) in rules {
+            if !tools.contains(&capability) {
+                args.push(format!("--deny-tool={rule}"));
+            }
+        }
+    }
+    if let Some(dir) = skills {
+        args.push(format!("--plugin-dir={}", dir.display()));
     }
     Cli {
         label: "Copilot CLI",

@@ -1,10 +1,10 @@
-//! The sprint filter of my issues, and an issue's board chips: its priority
-//! in its board colour, its sprints with the current one highlighted (GH-7).
+//! My issues' board (GH-2): the sprint filter, each column's colour, and an
+//! issue's board chips (its priority in its board colour, its sprints).
 
 use std::collections::HashSet;
 
 use gpui::{AnyElement, Context, Div, Rgba, div, prelude::*, px};
-use leon_domain::{Day, Issue, Iteration, current_sprint};
+use leon_domain::{BoardOption, Day, Issue, Iteration, current_sprint};
 
 use crate::icons::{Icon, icon};
 use crate::picker::Choice;
@@ -34,6 +34,26 @@ pub(crate) fn today() -> Day {
 }
 
 impl Workspace {
+    /// A board column's colour, unique among the columns of my issues.
+    pub(crate) fn status_color(&self, status: &BoardOption) -> Rgba {
+        let mut columns: Vec<(&str, usize)> = self
+            .snapshot
+            .my_issues
+            .iter()
+            .filter_map(|i| i.status.as_ref())
+            .chain(std::iter::once(status))
+            .map(|s| (s.name.as_str(), s.order))
+            .collect();
+        columns.sort_unstable();
+        columns.dedup_by(|a, b| a.0 == b.0);
+        let colors = theme::status_colors(&columns);
+        columns
+            .iter()
+            .position(|(name, _)| *name == status.name)
+            .and_then(|i| colors.get(i).copied())
+            .unwrap_or_else(theme::fg_muted)
+    }
+
     /// The sprint the list shows; `None` for every issue.
     pub(crate) fn shown_sprint(&self, today: Day) -> Option<SprintKey> {
         match &self.gh.sprint {
@@ -162,9 +182,8 @@ fn sprint_name(sprint: &Iteration, today: Day, with_field: bool) -> String {
     format!("{name} · {}{now}", dates(sprint))
 }
 
-/// An issue's priority, in its board colour, and its sprints, the current
-/// one highlighted.
-pub(crate) fn board_chips(issue: &Issue, today: Day) -> Vec<Div> {
+/// An issue's priority, in its board colour, and its sprints.
+pub(crate) fn board_chips(issue: &Issue) -> Vec<Div> {
     let priority = issue.priority.as_ref().map(|p| {
         let color = p
             .color
@@ -173,13 +192,7 @@ pub(crate) fn board_chips(issue: &Issue, today: Day) -> Vec<Div> {
             .unwrap_or_else(theme::fg_muted);
         tinted_chip(&p.name, color)
     });
-    let sprints = issue.iterations.iter().map(|i| {
-        if i.is_current(today) {
-            tinted_chip(&i.title, theme::accent())
-        } else {
-            chip(&i.title)
-        }
-    });
+    let sprints = issue.iterations.iter().map(|i| chip(&i.title));
     priority.into_iter().chain(sprints).collect()
 }
 
@@ -195,8 +208,7 @@ pub(crate) fn chip(text: &str) -> Div {
         .child(text.to_owned())
 }
 
-/// A small value filled with its colour: a label, a priority, the current
-/// sprint.
+/// A small value filled with its colour: a label, a priority.
 pub(crate) fn tinted_chip(text: &str, color: Rgba) -> Div {
     div()
         .px_2()

@@ -316,14 +316,13 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Opens the new-conversation form on `project` (when known), with
-    /// `message` written in it when given, ready to type.
     /// Opens the new-conversation form on `project` (when known). For an
-    /// issue, the conversation is linked to it and the message names it.
+    /// issue, the conversation is linked to it and the message starts with
+    /// `owner/name#12` and a blank line, the caret on it.
     pub(crate) fn open_new_conversation(
         &mut self,
         project: Option<ProjectId>,
-        issue: Option<(leon_domain::GhRef, String)>,
+        issue: Option<leon_domain::GhRef>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -332,11 +331,10 @@ impl Workspace {
             self.form.settings.agent = None;
         }
         self.show_new_conversation(cx);
-        if let Some((issue, message)) = issue {
+        if let Some(issue) = issue {
+            let message = format!("{}\n\n", issue.text());
+            crate::message_input::write_in(&self.form_text, message, window, cx);
             self.form.issue = Some(issue);
-            self.form_text.update(cx, |state, cx| {
-                state.set_value(message, window, cx);
-            });
         }
         self.form_text.focus_handle(cx).focus(window, cx);
     }

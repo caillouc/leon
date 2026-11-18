@@ -1,13 +1,13 @@
 //! Finds agent definitions, skills and commands in the user's standard
 //! folders (P3, EXT-1, CONV-11).
 //!
-//! Agents are markdown files with a YAML frontmatter (`name`, `description`)
-//! and the instructions as body. Folders, in priority order (a project agent
-//! hides a user agent of the same name):
+//! Agents are markdown files with a YAML frontmatter (`name`, `description`,
+//! `model`, `tools`) and the instructions as body (EXT-4). Folders, a later
+//! one hiding an agent of the same name in an earlier one:
 //!
-//! - user: `~/.agents/agents/`, `~/.claude/agents/`
+//! - user: `~/.claude/agents/`, `~/.github/agents/`, `~/.agents/agents/`
 //! - source folders the user registered (P3): `agents/`
-//! - project: `.agents/agents/`, `.claude/agents/`, `.github/agents/*.agent.md`
+//! - project: `.claude/agents/`, `.github/agents/`, `.agents/agents/`
 //!
 //! Must not: write anything, or depend on another adapter.
 
@@ -19,7 +19,7 @@ mod sources;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use leon_core::ports::{AgentDefinition, Catalog, SlashCommand, Source};
+use leon_core::ports::{AgentDefinition, AgentFolder, Catalog, SkillFile, SlashCommand, Source};
 use leon_domain::{DoctorCheck, Health};
 
 pub use shared::SharedFile;
@@ -40,7 +40,8 @@ impl AgentFiles {
     }
 }
 
-const FOLDERS: [&str; 3] = [".agents/agents", ".claude/agents", ".github/agents"];
+/// Agent folders at one level; the last one wins a name clash (EXT-4).
+const FOLDERS: [&str; 3] = [".claude/agents", ".github/agents", ".agents/agents"];
 
 impl Catalog for AgentFiles {
     fn agents(&self, project: &Path) -> Vec<AgentDefinition> {
@@ -64,8 +65,39 @@ impl Catalog for AgentFiles {
         commands::commands(&self.home, &self.sources, project)
     }
 
+    fn skills(&self, project: &Path) -> Vec<SkillFile> {
+        commands::shared(&self.home, &self.sources, project)
+    }
+
     fn sources(&self) -> Vec<Source> {
         self.sources.iter().map(|dir| sources::read(dir)).collect()
+    }
+
+    fn folders(&self) -> Vec<AgentFolder> {
+        let found = [".agents", ".claude", ".github"]
+            .into_iter()
+            .map(|name| {
+                (
+                    format!("~/{name}"),
+                    self.home.join(name),
+                    false,
+                    name == ".agents",
+                )
+            })
+            .filter(|(_, dir, _, _)| dir.is_dir());
+        let added = self
+            .sources
+            .iter()
+            .map(|dir| (dir.display().to_string(), dir.clone(), true, false));
+        found
+            .chain(added)
+            .map(|(label, dir, added, flat)| AgentFolder {
+                label,
+                added,
+                agents: read_folder(&dir.join("agents")).len(),
+                skills: commands::count(&dir, flat),
+            })
+            .collect()
     }
 
     fn doctor(&self) -> Vec<DoctorCheck> {
@@ -88,7 +120,7 @@ impl Catalog for AgentFiles {
                     .fix("Fix `[sources] folders` in Leon's config file");
                 }
                 let agents = read_folder(&dir.join("agents")).len();
-                let skills = commands::count_in_source(dir);
+                let skills = commands::count(dir, false);
                 let servers = sources::read(dir).mcp_servers.len();
                 DoctorCheck::new(
                     Health::Ok,
@@ -129,7 +161,23 @@ fn read_agent(path: &Path) -> Option<AgentDefinition> {
             .unwrap_or(fallback),
         description: fields.get("description").cloned().unwrap_or_default(),
         instructions: body.trim().to_owned(),
+        model: fields.get("model").cloned().filter(|m| !m.is_empty()),
+        tools: fields
+            .get("tools")
+            .map(|tools| leon_domain::capabilities(&list(tools))),
     })
+}
+
+/// A frontmatter list: `a, b`, `[a, "b"]`, or block items (joined with `, `
+/// by the parser).
+fn list(text: &str) -> Vec<String> {
+    text.trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(',')
+        .map(|item| item.trim().trim_matches(['"', '\'']).to_owned())
+        .filter(|item| !item.is_empty())
+        .collect()
 }
 
 #[cfg(test)]
@@ -137,6 +185,7 @@ mod tests {
     use std::fs;
 
     use leon_core::ports::Catalog;
+    use leon_domain::Capability;
 
     use super::AgentFiles;
 
@@ -163,12 +212,73 @@ mod tests {
         )
         .unwrap();
 
+        fs::create_dir_all(home.path().join(".agents/agents")).unwrap();
+        fs::write(
+            home.path().join(".agents/agents/reviewer.md"),
+            "---\nname: reviewer\ndescription: generic\nmodel: opus\ntools: [read, search, execute]\n---\nReview.",
+        )
+        .unwrap();
+        fs::write(
+            home.path().join(".claude/agents/reviewer.md"),
+            "---\nname: reviewer\ndescription: claude only\ntools:\n  - Read\n  - mcp__github__get_pr\n---\nOld.",
+        )
+        .unwrap();
+
         let agents = AgentFiles::new(home.path().to_path_buf(), Vec::new()).agents(project.path());
         let names: Vec<_> = agents.iter().map(|a| a.name.as_str()).collect();
-        assert_eq!(names, ["coder", "planner"]);
+        assert_eq!(names, ["coder", "planner", "reviewer"]);
         assert_eq!(agents[1].description, "project planner");
         assert_eq!(agents[1].instructions, "Plan here.");
         assert_eq!(agents[0].instructions, "No frontmatter, just text.");
+        // No `model` or `tools`: the CLI chosen, with every tool it has.
+        assert_eq!(
+            (agents[0].model.clone(), agents[0].tools.clone()),
+            (None, None)
+        );
+        // `.agents/agents/` wins over `.claude/agents/`.
+        let reviewer = &agents[2];
+        assert_eq!(reviewer.description, "generic");
+        assert_eq!(reviewer.model.as_deref(), Some("opus"));
+        assert_eq!(
+            reviewer.tools,
+            Some(vec![
+                Capability::Read,
+                Capability::Search,
+                Capability::Execute
+            ])
+        );
+    }
+
+    #[test]
+    fn folders_found_and_added_with_what_they_hold() {
+        let home = tempfile::tempdir().unwrap();
+        let kit = tempfile::tempdir().unwrap();
+        let write = |root: &std::path::Path, path: &str| {
+            let file = root.join(path);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, "---\ndescription: d\n---\n").unwrap();
+        };
+        write(home.path(), ".agents/agents/planner.md");
+        write(home.path(), ".agents/skills/release.md");
+        write(home.path(), ".agents/skills/pdf/SKILL.md");
+        write(home.path(), ".claude/commands/review.md");
+        write(kit.path(), "agents/coder.md");
+        write(kit.path(), "skills/deploy/SKILL.md");
+        let folders =
+            AgentFiles::new(home.path().to_path_buf(), vec![kit.path().to_path_buf()]).folders();
+        let got: Vec<_> = folders
+            .iter()
+            .map(|f| (f.label.as_str(), f.added, f.agents, f.skills))
+            .collect();
+        let kit_label = kit.path().display().to_string();
+        assert_eq!(
+            got,
+            [
+                ("~/.agents", false, 1, 2),
+                ("~/.claude", false, 0, 1),
+                (kit_label.as_str(), true, 1, 1),
+            ]
+        );
     }
 
     #[test]

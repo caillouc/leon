@@ -35,6 +35,7 @@ mod pr_view;
 pub mod preview;
 mod right;
 mod row_menu;
+mod settings_agents;
 mod settings_pickers;
 mod settings_view;
 mod shortcuts;

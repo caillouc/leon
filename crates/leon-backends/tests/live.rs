@@ -23,6 +23,7 @@ fn spec(backend: BackendKind, dir: &std::path::Path, resume: Option<String>) -> 
         resume,
         mcp_servers: Vec::new(),
         sources: Vec::new(),
+        skills: Vec::new(),
     }
 }
 

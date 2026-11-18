@@ -132,19 +132,34 @@ Where each CLI looks (docs, 2026-11-17):
 | Plugins | `.claude-plugin/` | reads Claude manifests | reads `.claude-plugin/` |
 
 `leon-catalog` reads, in this order (a later entry hides an earlier one of the
-same name): the user's standard folders, the source folders listed in
-`[sources] folders` of the config (plugin layout: `agents/`, `skills/`,
-`commands/`, `.mcp.json`), then the project's folders. It feeds the agent
-picker and the `/` list (CONV-11). Each session gets the source folders:
+same name): the user's folders (`~/.claude`, `~/.github`, then Leon's generic
+`~/.agents`), the source folders listed in `[sources] folders` of the config
+(plugin layout: `agents/`, `skills/`, `commands/`, `.mcp.json`), then the
+project's folders in the same order. It feeds the agent picker, the `/` list
+(CONV-11) and Settings' folder list. Agent files give `model` and `tools`
+(EXT-4, EXT-6, EXT-7): `leon_domain::agent_file` holds the tools vocabulary
+and the model-to-CLI pick, `leon_core::settings_for_agent` applies it to a
+session's settings (the form, and an agent another agent starts).
 
-- Claude Code: `--plugin-dir <folder>` each (local `--help`, 2.1.288), so its
-  skills, commands, agents and MCP servers load natively. Checked on
-  2026-11-17: a folder's skills load with or without
-  `.claude-plugin/plugin.json`.
-- Codex: the folders' stdio MCP servers in `thread/start.config.mcp_servers`.
-  Skills from source folders do not reach Codex (no per-session option found
-  in 0.160.0 `--help`).
-- Copilot CLI: the folders' MCP servers in ACP `session/new.mcpServers`.
+Each session gets the source folders and Leon's generic skills (EXT-5).
+`leon-backends/src/bridge.rs` copies the skills a CLI does not read itself
+into `<data folder>/skills/<cli>/<hash>/`, in that CLI's layout, at each
+session start:
+
+- Claude Code: `--plugin-dir <folder>` per source folder (local `--help`,
+  2.1.288), so its skills, commands, agents and MCP servers load natively
+  (checked on 2026-11-17, with or without `.claude-plugin/plugin.json`);
+  every `.agents/skills` skill through `--add-dir=<bridge>` (its
+  `.claude/skills/` loads; checked live on 2026-11-18). An agent's missing
+  tools become `--disallowedTools`.
+- Codex: the folders' stdio MCP servers in `thread/start.config.mcp_servers`;
+  `<name>.md` skills and source-folder skills through
+  `skills/extraRoots/set`, sent before `thread/start`. Missing tools: a
+  read-only sandbox, `features.shell_tool`, `web_search`,
+  `features.multi_agent` in the thread config.
+- Copilot CLI: the folders' MCP servers in ACP `session/new.mcpServers`; the
+  same skills as Codex through `--plugin-dir=<bridge>`; missing tools as
+  `--deny-tool=` rules (`read`, `write`, `shell`, `url`).
 
 Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 

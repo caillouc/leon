@@ -53,6 +53,7 @@ async fn calls_a_leon_tool(backend: BackendKind) {
         resume: None,
         mcp_servers: vec![tools.server(AgentSessionId(7))],
         sources: Vec::new(),
+        skills: Vec::new(),
     };
     let mut channel = clis.start(spec).unwrap();
     channel

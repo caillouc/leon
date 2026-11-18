@@ -1,34 +1,40 @@
-//! Skills and commands for the `/` list (CONV-11), from the standard folders:
+//! Skills and commands for the `/` list (CONV-11), and the skills Leon hands
+//! to every CLI (EXT-5), from the standard folders:
 //!
-//! - skills (Agent Skills standard): `.agents/skills/<name>/SKILL.md`,
-//!   `.claude/skills/<name>/SKILL.md`, `.github/skills/<name>/SKILL.md`
+//! - skills: `.claude/skills/<name>/SKILL.md`, `.github/skills/<name>/SKILL.md`,
+//!   and Leon's generic `.agents/skills/`, where a skill is a `<name>.md`
+//!   file or a `<name>/SKILL.md` folder
 //! - commands (Claude plugin layout): `.claude/commands/<name>.md`
 //!
 //! in the user's home, then each source folder (`skills/<name>/SKILL.md`,
 //! `commands/<name>.md`), then the project: a later entry hides an earlier
-//! one of the same name.
+//! one of the same name, and `.agents/skills/` comes last at each level.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use leon_core::ports::SlashCommand;
+use leon_core::ports::{SkillFile, SlashCommand};
 
 use crate::frontmatter::split;
 
-const SKILL_FOLDERS: [&str; 3] = [".agents/skills", ".claude/skills", ".github/skills"];
+/// CLI-specific skill folders, read for the `/` list only.
+const CLI_SKILL_FOLDERS: [&str; 2] = [".claude/skills", ".github/skills"];
+/// Leon's generic skills (EXT-5).
+const AGENTS_SKILLS: &str = ".agents/skills";
 const COMMAND_FOLDER: &str = ".claude/commands";
 
 pub(crate) fn commands(home: &Path, sources: &[PathBuf], project: &Path) -> Vec<SlashCommand> {
     let mut found = Vec::new();
     let standard = |root: &Path, found: &mut Vec<SlashCommand>| {
-        for folder in SKILL_FOLDERS {
-            found.extend(skills(&root.join(folder)));
+        for folder in CLI_SKILL_FOLDERS {
+            found.extend(skills(&root.join(folder), false));
         }
         found.extend(command_files(&root.join(COMMAND_FOLDER)));
+        found.extend(skills(&root.join(AGENTS_SKILLS), true));
     };
     standard(home, &mut found);
     for source in sources {
-        found.extend(skills(&source.join("skills")));
+        found.extend(skills(&source.join("skills"), false));
         found.extend(command_files(&source.join("commands")));
     }
     standard(project, &mut found);
@@ -37,9 +43,54 @@ pub(crate) fn commands(home: &Path, sources: &[PathBuf], project: &Path) -> Vec<
     by_name.into_values().collect()
 }
 
-/// How many skills and commands a source folder holds.
-pub(crate) fn count_in_source(source: &Path) -> usize {
-    skills(&source.join("skills")).len() + command_files(&source.join("commands")).len()
+/// How many skills and commands a folder holds in its `skills/` and
+/// `commands/`; `flat` counts `<name>.md` skills too (`~/.agents`).
+pub(crate) fn count(folder: &Path, flat: bool) -> usize {
+    skills(&folder.join("skills"), flat).len() + command_files(&folder.join("commands")).len()
+}
+
+/// The skills every CLI gets (EXT-5): `~/.agents/skills/`, the source
+/// folders' `skills/`, the project's `.agents/skills/`; one per name, a
+/// later one hiding an earlier one.
+pub(crate) fn shared(home: &Path, sources: &[PathBuf], project: &Path) -> Vec<SkillFile> {
+    let mut found = skill_files(&home.join(AGENTS_SKILLS), true, false);
+    for source in sources {
+        found.extend(skill_files(&source.join("skills"), false, true));
+    }
+    found.extend(skill_files(&project.join(AGENTS_SKILLS), true, false));
+    let by_name: BTreeMap<String, SkillFile> =
+        found.into_iter().map(|s| (s.name.clone(), s)).collect();
+    by_name.into_values().collect()
+}
+
+/// The skills in `dir`: `<name>/SKILL.md` folders, and `<name>.md` files when
+/// `flat` (Leon's `.agents/skills/`).
+fn skill_files(dir: &Path, flat: bool, from_source: bool) -> Vec<SkillFile> {
+    sorted_entries(dir)
+        .into_iter()
+        .filter_map(|path| {
+            let (file, folder) = if path.join("SKILL.md").is_file() {
+                (path.join("SKILL.md"), Some(path))
+            } else if flat && path.is_file() && path.extension().is_some_and(|e| e == "md") {
+                (path, None)
+            } else {
+                return None;
+            };
+            let fallback = folder
+                .as_deref()
+                .and_then(Path::file_name)
+                .or_else(|| file.file_stem())?
+                .to_string_lossy()
+                .into_owned();
+            let name = read(&file, fallback)?.name;
+            Some(SkillFile {
+                name,
+                file,
+                folder,
+                from_source,
+            })
+        })
+        .collect()
 }
 
 fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
@@ -49,13 +100,10 @@ fn sorted_entries(dir: &Path) -> Vec<PathBuf> {
     paths
 }
 
-fn skills(dir: &Path) -> Vec<SlashCommand> {
-    sorted_entries(dir)
+fn skills(dir: &Path, flat: bool) -> Vec<SlashCommand> {
+    skill_files(dir, flat, false)
         .into_iter()
-        .filter_map(|folder| {
-            let fallback = folder.file_name()?.to_string_lossy().into_owned();
-            read(&folder.join("SKILL.md"), fallback)
-        })
+        .filter_map(|skill| read(&skill.file, skill.name))
         .collect()
 }
 
@@ -102,7 +150,7 @@ fn read(file: &Path, fallback: String) -> Option<SlashCommand> {
 mod tests {
     use std::fs;
 
-    use super::commands;
+    use super::{commands, shared};
 
     #[test]
     fn skills_and_commands_from_home_and_project() {
@@ -145,7 +193,19 @@ mod tests {
             "skills/deploy/SKILL.md",
             "---\ndescription: Deploy\nargument-hint: [environment] [version]\n---\n",
         );
-        let list = commands(home.path(), &[source.path().to_path_buf()], project.path());
+        write(
+            home.path(),
+            ".agents/skills/release.md",
+            "---\ndescription: Cut a release\n---\nSteps.",
+        );
+        write(
+            project.path(),
+            ".agents/skills/review.md",
+            "---\ndescription: Generic review\n---\n",
+        );
+        write(home.path(), ".agents/skills/notes.txt", "not a skill");
+        let sources = [source.path().to_path_buf()];
+        let list = commands(home.path(), &sources, project.path());
         let got: Vec<(&str, &str)> = list
             .iter()
             .map(|c| (c.name.as_str(), c.description.as_str()))
@@ -155,7 +215,23 @@ mod tests {
             [
                 ("deploy", "Deploy"),
                 ("pdf", "Read PDFs"),
-                ("review", "Project review")
+                ("release", "Cut a release"),
+                // `.agents/skills/` wins over `.claude/skills/`.
+                ("review", "Generic review")
+            ]
+        );
+        // What every CLI gets: `.agents/skills/` and the source folders.
+        let handed: Vec<_> = shared(home.path(), &sources, project.path())
+            .into_iter()
+            .map(|s| (s.name, s.folder.is_some(), s.from_source))
+            .collect();
+        assert_eq!(
+            handed,
+            [
+                ("deploy".to_owned(), true, true),
+                ("pdf".to_owned(), true, false),
+                ("release".to_owned(), false, false),
+                ("review".to_owned(), false, false),
             ]
         );
         // The arguments a command takes, when its file says so.

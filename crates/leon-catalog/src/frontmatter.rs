@@ -37,6 +37,14 @@ fn fields(header: &str) -> HashMap<String, String> {
                 lines.next();
             }
             parts.join(if value.starts_with('>') { " " } else { "\n" })
+        } else if value.is_empty() {
+            // A block list (`- item` lines): its items, comma-separated.
+            let mut items = Vec::new();
+            while let Some(item) = lines.peek().and_then(|l| l.trim_start().strip_prefix("- ")) {
+                items.push(item.trim().trim_matches(['"', '\'']).to_owned());
+                lines.next();
+            }
+            items.join(", ")
         } else {
             value.trim_matches(['"', '\'']).to_owned()
         };
@@ -51,11 +59,13 @@ mod tests {
 
     #[test]
     fn reads_simple_and_folded_values() {
-        let text = "---\nname: \"coder\"\ndescription: >\n  Writes code\n  carefully.\ntools: Bash, Read\nskills:\n  - map\n---\n\nBody text.\n";
+        let text = "---\nname: \"coder\"\ndescription: >\n  Writes code\n  carefully.\ntools: Bash, Read\nskills:\n  - map\n  - \"style\"\nother:\n- top\n---\n\nBody text.\n";
         let (fields, body) = split(text);
         assert_eq!(fields["name"], "coder");
         assert_eq!(fields["description"], "Writes code carefully.");
         assert_eq!(fields["tools"], "Bash, Read");
+        assert_eq!(fields["skills"], "map, style");
+        assert_eq!(fields["other"], "top");
         assert_eq!(body, "Body text.\n");
     }
 

@@ -3,6 +3,7 @@
 //! Must not: do I/O, use async, or depend on a framework. Words follow the
 //! glossary in `AGENTS.md`.
 
+mod agent_file;
 mod backend;
 mod connectors;
 mod conversation;
@@ -18,6 +19,7 @@ mod settings;
 mod sprint;
 mod transcript;
 
+pub use agent_file::{Capability, capabilities, cli_for_model, full_cli_order};
 pub use backend::BackendKind;
 pub use connectors::{
     CliConnectors, Connector, ConnectorKind, ConnectorRow, ConnectorState, connector_key,

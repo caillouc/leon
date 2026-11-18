@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use leon_core::ports::{ConfigFile, PortError};
-use leon_domain::{SessionDefaults, Settings};
+use leon_domain::{BackendKind, SessionDefaults, Settings};
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 use crate::CURRENT_VERSION;
@@ -138,6 +138,17 @@ pub fn update(text: &str, settings: &Settings) -> Result<String, String> {
     );
     set(&mut doc, "diff", "fold", list(&settings.diff_fold));
     set(&mut doc, "sources", "folders", list(&settings.sources));
+    let order = leon_domain::full_cli_order(&settings.cli_order);
+    let ids: Vec<String> = order.iter().map(|b| b.id().to_owned()).collect();
+    set(
+        &mut doc,
+        "agents",
+        "cli_order",
+        changed(
+            order == BackendKind::ALL,
+            value(ids.iter().collect::<Array>()),
+        ),
+    );
     Ok(doc.to_string())
 }
 
@@ -206,6 +217,22 @@ mod tests {
                     ..Settings::default()
                 },
                 "version = 1\n\n[defaults]\nbackend = \"copilot\"\n\n[sources]\nfolders = [\"~/kit\"]\n",
+            ),
+            (
+                "",
+                Settings {
+                    cli_order: vec![BackendKind::Codex],
+                    ..Settings::default()
+                },
+                "version = 1\n\n[agents]\ncli_order = [\"codex\", \"claude\", \"copilot\"]\n",
+            ),
+            (
+                "version = 1\n\n[agents]\ncli_order = [\"codex\"]\n",
+                Settings {
+                    cli_order: BackendKind::ALL.to_vec(),
+                    ..Settings::default()
+                },
+                "version = 1\n",
             ),
         ];
         for (original, settings, expected) in cases {

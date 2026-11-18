@@ -36,7 +36,9 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   concurrently. The left and right panes are resized by dragging their edge.
 - **NAV-2** Conversations grouped by project/folder. Click a project to fold
   or unfold its conversations; the choice is kept. A project is added with
-  its own button in the Projects header.
+  its own button in the Projects header, and removed from Leon with its
+  right-click menu, after a confirmation: its conversations go with it, the
+  folder and the CLIs' own sessions stay.
 - **NAV-3** Pinned conversations sit at the top of the left pane, above the
   projects.
 - **NAV-4** Unread indicator per conversation; the user can also mark one as
@@ -70,8 +72,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   with a click, as in Copilot and Claude Code.
 - **CONV-10** The agent's suggested next message shows greyed in the empty
   message box; Tab writes it in.
-- **CONV-11** Slash commands and skills from the message box. *(proposal: typing
-  `/` opens a searchable list with each command's description)*
+- **CONV-11** Slash commands and skills from the message box: typing `/`
+  opens a list with each command's description; Tab writes the first one in,
+  the caret after it. The arguments a command takes (its `argument-hint`)
+  show greyed after the caret until each is typed.
 - **CONV-12** Long pasted text is folded into a "Pasted text · N lines" block,
   expandable, as in the Claude CLI.
 - **CONV-14** An agent's plan, when its CLI keeps one (Claude Code's task
@@ -132,10 +136,13 @@ conversation**: one item in the left pane (D5).
 
 - **GH-2** My issues, at the top of the left pane (with GH-3), grouped by
   their GitHub Project status in the board's order (each status its own
-  colour, each group foldable), sorted by priority, filterable by sprint.
+  colour, never shared by two statuses; each group foldable), sorted by priority (each priority in its
+  board colour), filterable by sprint: the current sprint by default, each
+  sprint shown with its dates.
   Clicking one opens its details in a drawer (fields, text, comments, link to
   GitHub). "Start conversation" opens the new-conversation form in the project
-  whose repository it belongs to, with the issue in the message; the
+  whose repository it belongs to, the message starting with the issue
+  (`owner/repo#12` and a blank line, the caret on it); the
   conversation remembers the issue, and the issue then offers "Open
   conversation".
 - **GH-3** My open PRs, with their state icon and checks. Clicking one opens
@@ -164,7 +171,10 @@ conversation**: one item in the left pane (D5).
 ### Settings
 
 - **SETTINGS-1** A Settings view edits the config file: new-conversation
-  defaults, diff auto-fold patterns, source folders. Saved at
+  defaults, diff auto-fold patterns, the folders of agents and skills (the
+  ones Leon finds itself and the ones the user adds, each with how many
+  agents and skills it holds), the order in which CLIs are tried for an
+  agent's model (EXT-6). Saved at
   once into `config.toml`, keeping the rest of the file.
 
 ### Doctor
@@ -192,6 +202,24 @@ conversation**: one item in the left pane (D5).
 - **EXT-2** Agents, skills and tools (MCP servers, plugins) defined once, used by
   every CLI.
 - **EXT-3** Today's standards, no invented formats.
+- **EXT-4** Generic agent files, not tied to one CLI: `~/.agents/agents/` and a
+  project's `.agents/agents/`, one Markdown file per agent (frontmatter
+  `name`, `description`, optional `model` and `tools`; the body is its
+  instructions). Leon also reads `.claude/agents/` and `.github/agents/`;
+  on a name clash `.agents/` wins. Leon bridges each file to the CLI that runs
+  it; how is documented for users.
+- **EXT-5** Generic skills: `~/.agents/skills/<name>.md` and a project's
+  `.agents/skills/`. Every CLI sees them and loads one only when the agent
+  needs it (names and descriptions first). An agent names a skill in its text
+  if it must use it; there is no skills field.
+- **EXT-6** An agent file's `model` picks the CLI: the first CLI that offers
+  that model, in an order set in Settings (default Claude Code, Codex,
+  Copilot CLI). Also for an agent another agent starts. Without a `model`,
+  the form's or the calling agent's CLI and model.
+- **EXT-7** An agent file's `tools` limits what the agent can do, in GitHub's
+  custom-agent words (`read`, `search`, `edit`, `execute`, `web`, `agent`,
+  `todo`; Claude Code's tool names are understood too). Without `tools`, the
+  agent has every tool its CLI has; MCP tools are never limited.
 
 ### Platform and quality
 

@@ -273,6 +273,7 @@ async fn the_cli_writes_the_title() {
 fn unchosen_model_and_effort_get_the_defaults() {
     use crate::ports::ModelOption;
     let model = |id: &str, label: &str| ModelOption {
+        aliases: Vec::new(),
         id: id.into(),
         label: label.into(),
     };
