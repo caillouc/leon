@@ -245,34 +245,64 @@ pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
                         ),
                 ),
         )
-        .children(shown.into_iter().map(|check| {
-            div()
+        .children(shown.into_iter().enumerate().map(|(ix, check)| {
+            check_row(ix, check)
                 .px_4()
-                .py(px(7.))
                 .border_t_1()
                 .border_color(theme::border())
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_size(px(12.5))
-                .child(icon(
-                    check_glyph(check.state),
-                    check_color(check.state),
-                    14.,
-                ))
-                .child(div().flex_1().min_w_0().child(check.name.clone()))
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(theme::fg_faint())
-                        .child(if check.state == CheckState::Fail {
-                            "Failing"
-                        } else {
-                            "In progress"
-                        }),
-                )
         }))
         .into_any_element()
+}
+
+/// A check that did not pass: its state, its name and, when GitHub links
+/// its run, a click opening it (an Actions job's log).
+pub(crate) fn check_row(ix: usize, check: &Check) -> gpui::Stateful<Div> {
+    let url = check.url.clone();
+    div()
+        .id(gpui::SharedString::from(format!(
+            "check-{ix}-{}",
+            check.name
+        )))
+        .py(px(7.))
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_size(px(12.5))
+        .child(icon(
+            check_glyph(check.state),
+            check_color(check.state),
+            14.,
+        ))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(check.name.clone()),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_size(px(11.5))
+                .text_color(theme::fg_faint())
+                .child(if check.state == CheckState::Fail {
+                    "Failing"
+                } else {
+                    "In progress"
+                }),
+        )
+        .when_some(url, |d, url| {
+            d.cursor_pointer()
+                .hover(|s| s.bg(theme::surface_2()))
+                .child(icon(Icon::External, theme::fg_muted(), 12.))
+                .on_click(move |_, _, cx| {
+                    // Not the card around it, which opens the drawer.
+                    cx.stop_propagation();
+                    cx.open_url(&url);
+                })
+        })
 }
 
 fn check_glyph(state: CheckState) -> Icon {

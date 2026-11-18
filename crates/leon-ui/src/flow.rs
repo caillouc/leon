@@ -375,17 +375,8 @@ impl Workspace {
                 x.conversation.started_by == Some(sid) && x.status == leon_domain::Status::Running
             })
             .map(|x| self.conversation_name(x));
-        // Working shows as the turning loader, not as the border; an answer
-        // to read, in green, as the left pane shows it (NAV-5).
+        // What it asks of the user, as the left pane shows it (NAV-5).
         let attention = leon_domain::Attention::of(conversation.status, review);
-        let border = match attention {
-            leon_domain::Attention::NeedsYou => theme::warn(),
-            leon_domain::Attention::Failed => theme::err(),
-            leon_domain::Attention::Review => theme::ok(),
-            leon_domain::Attention::Working | leon_domain::Attention::Nothing => {
-                theme::border_strong()
-            }
-        };
         let (messages, tools) = self
             .snapshot
             .transcripts
@@ -397,16 +388,9 @@ impl Workspace {
         shell
             .rounded(px(10. * s))
             .line_height(gpui::relative(1.25))
-            .border_2()
-            .border_color(border)
             .bg(theme::surface())
-            .when(attention == leon_domain::Attention::Review, |d| {
-                d.bg(Rgba {
-                    a: 0.12,
-                    ..theme::ok()
-                })
-            })
-            .p(px(10. * s))
+            // Room for the border, drawn over the box below.
+            .p(px(10. * s + 2.))
             .flex()
             .flex_col()
             .gap(px(3. * s))
@@ -416,14 +400,22 @@ impl Workspace {
             .child(
                 div()
                     .absolute()
-                    .top_0()
-                    .left_0()
-                    .right_0()
+                    .top(px(2.))
+                    .left(px(2.))
+                    .right(px(2.))
                     .h(px(4. * s))
                     // The box's inner curve: its radius less its border.
                     .rounded_t(px((10. * s - 2.).max(0.)))
                     .bg(agent),
             )
+            // The border, as a layer: GPUI paints a box's own border over
+            // its children, which would hide the line below.
+            .child(edge(s).border_2().border_color(theme::border_strong()))
+            // What needs the user: the left pane's coloured line, over the
+            // border's left side and following its curve.
+            .when_some(crate::flow_row::attention_edge(attention), |d, color| {
+                d.child(edge(s).border_l(px(3. * s)).border_color(color))
+            })
             .child(
                 div()
                     .flex()
@@ -431,10 +423,19 @@ impl Workspace {
                     .gap(px(6. * s))
                     .text_size(px(13. * s))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(status_mark(
-                        SharedString::from(format!("spin-flow-{}", sid.0)),
-                        conversation.status,
-                    ))
+                    // The left pane's icon: the turning loader while it
+                    // works, the green check for an answer to read.
+                    .child(if attention == leon_domain::Attention::Working {
+                        status_mark(
+                            SharedString::from(format!("spin-flow-{}", sid.0)),
+                            conversation.status,
+                        )
+                    } else {
+                        crate::flow_row::attention_icon(attention)
+                            .size(px(14. * s))
+                            .flex_none()
+                            .into_any_element()
+                    })
                     .child(
                         div()
                             .flex_1()
@@ -840,4 +841,9 @@ fn to_review(
         .map(|e| e.from)
         .into_iter()
         .collect()
+}
+
+/// A layer over a whole box, following its corners, for a border.
+fn edge(scale: f32) -> gpui::Div {
+    div().absolute().inset_0().rounded(px(10. * scale))
 }

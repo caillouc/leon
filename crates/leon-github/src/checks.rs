@@ -14,17 +14,23 @@ pub(crate) fn checks(pr: &Value) -> Vec<Check> {
 /// A GitHub Actions or app check (`CheckRun`), or a commit status
 /// (`StatusContext`); `None` for anything else.
 fn check(context: &Value) -> Option<Check> {
-    let (name, state) = match context["__typename"].as_str()? {
+    let (name, state, url) = match context["__typename"].as_str()? {
         "CheckRun" => (
             &context["name"],
             check_run_state(context["status"].as_str(), context["conclusion"].as_str()),
+            &context["detailsUrl"],
         ),
-        "StatusContext" => (&context["context"], status_state(context["state"].as_str())),
+        "StatusContext" => (
+            &context["context"],
+            status_state(context["state"].as_str()),
+            &context["targetUrl"],
+        ),
         _ => return None,
     };
     Some(Check {
         name: text(name)?,
         state,
+        url: text(url).filter(|u| !u.is_empty()),
     })
 }
 
@@ -96,7 +102,8 @@ mod tests {
                 found,
                 [Check {
                     name: "c".into(),
-                    state: expected
+                    state: expected,
+                    url: None,
                 }],
                 "{context}"
             );

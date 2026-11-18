@@ -33,6 +33,8 @@ pub struct Check {
     pub name: String,
     /// Outcome.
     pub state: CheckState,
+    /// Its run on GitHub (an Actions job's log), when GitHub gives one.
+    pub url: Option<String>,
 }
 
 /// Which kind of GitHub item.
@@ -344,6 +346,7 @@ mod tests {
                 .map(|s| Check {
                     name: "c".into(),
                     state: *s,
+                    url: None,
                 })
                 .collect(),
             reviewers: vec![],

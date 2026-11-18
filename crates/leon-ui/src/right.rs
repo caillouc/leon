@@ -24,9 +24,9 @@ use crate::workspace::{Screen, Workspace};
 /// The right pane's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RightTab {
+    Info,
     Changes,
     Branch,
-    Info,
 }
 
 /// A comment in the pending review, and the diff it was written on.
@@ -38,19 +38,9 @@ pub(crate) struct Pending {
     pub comment: ReviewComment,
 }
 
-/// The tab a flow opens on: Info until its agents work in a folder,
-/// then Changes.
-pub(crate) fn default_tab(working: bool) -> RightTab {
-    if working {
-        RightTab::Changes
-    } else {
-        RightTab::Info
-    }
-}
-
 /// What the right pane remembers between renders.
 pub(crate) struct RightState {
-    /// The tab picked by hand, per flow; else [`default_tab`].
+    /// The tab picked by hand, per flow; else Info.
     pub tabs: HashMap<FlowId, RightTab>,
     /// The folder picked, per flow working in several (CTX-2).
     pub folder: HashMap<FlowId, std::path::PathBuf>,
@@ -172,13 +162,7 @@ impl Workspace {
 
     /// The tab shown for flow `id`.
     pub(crate) fn right_tab(&self, id: FlowId) -> RightTab {
-        self.right.tabs.get(&id).copied().unwrap_or_else(|| {
-            let working = self
-                .snapshot
-                .flow(id)
-                .is_some_and(|c| !c.flow.folders.is_empty());
-            default_tab(working)
-        })
+        self.right.tabs.get(&id).copied().unwrap_or(RightTab::Info)
     }
 
     fn right_tabs(&self, id: FlowId, cx: &mut Context<Self>) -> AnyElement {
@@ -192,6 +176,7 @@ impl Workspace {
             })
         };
         let tabs = [
+            (RightTab::Info, "Info", None),
             (
                 RightTab::Changes,
                 "Changes",
@@ -202,7 +187,6 @@ impl Workspace {
                 "Branch",
                 git.and_then(|g| lines(&g.branch_diff)),
             ),
-            (RightTab::Info, "Info", None),
         ];
         div()
             .flex()
@@ -301,6 +285,7 @@ impl Workspace {
                 "Issue",
                 known.map(|i| i.title.clone()),
                 known.map_or_default(|i| i.labels.clone()),
+                Vec::new(),
             )
         });
         let prs = self.snapshot.prs_of(view).into_iter().map(|pr| {
@@ -310,59 +295,69 @@ impl Workspace {
                 "Pull request",
                 Some(pr.title.clone()),
                 pr.labels.clone(),
+                // Its checks that did not pass, each opening its run.
+                pr.checks
+                    .iter()
+                    .filter(|c| c.state != leon_domain::CheckState::Pass)
+                    .cloned()
+                    .collect::<Vec<_>>(),
             )
         });
-        let links =
-            issues
-                .chain(prs)
-                .enumerate()
-                .map(|(ix, (item, glyph, what, title, labels))| {
-                    let text = item.text();
-                    div()
-                        .id(("info-link", ix))
-                        .mx_3()
-                        .px_3()
-                        .py_2()
-                        .flex()
-                        .flex_col()
-                        .gap(px(5.))
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(theme::border())
-                        .bg(theme::window())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::surface_2()))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(glyph)
-                                .child(div().text_size(px(12.5)).child(what))
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .font_family(theme::MONO)
-                                        .text_size(px(12.))
-                                        .text_color(theme::fg_muted())
-                                        .child(text),
-                                ),
-                        )
-                        .children(title.map(|t| {
-                            div()
-                                .text_size(px(12.5))
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                                .child(t)
-                        }))
-                        .when(!labels.is_empty(), |d| {
-                            d.child(crate::pr_view::labels(&labels))
-                        })
-                        .on_click(cx.listener(move |this, _, _, _| {
-                            this.core.send(Intent::ShowDetail(Some(item.clone())));
-                        }))
-                });
+        let links = issues.chain(prs).enumerate().map(
+            |(ix, (item, glyph, what, title, labels, checks))| {
+                let text = item.text();
+                div()
+                    .id(("info-link", ix))
+                    .mx_3()
+                    .px_3()
+                    .py_2()
+                    .flex()
+                    .flex_col()
+                    .gap(px(5.))
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::border())
+                    .bg(theme::window())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::surface_2()))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(glyph)
+                            .child(div().text_size(px(12.5)).child(what))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .font_family(theme::MONO)
+                                    .text_size(px(12.))
+                                    .text_color(theme::fg_muted())
+                                    .child(text),
+                            ),
+                    )
+                    .children(title.map(|t| {
+                        div()
+                            .text_size(px(12.5))
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .child(t)
+                    }))
+                    .when(!labels.is_empty(), |d| {
+                        d.child(crate::pr_view::labels(&labels))
+                    })
+                    .children(
+                        checks
+                            .iter()
+                            .enumerate()
+                            .map(|(k, c)| crate::pr_page::check_row(ix * 100 + k, c)),
+                    )
+                    .on_click(cx.listener(move |this, _, _, _| {
+                        this.core.send(Intent::ShowDetail(Some(item.clone())));
+                    }))
+            },
+        );
         div()
             .id("right-info")
             .flex_1()
@@ -500,16 +495,5 @@ impl Workspace {
             text: review_message(&comments),
         });
         cx.notify();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{RightTab, default_tab};
-
-    #[test]
-    fn a_flow_opens_on_info_until_it_has_a_worktree() {
-        assert_eq!(default_tab(false), RightTab::Info);
-        assert_eq!(default_tab(true), RightTab::Changes);
     }
 }

@@ -31,14 +31,14 @@ impl Workspace {
             None if view.conversations.is_empty() => empty("No conversation yet."),
             None => self.render_flow(id, window, cx),
             Some(conversation) => {
-                let transcript = self.render_transcript(conversation, cx);
+                let (transcript, jump) = self.render_transcript(conversation, cx);
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
                     .flex_col()
                     .child(transcript)
-                    .child(self.render_composer(conversation, window, cx))
+                    .child(self.render_composer(conversation, jump, window, cx))
                     .into_any_element()
             }
         };

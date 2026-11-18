@@ -143,14 +143,17 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
             Check {
                 name: "build".into(),
                 state: CheckState::Pass,
+                url: None,
             },
             Check {
                 name: "test (ubuntu)".into(),
                 state: CheckState::Pass,
+                url: None,
             },
             Check {
                 name: "test (macos)".into(),
                 state: CheckState::Fail,
+                url: Some("https://github.com/acme/payments-api/actions/runs/1/job/2".into()),
             },
         ],
         reviewers: vec!["copilot-pull-request-reviewer".into()],

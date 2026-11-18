@@ -26,8 +26,17 @@ pub(crate) fn attention_color(attention: Attention) -> Option<Rgba> {
     }
 }
 
+/// The coloured line on the left of what needs the user: an answer to read,
+/// a question, an error.
+pub(crate) fn attention_edge(attention: Attention) -> Option<Rgba> {
+    match attention {
+        Attention::NeedsYou | Attention::Review | Attention::Failed => attention_color(attention),
+        Attention::Nothing | Attention::Working => None,
+    }
+}
+
 /// Its icon, before the title.
-fn attention_icon(attention: Attention) -> gpui::Svg {
+pub(crate) fn attention_icon(attention: Attention) -> gpui::Svg {
     let color = attention_color(attention).unwrap_or_else(theme::fg_faint);
     let glyph = match attention {
         Attention::Nothing => Icon::Pending,
@@ -95,12 +104,6 @@ impl Workspace {
         let id = c.flow.id;
         let selected = self.screen == Screen::Flow(id);
         let attention = Attention::of(c.status, c.flow.unread);
-        let edge = match attention {
-            Attention::NeedsYou | Attention::Review | Attention::Failed => {
-                attention_color(attention)
-            }
-            Attention::Nothing | Attention::Working => None,
-        };
         let title = match &self.rename {
             Some((rid, input, _)) if *rid == id => div()
                 .flex_1()
@@ -129,7 +132,7 @@ impl Workspace {
             .rounded_md()
             // What needs the user shows as a coloured edge too.
             .border_l_2()
-            .border_color(edge.unwrap_or(Rgba {
+            .border_color(attention_edge(attention).unwrap_or(Rgba {
                 a: 0.,
                 ..theme::accent()
             }))

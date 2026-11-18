@@ -95,6 +95,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   list, Codex's plan): its steps above the message box — done, in progress,
   to do — and its progress on the agent's box in the Flow tab. Per
   conversation, while Leon runs.
+- **CONV-15** Your messages stand out from the agents'. Once an answer
+  follows your last message, a button just above the message box, on its
+  left, scrolls back to it, to read the answer from its start; what the
+  agent is doing shows next to it.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the
@@ -117,8 +121,9 @@ flow**: one item in the left pane (D5).
 - **FLOW-4** A flow diagram is the flow's main tab: one box per conversation
   (plus a "You" box), arrows for the prompts sent and the reports returned, a
   highlighted arrow for a question waiting for you, and live status on each
-  box, with "To review" (a green box) or "Needs you" on the agent whose
-  answer or question waits for you, as the left pane says it. Click a box to open its
+  box, with "To review" or "Needs you" on the agent whose answer or question
+  waits for you, and the left pane's icon (a green check for "To review")
+  and coloured line along its left side, exactly as the left pane shows them. Click a box to open its
   conversation; click an arrow to read its prompts or reports. Each agent has
   its own colour, the same in the right pane. Laid out by forces, after the
   "force" mode of CS Academy's graph editor: boxes push each other away, the
@@ -149,11 +154,12 @@ flow**: one item in the left pane (D5).
   request (each opening Leon's view of it, GitHub from there), and
   first what each agent is doing now, in its colour from the diagram: its
   CLI and model, working on which commands and for how long, how many
-  subagents run, the answer it waits for, or idle. A flow opens the right
-  pane on Info until it works in its own worktree, then on Changes; a tab
-  picked by hand is kept per flow. The right pane stays narrow: a pull
+  subagents run, the answer it waits for, or idle. The right pane's tabs
+  are Info, Changes, Branch; a flow opens it on Info, and a tab picked by
+  hand is kept per flow. The right pane stays narrow: a pull
   request opens in the details drawer, not in a tab of its own. Each issue
-  and pull request shows its title and labels.
+  and pull request shows its title and labels; a pull request also lists
+  its CI checks that failed or still run, each opening its job on GitHub.
 - **CTX-2** One flow can edit several repositories, in several
   worktrees, with several PRs, linked to several issues, and Leon follows
   what the agents do: a folder joins the flow when an agent edits a
@@ -354,7 +360,7 @@ flow**: one item in the left pane (D5).
 
 ## Open
 
-- Right pane: Changes · Branch · Info enough? (CTX-1)
+- Right pane: Info · Changes · Branch enough? (CTX-1)
 - When you talk directly to the coder, its answer stays with you; only answers
   to the planner's messages go back to the planner. *(proposal)*
 - Queue the next message while an answer is running?

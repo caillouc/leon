@@ -20,6 +20,7 @@ fn recorded_open_pull_request() {
     let check = |name: &str| Check {
         name: name.into(),
         state: CheckState::Pass,
+        url: None,
     };
     let expected = PullRequest {
         repo: "cli/cli".into(),

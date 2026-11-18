@@ -18,6 +18,7 @@ impl Workspace {
     pub(crate) fn render_composer(
         &mut self,
         conversation: ConversationId,
+        jump: Option<AnyElement>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -128,12 +129,23 @@ impl Workspace {
         if !s.plan.is_empty() {
             column = column.child(plan_card(&s.plan));
         }
-        if let Some(line) = Self::status_line(&s) {
+        // Above the message box, from its left: back to the user's last
+        // message, then what the agent is doing.
+        let status = Self::status_line(&s).map(|line| {
+            div()
+                .min_w_0()
+                .text_size(px(12.))
+                .text_color(theme::fg_muted())
+                .child(line)
+        });
+        if jump.is_some() || status.is_some() {
             column = column.child(
                 div()
-                    .text_size(px(12.))
-                    .text_color(theme::fg_muted())
-                    .child(line),
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .children(jump)
+                    .children(status),
             );
         }
 

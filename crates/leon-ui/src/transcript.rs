@@ -18,21 +18,29 @@ use crate::widgets::empty;
 use crate::workspace::Workspace;
 
 impl Workspace {
+    /// The transcript, and the button back to the user's last message, for
+    /// the line above the message box.
     pub(crate) fn render_transcript(
         &mut self,
         conversation: ConversationId,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> (AnyElement, Option<AnyElement>) {
         let Some(transcript) = self.snapshot.transcripts.get(&conversation).cloned() else {
-            return div().flex_1().child(empty("Loading…")).into_any_element();
+            return (
+                div().flex_1().child(empty("Loading…")).into_any_element(),
+                None,
+            );
         };
         let streaming = transcript.partial.is_some();
         let count = transcript.entries.len() + usize::from(streaming);
         if count == 0 {
-            return div()
-                .flex_1()
-                .child(empty("No messages yet."))
-                .into_any_element();
+            return (
+                div()
+                    .flex_1()
+                    .child(empty("No messages yet."))
+                    .into_any_element(),
+                None,
+            );
         }
         let state = self.list_for(conversation, count, streaming);
         let view = cx.entity().downgrade();
@@ -55,16 +63,13 @@ impl Workspace {
                 let state = state.clone();
                 div()
                     .id("jump-to-mine")
-                    .absolute()
-                    .bottom(px(12.))
-                    .right(px(20.))
+                    .flex_none()
                     .px_3()
                     .py(px(5.))
                     .rounded_full()
                     .border_1()
                     .border_color(theme::border_strong())
                     .bg(theme::surface())
-                    .shadow_md()
                     .text_size(px(12.))
                     .text_color(theme::fg_muted())
                     .cursor_pointer()
@@ -76,6 +81,7 @@ impl Workspace {
                             offset_in_item: px(0.),
                         });
                     })
+                    .into_any_element()
             });
         let list = list(state, move |ix, _window, _cx| {
             let item = match transcript.entries.get(ix) {
@@ -108,15 +114,16 @@ impl Workspace {
         .flex_1()
         .min_h_0()
         .py_3();
-        div()
-            .relative()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .child(list)
-            .children(jump)
-            .into_any_element()
+        (
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_col()
+                .child(list)
+                .into_any_element(),
+            jump,
+        )
     }
 }
 
@@ -326,7 +333,6 @@ fn entry_view(
             div()
                 .h(px(14.))
                 .flex()
-                .justify_end()
                 .text_size(px(10.5))
                 .text_color(theme::fg_faint())
                 .child(text)
