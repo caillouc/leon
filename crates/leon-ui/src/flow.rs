@@ -371,7 +371,8 @@ impl Workspace {
             .flex_col()
             .gap(px(3. * s))
             .cursor_pointer()
-            // The agent's colour, as a band along the top.
+            // The agent's colour, as a band along the top, its corners
+            // following the box's.
             .child(
                 div()
                     .absolute()
@@ -379,6 +380,7 @@ impl Workspace {
                     .left_0()
                     .right_0()
                     .h(px(4. * s))
+                    .rounded_t(px(8. * s))
                     .bg(agent),
             )
             .child(
