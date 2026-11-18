@@ -456,8 +456,10 @@ impl Render for Workspace {
                     .flex_col()
                     .child(main),
             )
-            .child(Self::pane_handle(Side::Right, cx))
-            .child(self.render_right(window, cx))
+            .when(self.panes.right_open, |d| {
+                d.child(Self::pane_handle(Side::Right, cx))
+                    .child(self.render_right(window, cx))
+            })
             .children(self.render_drawer(window, cx))
             .children(self.render_detail(cx))
             .children(flash)

@@ -34,6 +34,8 @@ pub enum Shot {
     NewConversation,
     /// The new-conversation form with this agent picked.
     NewConversationWith(&'static str),
+    /// A conversation with the right pane closed.
+    RightClosed(ConversationId),
     /// A conversation with this text typed in its message box.
     Typed(ConversationId, &'static str),
     /// A conversation with a right-pane tab open: `changes`, `branch`, `pr`
@@ -78,7 +80,8 @@ impl Workspace {
         self.row_menu = None;
         self.right.draft = None;
         self.right.review.clear();
-        self.right.tab = RightTab::Changes;
+        self.right.tabs.clear();
+        self.panes.right_open = true;
         self.right.drawer = None;
         crate::message_input::write_in(&self.composer, String::new(), window, cx);
         // A details drawer from an earlier shot does not stay open.
@@ -98,6 +101,11 @@ impl Workspace {
                 self.select(*id, cx);
                 self.open_first_session(*id);
                 self.open_picker = Some((*picker).into());
+            }
+            Shot::RightClosed(id) => {
+                self.select(*id, cx);
+                self.open_first_session(*id);
+                self.panes.right_open = false;
             }
             Shot::Typed(id, text) => {
                 self.select(*id, cx);
@@ -123,12 +131,13 @@ impl Workspace {
             Shot::Right(id, tab) => {
                 self.select(*id, cx);
                 self.open_first_session(*id);
-                self.right.tab = match *tab {
+                let tab = match *tab {
                     "branch" => RightTab::Branch,
                     "pr" => RightTab::Pr,
                     "info" => RightTab::Info,
                     _ => RightTab::Changes,
                 };
+                self.right.tabs.insert(*id, tab);
             }
             Shot::Review(id) => {
                 self.select(*id, cx);

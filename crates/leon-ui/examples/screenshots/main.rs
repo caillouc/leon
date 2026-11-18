@@ -379,6 +379,10 @@ fn main() {
         ),
         ("question".to_owned(), Shot::Conversation(ConversationId(2))),
         (
+            "right-closed".to_owned(),
+            Shot::RightClosed(ConversationId(1)),
+        ),
+        (
             "slash-list".to_owned(),
             Shot::Typed(ConversationId(1), "/dep"),
         ),

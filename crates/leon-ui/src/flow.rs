@@ -380,7 +380,8 @@ impl Workspace {
                     .left_0()
                     .right_0()
                     .h(px(4. * s))
-                    .rounded_t(px(8. * s))
+                    // The box's inner curve: its radius less its border.
+                    .rounded_t(px((10. * s - 2.).max(0.)))
                     .bg(agent),
             )
             .child(

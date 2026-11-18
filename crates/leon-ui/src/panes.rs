@@ -11,6 +11,8 @@ use crate::workspace::Workspace;
 
 const LEFT: (f32, f32) = (200., 480.);
 const RIGHT: (f32, f32) = (320., 900.);
+/// Dragged narrower than this, the right pane closes.
+const RIGHT_CLOSES: f32 = 200.;
 /// The main pane never gets narrower than this while dragging.
 const MAIN_MIN: f32 = 420.;
 
@@ -26,6 +28,9 @@ pub(crate) enum Side {
 pub(crate) struct Panes {
     pub left: f32,
     pub right: f32,
+    /// The right pane shows; closed, a button in the conversation's header
+    /// opens it again.
+    pub right_open: bool,
     pub resizing: Option<Side>,
 }
 
@@ -34,6 +39,7 @@ impl Default for Panes {
         Self {
             left: 268.,
             right: 440.,
+            right_open: true,
             resizing: None,
         }
     }
@@ -48,7 +54,13 @@ impl Panes {
         };
         match self.resizing {
             Some(Side::Left) => self.left = fit(x, LEFT, self.right),
-            Some(Side::Right) => self.right = fit(window - x, RIGHT, self.left),
+            Some(Side::Right) => {
+                let wanted = window - x;
+                self.right_open = wanted >= RIGHT_CLOSES;
+                if self.right_open {
+                    self.right = fit(wanted, RIGHT, self.left);
+                }
+            }
             None => {}
         }
     }
@@ -112,7 +124,7 @@ mod tests {
             (Side::Left, 900., 1600., (480., 440.)),
             (Side::Left, 480., 1100., (240., 440.)),
             (Side::Right, 1200., 1600., (268., 400.)),
-            (Side::Right, 1500., 1600., (268., 320.)),
+            (Side::Right, 1350., 1600., (268., 320.)),
             (Side::Right, 100., 1600., (268., 900.)),
             (Side::Right, 100., 1200., (268., 512.)),
         ];
@@ -124,6 +136,16 @@ mod tests {
             panes.drag_to(x, window);
             assert_eq!((panes.left, panes.right), expected, "{side:?} {x} {window}");
         }
+        // Dragged far enough, the right pane closes, keeping its width for
+        // when it opens again; dragged back, it opens.
+        let mut panes = Panes {
+            resizing: Some(Side::Right),
+            ..Panes::default()
+        };
+        panes.drag_to(1450., 1600.);
+        assert_eq!((panes.right_open, panes.right), (false, 440.));
+        panes.drag_to(1200., 1600.);
+        assert_eq!((panes.right_open, panes.right), (true, 400.));
         let mut idle = Panes::default();
         idle.drag_to(300., 1600.);
         assert_eq!(idle, Panes::default());

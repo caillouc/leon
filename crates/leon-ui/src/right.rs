@@ -36,9 +36,20 @@ pub(crate) struct Pending {
     pub comment: ReviewComment,
 }
 
+/// The tab a conversation opens on: Info until it works in its own
+/// worktree, then Changes.
+pub(crate) fn default_tab(has_worktree: bool) -> RightTab {
+    if has_worktree {
+        RightTab::Changes
+    } else {
+        RightTab::Info
+    }
+}
+
 /// What the right pane remembers between renders.
 pub(crate) struct RightState {
-    pub tab: RightTab,
+    /// The tab picked by hand, per conversation; else [`default_tab`].
+    pub tabs: HashMap<ConversationId, RightTab>,
     /// Files the user opened or closed by hand, overriding `diff.fold`.
     pub open: HashMap<(ConversationId, DiffSource, String), bool>,
     /// Pending review per conversation (GIT-5).
@@ -84,7 +95,7 @@ impl RightState {
             },
         )];
         let state = Self {
-            tab: RightTab::Changes,
+            tabs: HashMap::new(),
             open: HashMap::new(),
             review: HashMap::new(),
             review_to: HashMap::new(),
@@ -122,7 +133,7 @@ impl Workspace {
                 ))
                 .into_any_element();
         };
-        let body = match self.right.tab {
+        let body = match self.right_tab(id) {
             RightTab::Changes => self.render_diff(id, DiffSource::Changes, cx),
             RightTab::Branch => self.render_diff(id, DiffSource::Branch, cx),
             RightTab::Pr => self.render_pr(id, cx),
@@ -136,6 +147,17 @@ impl Workspace {
                 d.children(self.render_review_bar(id, window, cx))
             })
             .into_any_element()
+    }
+
+    /// The tab shown for conversation `id`.
+    pub(crate) fn right_tab(&self, id: ConversationId) -> RightTab {
+        self.right.tabs.get(&id).copied().unwrap_or_else(|| {
+            let worktree = self
+                .snapshot
+                .conversation(id)
+                .is_some_and(|c| c.conversation.working_dir.is_some());
+            default_tab(worktree)
+        })
     }
 
     fn right_tabs(&self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
@@ -182,7 +204,7 @@ impl Workspace {
             .border_b_1()
             .border_color(theme::border())
             .children(tabs.into_iter().map(|(tab, text, n)| {
-                let selected = self.right.tab == tab;
+                let selected = self.right_tab(id) == tab;
                 div()
                     .id(SharedString::from(format!("right-tab-{text}")))
                     .px_2()
@@ -207,7 +229,7 @@ impl Workspace {
                     .items_center()
                     .children(n.map(|n| div().text_size(px(11.)).child(n)))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.right.tab = tab;
+                        this.right.tabs.insert(id, tab);
                         match tab {
                             RightTab::Changes | RightTab::Branch => {
                                 this.core.send(Intent::RefreshGit(id));
@@ -217,6 +239,22 @@ impl Workspace {
                         cx.notify();
                     }))
             }))
+            .child(div().flex_1())
+            // Closes the pane; the conversation's header opens it again.
+            .child(
+                div()
+                    .id("right-close")
+                    .mb(px(8.))
+                    .p(px(4.))
+                    .rounded_md()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::surface_2()))
+                    .child(icon(Icon::Panel, theme::fg_muted(), 15.))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.panes.right_open = false;
+                        cx.notify();
+                    })),
+            )
             .into_any_element()
     }
 
@@ -527,4 +565,15 @@ fn card(title: &'static str, rows: Vec<(&'static str, String, bool)>) -> gpui::D
                         .child(v),
                 )
         }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RightTab, default_tab};
+
+    #[test]
+    fn a_conversation_opens_on_info_until_it_has_a_worktree() {
+        assert_eq!(default_tab(false), RightTab::Info);
+        assert_eq!(default_tab(true), RightTab::Changes);
+    }
 }

@@ -34,6 +34,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 
 - **NAV-1** Several projects and conversations at once; conversations run
   concurrently. The left and right panes are resized by dragging their edge.
+  The right pane closes with its panel button, or by dragging its edge far
+  enough; the same button in the conversation's header opens it again.
 - **NAV-2** Conversations grouped by project/folder. Click a project to fold
   or unfold its conversations; the choice is kept. A project is added with
   its own button in the Projects header, and removed from Leon with its
@@ -123,7 +125,9 @@ conversation**: one item in the left pane (D5).
 
 ### Right pane
 
-- **CTX-1** Information about the current conversation and its issue.
+- **CTX-1** Information about the current conversation and its issue. A
+  conversation opens the right pane on Info until it works in its own
+  worktree, then on Changes; a tab picked by hand is kept per conversation.
 - **GIT-1** Uncommitted files of the conversation's working directory.
 - **GIT-2** Diff of each uncommitted file. Changes and Branch list the files
   (with lines added and removed on the tab); clicking one opens a large drawer

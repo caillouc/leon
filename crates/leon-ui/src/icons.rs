@@ -35,6 +35,7 @@ pub(crate) enum Icon {
     NewConversation,
     Doctor,
     Close,
+    Panel,
 }
 
 impl Icon {
@@ -66,6 +67,7 @@ impl Icon {
             Self::NewConversation => "icons/square-pen.svg",
             Self::Doctor => "icons/stethoscope.svg",
             Self::Close => "icons/x.svg",
+            Self::Panel => "icons/panel-right.svg",
         }
     }
 }
@@ -110,7 +112,7 @@ impl AssetSource for Assets {
     }
 }
 
-const ALL: [Icon; 26] = [
+const ALL: [Icon; 27] = [
     Icon::ChevronDown,
     Icon::ChevronRight,
     Icon::Pending,
@@ -137,6 +139,7 @@ const ALL: [Icon; 26] = [
     Icon::NewConversation,
     Icon::Doctor,
     Icon::Close,
+    Icon::Panel,
 ];
 
 fn bytes(path: &str) -> Option<&'static [u8]> {
@@ -173,6 +176,7 @@ fn bytes(path: &str) -> Option<&'static [u8]> {
         "icons/square-pen.svg" => include_bytes!("../../../assets/icons/square-pen.svg"),
         "icons/stethoscope.svg" => include_bytes!("../../../assets/icons/stethoscope.svg"),
         "icons/x.svg" => include_bytes!("../../../assets/icons/x.svg"),
+        "icons/panel-right.svg" => include_bytes!("../../../assets/icons/panel-right.svg"),
         _ => return None,
     })
 }

@@ -7,6 +7,7 @@ use gpui::{
 use leon_core::SessionView;
 use leon_domain::{ConversationId, Status};
 
+use crate::icons::{Icon, icon};
 use crate::theme;
 use crate::widgets::{HEADER_HEIGHT, empty, status_dot};
 use crate::workspace::{Tab, Workspace};
@@ -137,7 +138,23 @@ impl Workspace {
                     .border_b_1()
                     .border_color(theme::border())
                     .child(div().flex_1().min_w_0().child(title))
-                    .child(chip),
+                    .child(chip)
+                    // The right pane, closed: this opens it again.
+                    .when(!self.panes.right_open, |d| {
+                        d.child(
+                            div()
+                                .id("right-open")
+                                .p(px(4.))
+                                .rounded_md()
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme::surface_2()))
+                                .child(icon(Icon::Panel, theme::fg_muted(), 16.))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.panes.right_open = true;
+                                    cx.notify();
+                                })),
+                        )
+                    }),
             )
             .child(
                 div()
