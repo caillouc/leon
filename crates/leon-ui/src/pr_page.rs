@@ -99,7 +99,8 @@ fn heading(text: &str, count: Option<(String, Rgba)>) -> Div {
         }))
 }
 
-/// Title and number, state, who wants to merge what into what, labels.
+/// Title and number; under it state, who wants to merge what into what,
+/// and its labels on the right.
 pub(crate) fn pr_header(pr: &PullRequest) -> Div {
     let verb = match pr.state {
         PrState::Open | PrState::Draft => "wants to merge into",
@@ -131,26 +132,36 @@ pub(crate) fn pr_header(pr: &PullRequest) -> Div {
         .child(
             div()
                 .flex()
-                .flex_wrap()
                 .items_center()
-                .gap_2()
-                .text_size(px(13.))
-                .text_color(theme::fg_muted())
-                .child(state_pill(pr.state))
-                .when(!pr.author.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(theme::fg())
-                            .child(pr.author.clone()),
-                    )
-                })
-                .child(verb)
-                .child(branch(&pr.base))
-                .child("from")
-                .child(branch(&pr.branch)),
+                .gap_3()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_2()
+                        .text_size(px(13.))
+                        .text_color(theme::fg_muted())
+                        .child(state_pill(pr.state))
+                        .when(!pr.author.is_empty(), |d| {
+                            d.child(
+                                div()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::fg())
+                                    .child(pr.author.clone()),
+                            )
+                        })
+                        .child(verb)
+                        .child(branch(&pr.base))
+                        .child("from")
+                        .child(branch(&pr.branch)),
+                )
+                .when(!pr.labels.is_empty(), |d| {
+                    d.child(labels(&pr.labels).max_w(px(280.)).justify_end())
+                }),
         )
-        .when(!pr.labels.is_empty(), |d| d.child(labels(&pr.labels)))
 }
 
 /// The checks as GitHub's merge box sums them up: a coloured header that
@@ -314,8 +325,8 @@ fn check_glyph(state: CheckState) -> Icon {
 }
 
 impl Workspace {
-    /// What can be done with a pull request from Leon: ready or draft, a
-    /// Copilot review. Shown next to "Open on GitHub".
+    /// What can be done with a pull request from Leon: a Copilot review,
+    /// ready or draft. Shown next to "Open on GitHub".
     pub(crate) fn pr_actions(pr: &PullRequest, cx: &mut Context<Self>) -> Vec<AnyElement> {
         if !matches!(pr.state, PrState::Open | PrState::Draft) {
             return Vec::new();
@@ -357,7 +368,7 @@ impl Workspace {
             }),
         )
         .when(asked, |b| b.opacity(0.6));
-        vec![draft.into_any_element(), copilot.into_any_element()]
+        vec![copilot.into_any_element(), draft.into_any_element()]
     }
 
     /// A comment as on GitHub's timeline: the author's avatar beside a card

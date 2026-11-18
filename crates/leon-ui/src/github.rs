@@ -359,18 +359,6 @@ impl Workspace {
         .render(cx)
     }
 
-    /// "Open flow" when a conversation works on the pull request.
-    pub(crate) fn pr_action(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
-        match self.flow_for_pr(pr) {
-            Some(flow) => open_flow(
-                SharedString::from(format!("gh-open-{}-{}", pr.repo, pr.number)),
-                flow,
-                cx,
-            ),
-            None => div().into_any_element(),
-        }
-    }
-
     /// The project whose `origin` is `repo` on GitHub.
     fn project_for_repo(&self, repo: &str) -> Option<ProjectId> {
         self.snapshot

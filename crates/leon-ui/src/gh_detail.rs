@@ -31,11 +31,7 @@ impl Workspace {
         // What Leon can do with it sits in the header, left of GitHub.
         let actions = match &detail {
             Detail::Issue(issue) => vec![self.issue_action(issue, cx)],
-            Detail::PullRequest(pr) => {
-                let mut actions = Self::pr_actions(pr, cx);
-                actions.push(self.pr_action(pr, cx));
-                actions
-            }
+            Detail::PullRequest(pr) => Self::pr_actions(pr, cx),
             Detail::Loading(_) | Detail::Failed(..) => Vec::new(),
         };
         let glyph = match &detail {
@@ -60,6 +56,9 @@ impl Workspace {
             )
             .child(div().flex_1())
             .children(actions)
+            .when(item.kind == GhKind::PullRequest, |d| {
+                d.child(copy_link(url.clone()))
+            })
             .child(github_link(url));
         let scroll = div()
             .id("detail-body")
@@ -163,8 +162,32 @@ impl Workspace {
 
 /// "Open on GitHub", opening `url` in the browser.
 pub(crate) fn github_link(url: String) -> AnyElement {
+    header_button(
+        "detail-on-github",
+        Icon::External,
+        "Open on GitHub",
+        move |cx| {
+            cx.open_url(&url);
+        },
+    )
+}
+
+/// "Copy link", putting a pull request's `url` on the clipboard.
+fn copy_link(url: String) -> AnyElement {
+    header_button("detail-copy-link", Icon::Copy, "Copy link", move |cx| {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(url.clone()));
+    })
+}
+
+/// A quiet button of the details drawer's header.
+fn header_button(
+    id: &'static str,
+    glyph: Icon,
+    label: &'static str,
+    click: impl Fn(&mut gpui::App) + 'static,
+) -> AnyElement {
     div()
-        .id("detail-on-github")
+        .id(id)
         .flex()
         .flex_none()
         .items_center()
@@ -176,9 +199,9 @@ pub(crate) fn github_link(url: String) -> AnyElement {
         .text_color(theme::fg_muted())
         .cursor_pointer()
         .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
-        .child(icon(Icon::External, theme::fg_muted(), 13.))
-        .child("Open on GitHub")
-        .on_click(move |_, _, cx| cx.open_url(&url))
+        .child(icon(glyph, theme::fg_muted(), 13.))
+        .child(label)
+        .on_click(move |_, _, cx| click(cx))
         .into_any_element()
 }
 

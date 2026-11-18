@@ -222,11 +222,12 @@ flow**: one item in the left pane (D5).
 - **GH-3** My open PRs, grouped by repository (each group foldable), with
   their state icon and checks. Clicking one opens its details in a drawer,
   laid out like its GitHub page: title and state pill, who wants to merge
-  which branch into which, the checks box (how they went, the failing ones
+  which branch into which with its labels on the right of that line, the checks box (how they went, the failing ones
   named), its description (GitHub's folded sections stay folded) and each
   review thread still open with the code it is on, people as coloured
-  avatars, a box to comment. Its actions (ready or draft, Copilot review,
-  "Open flow" when it has one) sit left of "Open on GitHub".
+  avatars, a box to comment. Its actions (Copilot review, then ready or
+  draft) sit left of "Copy link", which puts its
+  address on the clipboard, and "Open on GitHub".
 - **GH-4** Labels of issues and PRs.
 - **GH-5** Request a Copilot review on a PR.
 - **GH-6** Post a comment.
