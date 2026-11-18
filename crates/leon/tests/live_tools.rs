@@ -33,6 +33,12 @@ async fn claude_calls_a_leon_tool() {
     calls_a_leon_tool(BackendKind::ClaudeCode).await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "runs the real Copilot CLI with the user's login"]
+async fn copilot_calls_a_leon_tool() {
+    calls_a_leon_tool(BackendKind::CopilotCli).await;
+}
+
 async fn calls_a_leon_tool(backend: BackendKind) {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("tools.sock");

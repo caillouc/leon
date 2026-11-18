@@ -122,7 +122,7 @@ tool names are understood too). MCP tools are never limited.
 |---|---|
 | Claude Code | `--agents '{"<name>":{…,"prompt":<body>}}' --agent <name>`: the body replaces Claude Code's default system prompt; `CLAUDE.md` still loads |
 | Codex | the body as `developerInstructions` of `thread/start` |
-| Copilot CLI | the body as the ACP system prompt, when the CLI offers it ⚠️ |
+| Copilot CLI | the body before your first message: over ACP it offers no system prompt (1.0.114, 2026-11-18) |
 
 Write the body so it stands alone, in plain verbs ("search the code", "run
 the tests") rather than one CLI's tool names. To hand work to another agent,
@@ -185,8 +185,9 @@ Edit the originals, never the copies.
   real turn; the `tools` switches (`features.shell_tool`, `web_search`,
   `features.multi_agent`) come from its config reference, not a real turn.
 - Copilot CLI: `--plugin-dir` was checked with `copilot skill list`, and the
-  `--deny-tool` rules from `copilot help permissions`, not with `--acp` as
-  Leon runs it; nor whether the ACP system prompt is offered.
+  `--deny-tool` rules from `copilot help permissions`, not in a real turn.
+  Leon itself runs on Copilot CLI 1.0.114 (live tests on 2026-11-18: an
+  answer, a model without effort, a call to Leon's own tools).
 - Claude Code reads `~/.agents/skills` itself: its binary names that folder
   only in its "import from other tools" scan, so Leon hands those skills
   over.

@@ -15,11 +15,13 @@ mod turn;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::Path;
 
 use leon_core::ports::{BackendChannel, PortError, SessionSpec};
-use leon_domain::Capability;
+use leon_domain::{Capability, McpServer};
+use serde_json::json;
 
 use crate::options::copilot_flags;
 use crate::rpc::{self, Launch};
@@ -51,7 +53,11 @@ pub(crate) fn copilot(spec: &SessionSpec, skills: Option<&Path>) -> Cli {
     if let Some(model) = &s.model {
         args.push(format!("--model={model}"));
     }
-    if let Some(effort) = &s.effort {
+    let refuses_effort = s
+        .model
+        .as_deref()
+        .is_some_and(|m| crate::options::COPILOT_NO_EFFORT.contains(&m));
+    if let Some(effort) = s.effort.as_ref().filter(|_| !refuses_effort) {
         args.push(format!("--effort={effort}"));
     }
     args.extend(copilot_flags(&s.permission).iter().map(|f| (*f).to_owned()));
@@ -81,6 +87,21 @@ pub(crate) fn copilot(spec: &SessionSpec, skills: Option<&Path>) -> Cli {
                 args.push(format!("--deny-tool={rule}"));
             }
         }
+    }
+    // Leon's own tools (P10), then the source folders' servers (EXT-2), a
+    // name given twice once: as this session's extra MCP config, which takes
+    // stdio servers (checked with `copilot mcp list`, 1.0.114, 2026-11-18).
+    let mut seen = HashSet::new();
+    let stdio: Vec<McpServer> = spec
+        .mcp_servers
+        .iter()
+        .chain(spec.sources.iter().flat_map(|s| &s.mcp_servers))
+        .filter(|m| seen.insert(m.name.as_str()))
+        .cloned()
+        .collect();
+    if !stdio.is_empty() {
+        let config = json!({ "mcpServers": crate::mcp::servers(&stdio) });
+        args.push(format!("--additional-mcp-config={config}"));
     }
     if let Some(dir) = skills {
         args.push(format!("--plugin-dir={}", dir.display()));

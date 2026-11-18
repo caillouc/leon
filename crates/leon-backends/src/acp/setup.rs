@@ -2,8 +2,6 @@
 //! `session/new`, `session/load` or `session/resume`, then the agent's own
 //! selectors for model, effort and mode.
 
-use std::collections::HashSet;
-
 use leon_core::ports::SessionSpec;
 use serde_json::{Value, json};
 
@@ -82,7 +80,9 @@ pub(super) fn session_request(
 ) -> (&'static str, Value) {
     let mut params = json!({
         "cwd": spec.working_dir.to_string_lossy(),
-        "mcpServers": mcp_servers(spec),
+        // Copilot CLI drops stdio servers sent here (1.0.113 log: "Rejecting
+        // non-http/sse MCP server"): they go in its start flags instead.
+        "mcpServers": [],
     });
     if caps.system_prompt
         && let Some(agent) = spec
@@ -107,32 +107,6 @@ pub(super) fn session_request(
         }
     };
     (method, params)
-}
-
-/// ACP stdio servers: the app's own (P10) first, then the user's source
-/// folders' (EXT-2); a name already given is skipped.
-fn mcp_servers(spec: &SessionSpec) -> Value {
-    let mut seen = HashSet::new();
-    let servers: Vec<Value> = spec
-        .mcp_servers
-        .iter()
-        .chain(spec.sources.iter().flat_map(|s| &s.mcp_servers))
-        .filter(|m| seen.insert(m.name.as_str()))
-        .map(|m| {
-            let env: Vec<Value> = m
-                .env
-                .iter()
-                .map(|(name, value)| json!({ "name": name, "value": value }))
-                .collect();
-            json!({
-                "name": m.name,
-                "command": m.command.to_string_lossy(),
-                "args": m.args,
-                "env": env,
-            })
-        })
-        .collect();
-    Value::Array(servers)
 }
 
 /// A request to send: method and params.

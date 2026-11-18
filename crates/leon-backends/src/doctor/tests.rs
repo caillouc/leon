@@ -86,7 +86,7 @@ fn copilot_login_is_read_from_its_server_list() {
         let section = section_with(BackendKind::CopilotCli, |args| match args {
             ["--version"] => Ok(said(
                 true,
-                "GitHub Copilot CLI 1.0.113.\nRun 'copilot update' to check for updates.\n",
+                "GitHub Copilot CLI 1.0.114.\nRun 'copilot update' to check for updates.\n",
                 "",
             )),
             ["mcp", "list", "--json"] => listed.clone(),
@@ -95,5 +95,8 @@ fn copilot_login_is_read_from_its_server_list() {
         let login = section.checks.iter().find(|c| c.name == "Logged in");
         let got = login.map(|c| (c.health, c.detail.as_str()));
         assert_eq!(got, Some((health, detail)), "case {ix}");
+        // Leon ran Copilot CLI 1.0.114: no "not tested" warning.
+        let version = section.checks.iter().find(|c| c.name == "Version");
+        assert_eq!(version.map(|c| c.health), Some(Health::Ok), "case {ix}");
     }
 }

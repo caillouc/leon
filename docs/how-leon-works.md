@@ -87,8 +87,9 @@ own program, as a tiny bridge) which forwards to `tools.sock`.
    1")`. The call reaches `Core::on_tool`
    ([agents.rs:16](../crates/leon-core/src/agents.rs)).
 2. `start_agent` ([agents.rs:65](../crates/leon-core/src/agents.rs)) creates a
-   coder session in the same conversation (same CLI, model and permission as
-   the planner), sends it the prompt as `[From planner · session 1]`, and
+   coder session in the same conversation (same CLI, model, effort and
+   permission as the planner, unless the coder's file sets a `model`: see
+   [agent-files.md](agent-files.md)), sends it the prompt as `[From planner · session 1]`, and
    answers the tool at once: "Started coder as session 2".
 3. When the coder's turn ends, `after_turn`
    ([agents.rs:209](../crates/leon-core/src/agents.rs)) sends its answer to

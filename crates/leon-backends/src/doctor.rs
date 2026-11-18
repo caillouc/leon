@@ -14,12 +14,14 @@ use crate::process::{Output, RunError, program, run, strings};
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 
-/// The CLI version Leon's adapter was checked with, if it was run.
-fn checked_with(backend: BackendKind) -> Option<&'static str> {
+/// The CLI version Leon's adapter was checked with.
+fn checked_with(backend: BackendKind) -> &'static str {
     match backend {
-        BackendKind::ClaudeCode => Some("2.1.288"),
-        BackendKind::Codex => Some("0.160.0"),
-        BackendKind::CopilotCli => None,
+        BackendKind::ClaudeCode => "2.1.288",
+        BackendKind::Codex => "0.160.0",
+        // Live tests (pong, a model without effort, Leon's own tools) pass on
+        // 1.0.114, 2026-11-18.
+        BackendKind::CopilotCli => "1.0.114",
     }
 }
 
@@ -66,14 +68,7 @@ fn section_with(
                 .unwrap_or_default()
                 .trim()
                 .to_owned();
-            checks.push(match checked_with(backend) {
-                Some(version) => version_check("Version", &found, version),
-                None => DoctorCheck::new(
-                    Health::Warning,
-                    "Version",
-                    format!("{found} (Leon was not tested with this CLI yet)"),
-                ),
-            });
+            checks.push(version_check("Version", &found, checked_with(backend)));
         }
     }
     checks.push(login(backend, &run));

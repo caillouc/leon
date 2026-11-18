@@ -1,7 +1,7 @@
 //! What each CLI's pickers offer. Values checked on 2026-11-17: Claude Code
 //! 2.1.288 `--help` (efforts, permission modes, model aliases), Codex 0.160.0
-//! app-server `model/list` (models, efforts); Copilot CLI from its docs only
-//! (not run).
+//! app-server `model/list` (models, efforts); on 2026-11-18, Copilot CLI
+//! 1.0.113 over ACP (`session/new` lists its models; which refuse an effort).
 
 use leon_core::ports::{BackendOptions, ModelOption};
 use leon_domain::BackendKind;
@@ -27,6 +27,12 @@ pub(crate) fn codex_policy(permission: &str) -> (&'static str, &'static str) {
 /// Permission modes offered for Copilot CLI, mapped to its flags in
 /// [`copilot_flags`]. The first one is Leon's "auto" (CONV-4).
 pub(crate) const COPILOT_PERMISSIONS: [&str; 3] = ["auto", "allow all", "ask"];
+
+/// Copilot models whose session refuses `--effort` ("does not support
+/// reasoning effort configuration"): every other model accepted one when a
+/// session opened (Copilot CLI 1.0.113, 2026-11-18; Haiku 4.5 without an
+/// effort answers on 1.0.114).
+pub(crate) const COPILOT_NO_EFFORT: [&str; 2] = ["claude-haiku-4.5", "auto"];
 
 /// Copilot CLI flags for a permission mode, from its command reference.
 /// ⚠️ not verified that `copilot --acp` honours them: its ACP page names only
@@ -98,19 +104,34 @@ pub(crate) fn for_backend(backend: BackendKind) -> BackendOptions {
             permissions: list(&CODEX_PERMISSIONS),
         },
         BackendKind::CopilotCli => BackendOptions {
-            // "Supported models" in the command reference; the first is its
-            // default. ⚠️ Which ones an account gets, and its default effort,
-            // are not verified: Leon uses `medium`.
+            // What `session/new` listed over ACP on 2026-11-18 (1.0.113), its
+            // default first; the list depends on the account. ⚠️ Its default
+            // effort is not reported: Leon uses `medium`.
             models: models(&[
                 ("claude-sonnet-5.5", "Claude Sonnet 5.5"),
+                ("claude-sonnet-5", "Claude Sonnet 5"),
                 ("claude-opus-5.5", "Claude Opus 5.5"),
                 ("claude-haiku-5.5", "Claude Haiku 5.5"),
-                ("gpt-6.1-sol", "GPT-6.1-Sol"),
-                ("gpt-6.1-terra", "GPT-6.1-Terra"),
-                ("gpt-6-astra", "GPT-6-Astra"),
-                ("gpt-6-luna", "GPT-6-Luna"),
+                ("claude-haiku-4.5", "Claude Haiku 4.5"),
+                ("gpt-6.2-sol", "GPT-6.2 Sol"),
+                ("gpt-6.2-astra", "GPT-6.2 Astra"),
+                ("gpt-6.1-sol", "GPT-6.1 Sol"),
+                ("gpt-6.1-terra", "GPT-6.1 Terra"),
+                ("gpt-6-sol", "GPT-6 Sol"),
+                ("gpt-6-luna", "GPT-6 Luna"),
+                ("gpt-6-astra", "GPT-6 Astra"),
+                ("gpt-5.6-sol", "GPT-5.6 Sol"),
+                ("gpt-5.6-luna", "GPT-5.6 Luna"),
                 ("gpt-5.3-codex", "GPT-5.3-Codex"),
+                ("mai-code-1.1-flash", "MAI-Code-1.1-Flash"),
+                ("mai-code-2", "MAI Code 2"),
+                ("mai-code-2-flash", "MAI Code 2 Flash"),
+                ("gemini-4-carbon", "Gemini 4 Carbon"),
+                ("gemini-4-argon", "Gemini 4 Argon"),
+                ("gemini-4-hydrogen", "Gemini 4 Hydrogen"),
                 ("gemini-3.8-flash", "Gemini 3.8 Flash"),
+                ("grok-4.7", "Grok 4.7"),
+                ("grok-4.6", "Grok 4.6"),
                 ("auto", "Auto"),
             ]),
             efforts: list(&["low", "medium", "high", "xhigh", "max"]),

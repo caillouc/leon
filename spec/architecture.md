@@ -160,9 +160,12 @@ session start:
   `skills/extraRoots/set`, sent before `thread/start`. Missing tools: a
   read-only sandbox, `features.shell_tool`, `web_search`,
   `features.multi_agent` in the thread config.
-- Copilot CLI: the folders' MCP servers in ACP `session/new.mcpServers`; the
+- Copilot CLI: over ACP it drops stdio MCP servers ("Rejecting non-http/sse
+  MCP server", 1.0.113 log), so Leon's own tools and the folders' servers go
+  in `--additional-mcp-config` when it starts (live-tested on 1.0.114); the
   same skills as Codex through `--plugin-dir=<bridge>`; missing tools as
-  `--deny-tool=` rules (`read`, `write`, `shell`, `url`).
+  `--deny-tool=` rules (`read`, `write`, `shell`, `url`). It offers no ACP
+  system prompt: an agent's instructions go before the first message.
 
 Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 

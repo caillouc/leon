@@ -102,6 +102,13 @@ async fn claude_answers() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs a logged-in Copilot CLI"]
 async fn copilot_answers() {
+    assert_pong(&pong(BackendKind::CopilotCli, Some("gpt-6-luna")).await);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a logged-in Copilot CLI"]
+async fn copilot_answers_with_a_model_that_refuses_an_effort() {
+    // The spec asks for `low`; Leon leaves it out for this model.
     assert_pong(&pong(BackendKind::CopilotCli, Some("claude-haiku-4.5")).await);
 }
 
