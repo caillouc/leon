@@ -26,6 +26,35 @@ pub enum Status {
     Error,
 }
 
+/// What a conversation asks of the user, as the left pane shows it (NAV-5),
+/// from least to most pressing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Attention {
+    /// Nothing: done and seen.
+    Nothing,
+    /// An agent is working.
+    Working,
+    /// Done, not looked at yet: the user reviews what came back.
+    Review,
+    /// An agent waits for the user's answer or decision.
+    NeedsYou,
+    /// It stopped with an error.
+    Failed,
+}
+
+impl Attention {
+    /// From the conversation's status and whether it is unread.
+    pub fn of(status: Status, unread: bool) -> Self {
+        match status {
+            Status::NeedsInput => Self::NeedsYou,
+            Status::Error => Self::Failed,
+            Status::Running => Self::Working,
+            Status::Idle if unread => Self::Review,
+            Status::Idle => Self::Nothing,
+        }
+    }
+}
+
 impl Status {
     /// Status of a conversation from the status of its agent sessions:
     /// needs input, then running, then error, then idle.
@@ -107,6 +136,30 @@ pub struct AgentSession {
 mod tests {
     use super::Status;
     use super::Status::{Error, Idle, NeedsInput, Running};
+
+    #[test]
+    fn what_a_conversation_asks_of_the_user() {
+        use super::Attention;
+        let cases = [
+            (Idle, false, Attention::Nothing),
+            (Idle, true, Attention::Review),
+            (Running, true, Attention::Working),
+            (NeedsInput, false, Attention::NeedsYou),
+            (Error, true, Attention::Failed),
+        ];
+        for (status, unread, expected) in cases {
+            assert_eq!(
+                Attention::of(status, unread),
+                expected,
+                "{status:?} {unread}"
+            );
+        }
+        // A folded project shows its most pressing one.
+        let most = [Attention::Working, Attention::Review, Attention::NeedsYou]
+            .into_iter()
+            .max();
+        assert_eq!(most, Some(Attention::NeedsYou));
+    }
 
     #[test]
     fn conversation_status_follows_priority() {

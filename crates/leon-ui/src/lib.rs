@@ -11,6 +11,7 @@
 )]
 
 mod composer;
+mod conv_row;
 mod conversation;
 mod diff_drawer;
 mod diff_rows;

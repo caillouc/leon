@@ -26,7 +26,7 @@ pub use connectors::{
     connector_table,
 };
 pub use conversation::{
-    AgentSession, AgentSessionId, Conversation, ConversationId, SessionSettings, Status,
+    AgentSession, AgentSessionId, Attention, Conversation, ConversationId, SessionSettings, Status,
 };
 pub use date::Day;
 pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason};

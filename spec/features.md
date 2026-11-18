@@ -43,13 +43,19 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   projects.
 - **NAV-4** Unread indicator per conversation; the user can also mark one as
   unread.
-- **NAV-5** Progress indicator per conversation.
+- **NAV-5** Each conversation's row says what it asks of the user: working
+  (loader icon, "Working…"), needs you — an answer or a decision — (amber
+  edge, "Needs you"), to review — done and not looked at yet — (green edge,
+  "To review"), failed (red), or nothing. A folded project shows its most
+  pressing colour.
 - **NAV-6** PR status per conversation.
 - **NAV-7** Selecting a conversation opens it in the main pane.
 - **NAV-8** Rename, pin, mark as unread, archive and delete a conversation
   from its right-click menu in the left pane; search conversations.
 - **NAV-9** Titles are generated automatically, as in Claude Code.
 - **NAV-10** A + next to each project starts a conversation in it.
+- **NAV-11** A conversation started for an issue shows the issue's number in
+  its row; clicking it opens Leon's view of the issue (GH-2).
 
 ### Main pane
 

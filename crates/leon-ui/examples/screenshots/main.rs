@@ -246,7 +246,7 @@ fn sample() -> Snapshot {
             sessions: vec![AgentSessionId(3)],
         },
         ConversationView {
-            conversation: conversation(3, 1, "Draft release notes v2.3", false, true),
+            conversation: conversation(3, 1, "Draft release notes v2.3", true, true),
             status: Status::Idle,
             sessions: vec![],
         },
@@ -318,7 +318,7 @@ fn sample() -> Snapshot {
                 id: ProjectId(2),
                 name: "infra-tools".into(),
                 path: "/code/infra-tools".into(),
-                collapsed: true,
+                collapsed: false,
             },
         ]),
         conversations: Arc::new(conversations),

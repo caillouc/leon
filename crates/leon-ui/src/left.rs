@@ -4,13 +4,12 @@
 use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*, px};
 use gpui_component::input::Input;
 use leon_core::{ConversationView, Intent};
-use leon_domain::Status;
+use leon_domain::Attention;
 
 use crate::icons::{Icon, chevron, icon};
-use crate::pr_view::pr_badge;
 use crate::row_menu::MenuFor;
 use crate::theme;
-use crate::widgets::{HEADER_HEIGHT, empty, label, status_dot};
+use crate::widgets::{HEADER_HEIGHT, empty, label};
 use crate::workspace::{Screen, Workspace, value_of};
 
 impl Workspace {
@@ -57,19 +56,12 @@ impl Workspace {
             // A search shows matches even in a folded project, and a folded
             // project still shows the open conversation.
             let folded = project.collapsed && query.is_empty();
+            // A folded project shows its most pressing conversation's colour.
             let attention = rows
                 .iter()
-                .map(|c| c.status)
-                .max_by_key(|s| match s {
-                    Status::Error => 2,
-                    Status::NeedsInput => 1,
-                    Status::Running | Status::Idle => 0,
-                })
-                .and_then(|s| match s {
-                    Status::Error => Some(theme::err()),
-                    Status::NeedsInput => Some(theme::warn()),
-                    Status::Running | Status::Idle => None,
-                });
+                .map(|c| Attention::of(c.status, c.conversation.unread))
+                .max()
+                .and_then(crate::conv_row::attention_color);
             body = body.child(Self::project_header(project, rows.len(), attention, cx));
             if folded {
                 let open = rows
@@ -205,75 +197,6 @@ impl Workspace {
             .into_any_element()
     }
 
-    fn row(&self, c: &ConversationView, show_project: bool, cx: &mut Context<Self>) -> AnyElement {
-        let id = c.conversation.id;
-        let selected = self.screen == Screen::Conversation(id);
-        let unread = c.conversation.unread;
-        let meta = self.row_meta(c, show_project);
-        div()
-            .id(SharedString::from(format!("conv-{}", id.0)))
-            .mx_1()
-            .px_2()
-            .py(px(5.))
-            .rounded_md()
-            .cursor_pointer()
-            .when(selected, |s| s.bg(theme::accent_soft()))
-            .when(!selected, |s| s.hover(|s| s.bg(theme::surface_2())))
-            .flex()
-            .flex_col()
-            .gap(px(1.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(status_dot(c.status))
-                    .child(match &self.rename {
-                        Some((rid, input, _)) if *rid == id => div()
-                            .flex_1()
-                            .min_w_0()
-                            .child(Input::new(input))
-                            .into_any_element(),
-                        _ => div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
-                            .when(unread, |s| s.font_weight(gpui::FontWeight::SEMIBOLD))
-                            .child(c.conversation.title.clone())
-                            .into_any_element(),
-                    })
-                    .children(self.snapshot.prs.get(&id).map(pr_badge))
-                    .when(unread, |s| {
-                        s.child(div().size(px(7.)).rounded_full().bg(theme::accent()))
-                    }),
-            )
-            .child(
-                div()
-                    .pl(px(17.))
-                    .text_size(px(11.5))
-                    .text_color(match c.status {
-                        Status::NeedsInput => theme::warn(),
-                        Status::Error => theme::err(),
-                        _ => theme::fg_muted(),
-                    })
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .child(meta),
-            )
-            .on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
-            .on_mouse_down(
-                gpui::MouseButton::Right,
-                cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
-                    this.row_menu = Some((MenuFor::Conversation(id), e.position));
-                    cx.notify();
-                }),
-            )
-            .into_any_element()
-    }
-
     /// A project's row: click to fold or unfold its conversations (NAV-2);
     /// chevron, name, count, a dot when a folded conversation needs you, +
     /// (on hover) to start one in it (NAV-10); right-click to remove it.
@@ -346,30 +269,6 @@ impl Workspace {
                     })),
             )
             .into_any_element()
-    }
-
-    fn row_meta(&self, c: &ConversationView, show_project: bool) -> String {
-        let project = if show_project {
-            self.snapshot
-                .projects
-                .iter()
-                .find(|p| p.id == c.conversation.project)
-                .map_or_default(|p| format!("{} · ", p.name))
-        } else {
-            String::new()
-        };
-        let agents = c.sessions.len();
-        let what = match c.status {
-            Status::Running => "Working".to_owned(),
-            Status::NeedsInput => "Needs your answer".to_owned(),
-            Status::Error => "Stopped with an error".to_owned(),
-            Status::Idle => ago(c.conversation.updated_at),
-        };
-        if agents > 1 {
-            format!("{project}{agents} agents · {what}")
-        } else {
-            format!("{project}{what}")
-        }
     }
 }
 
