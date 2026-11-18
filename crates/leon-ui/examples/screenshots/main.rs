@@ -413,6 +413,7 @@ fn main() {
             Shot::PickerOpen(ConversationId(1), "session-model"),
         ),
         ("flow".to_owned(), Shot::Flow(ConversationId(1))),
+        ("new-in-flow".to_owned(), Shot::NewInFlow(ConversationId(1))),
         ("new-conversation".to_owned(), Shot::NewConversation),
         (
             "new-conversation-agent".to_owned(),

@@ -309,6 +309,12 @@ impl Core {
                 text,
                 issue,
             } => self.new_conversation(project, settings, &text, issue),
+            Intent::NewSession {
+                conversation,
+                settings,
+                working_dir,
+                text,
+            } => self.new_session(conversation, settings, working_dir, &text),
             Intent::Send { session, text } => self.send(session, &text),
             Intent::Rewind {
                 session,
@@ -500,17 +506,55 @@ impl Core {
             settings,
             working_dir: dir,
         };
-        let Some(session) = Self::report(blocking(|| storage.create_session(&new))) else {
+        let Some(id) = Self::report(self.add_session(&new)) else {
             return;
         };
-        let id = session.id;
-        let mut state = SessionState::new(session);
-        state.transcript = Some(crate::snapshot::TranscriptView::default());
-        self.state.sessions.insert(id, state);
         self.state.conversations.push(conversation.clone());
         self.viewing = Some(conversation.id);
         self.send(id, text);
         self.write_title(conversation.id, &conversation.title, backend, text);
+    }
+
+    /// The user starts another conversation in flow `conversation`
+    /// (FLOW-7).
+    fn new_session(
+        &mut self,
+        conversation: ConversationId,
+        settings: SessionSettings,
+        working_dir: std::path::PathBuf,
+        text: &str,
+    ) {
+        if !self
+            .state
+            .conversations
+            .iter()
+            .any(|c| c.id == conversation)
+        {
+            return;
+        }
+        let new = NewSession {
+            conversation,
+            started_by: None,
+            settings: self.explicit(settings),
+            working_dir,
+        };
+        if let Some(id) = Self::report(self.add_session(&new)) {
+            self.send(id, text);
+        }
+    }
+
+    /// Saves a new agent session and keeps it, its transcript empty.
+    pub(crate) fn add_session(
+        &mut self,
+        new: &NewSession,
+    ) -> Result<AgentSessionId, crate::ports::PortError> {
+        let storage = Arc::clone(&self.ports.storage);
+        let session = blocking(|| storage.create_session(new))?;
+        let id = session.id;
+        let mut state = SessionState::new(session);
+        state.transcript = Some(crate::snapshot::TranscriptView::default());
+        self.state.sessions.insert(id, state);
+        Ok(id)
     }
 
     /// Asks the CLI for a title in the background (NAV-9).
@@ -930,7 +974,7 @@ fn with_context(s: &SessionState, text: &str) -> String {
         match &e.entry {
             Entry::User { text } => lines.push(format!("User: {text}")),
             Entry::FromAgent { from, text, .. } => {
-                lines.push(format!("Agent session {}: {text}", from.0));
+                lines.push(format!("Conversation {}: {text}", from.0));
             }
             Entry::Agent { text } => lines.push(format!("Assistant: {text}")),
             _ => {}

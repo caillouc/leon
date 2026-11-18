@@ -28,7 +28,7 @@ impl Core {
         let shared = Arc::clone(&self.ports.shared_tools);
         match tokio::task::block_in_place(|| shared.add(&server)) {
             Ok(()) => self.flash(format!(
-                "Added {name}: agent sessions started or resumed from now on get it."
+                "Added {name}: conversations started or resumed from now on get it."
             )),
             Err(error) => self.flash(format!("Could not add {name}: {error}")),
         }

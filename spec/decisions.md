@@ -46,6 +46,14 @@ something slightly faster or more direct (e.g. P7: `gh` over GitHub's API).
 **D7 — Supported CLIs: Claude Code, Codex, Copilot CLI.** (2026-11-17)
 No Google CLI (Antigravity is not supported; see P11).
 
+**D8 — A left-pane entry is a Flow.** (2026-11-18)
+In the maintainer's words: "Let's call an entry in the left pannel a 'Flow'.
+Each flow can contain several agent conversation (as it is already the case)
+But I also want to be able to start a new conv in an existing flow, which will
+lead to a new input box and etc. This new naming/concept can appear in the
+leon's UI if needed". Entries above and below written before this use
+"conversation" for a flow and "agent session" for a conversation.
+
 ## Accepted on 2026-11-17
 
 Proposals P1–P15, accepted as written by the maintainer on 2026-11-17. Their

@@ -9,19 +9,19 @@ use serde_json::{Value, json};
 
 const START_AGENT: &str = "start_agent";
 const MESSAGE_AGENT: &str = "message_agent";
-const RENAME_CONVERSATION: &str = "rename_conversation";
+const RENAME_FLOW: &str = "rename_flow";
 const SET_WORKING_DIRECTORY: &str = "set_working_directory";
 
-/// What every agent session is told (CTX-3): Leon shows the user the
+/// What every conversation is told (CTX-3): Leon shows the user the
 /// agents' work only as well as they keep it up to date.
 pub(crate) const INSTRUCTIONS: &str = "You run inside Leon, an app that shows the user \
-what every agent of this conversation is doing. Keep it up to date with the tools of its \
+what every agent of this flow is doing. Keep it up to date with the tools of its \
 `leon` MCP server, each time it applies, without being asked:
 - Each time you start working in another folder (a git worktree you create or enter, \
 another repository), call `set_working_directory` with its absolute path, before you work \
 there.
-- Once the subject of the conversation is clear, and when it changes, call \
-`rename_conversation` with a short title.";
+- Once the subject of the flow is clear, and when it changes, call `rename_flow` \
+with a short title.";
 
 /// Why a `tools/call` could not become an [`AppToolCall`].
 #[derive(Debug, PartialEq, Eq)]
@@ -37,11 +37,12 @@ pub(crate) fn list() -> Value {
     json!({ "tools": [
         {
             "name": START_AGENT,
-            "description": "Start another agent in a new agent session of this conversation and \
-                send it a first message. Returns at once with the new session's id: do not wait \
-                for it. When that agent finishes its answer, the answer arrives in this session \
-                as a new message starting with `[From <agent> · session <id>]`. Meanwhile, keep \
-                working or end your turn. Send it follow-ups with message_agent.",
+            "description": "Start another agent in a new conversation of this flow and send it \
+                a first message. Returns at once with the new conversation's id: do not wait \
+                for it. When that agent finishes its answer, the answer arrives in this \
+                conversation as a new message starting with `[From <agent> · conversation \
+                <id>]`. Meanwhile, keep working or end your turn. Send it follow-ups with \
+                message_agent.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -51,13 +52,14 @@ pub(crate) fn list() -> Value {
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "First message to the agent. It starts a new session \
-                            and does not see this one, so give it everything it needs.",
+                        "description": "First message to the agent. It starts a new \
+                            conversation and does not see this one, so give it everything it \
+                            needs.",
                     },
                     "working_directory": {
                         "type": "string",
                         "description": "Absolute path of the folder it works in, e.g. a git \
-                            worktree. Defaults to this session's working directory.",
+                            worktree. Defaults to this conversation's working directory.",
                     },
                 },
                 "required": ["agent", "prompt"],
@@ -65,27 +67,27 @@ pub(crate) fn list() -> Value {
         },
         {
             "name": MESSAGE_AGENT,
-            "description": "Send a follow-up message to another agent session of this \
-                conversation. Returns at once: do not wait for it. When that agent finishes its \
-                answer, the answer arrives in this session as a new message starting with \
-                `[From <agent> · session <id>]`.",
+            "description": "Send a follow-up message to another conversation of this flow. \
+                Returns at once: do not wait for it. When that agent finishes its answer, the \
+                answer arrives in this conversation as a new message starting with `[From \
+                <agent> · conversation <id>]`.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "session": {
+                    "conversation": {
                         "type": "integer",
-                        "description": "Id of the agent session, as start_agent returned it or \
-                            as a `[From <agent> · session <id>]` message shows it.",
+                        "description": "Id of the conversation, as start_agent returned it \
+                            or as a `[From <agent> · conversation <id>]` message shows it.",
                     },
                     "text": { "type": "string", "description": "The message." },
                 },
-                "required": ["session", "text"],
+                "required": ["conversation", "text"],
             },
         },
         {
-            "name": RENAME_CONVERSATION,
-            "description": "Rename this conversation in Leon's list of conversations. Use a \
-                short title that says what the work is about.",
+            "name": RENAME_FLOW,
+            "description": "Rename this flow in Leon's list of flows. Use a short title that \
+                says what the work is about.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -96,10 +98,10 @@ pub(crate) fn list() -> Value {
         },
         {
             "name": SET_WORKING_DIRECTORY,
-            "description": "Tell Leon this session now also works in another folder: a git \
-                worktree you created or entered, or another repository. Leon then shows that \
-                folder's changes and pull request with the conversation's other folders. Call \
-                it each time you start working in a new folder, before you work there.",
+            "description": "Tell Leon this conversation now also works in another folder: a \
+                git worktree you created or entered, or another repository. Leon then shows \
+                that folder's changes and pull request with the flow's other folders. Call it \
+                each time you start working in a new folder, before you work there.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -126,17 +128,18 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolEr
         MESSAGE_AGENT => AppToolCall::MessageAgent {
             session: AgentSessionId(
                 arguments
-                    .get("session")
+                    .get("conversation")
                     .and_then(Value::as_i64)
                     .ok_or_else(|| {
                         ToolError::Arguments(
-                            "`session` must be an integer: the id of an agent session".to_owned(),
+                            "`conversation` must be an integer: the id of a conversation"
+                                .to_owned(),
                         )
                     })?,
             ),
             text: text(arguments, "text")?,
         },
-        RENAME_CONVERSATION => AppToolCall::RenameConversation {
+        RENAME_FLOW => AppToolCall::RenameConversation {
             title: text(arguments, "title")?,
         },
         SET_WORKING_DIRECTORY => AppToolCall::SetWorkingDirectory {
@@ -178,7 +181,7 @@ mod tests {
     #[test]
     fn every_listed_tool_parses_its_required_arguments() {
         let samples = json!({
-            "agent": "coder", "prompt": "do it", "session": 3, "text": "more",
+            "agent": "coder", "prompt": "do it", "conversation": 3, "text": "more",
             "title": "Title", "path": "/repo",
         });
         let tools = list()["tools"].as_array().cloned().unwrap_or_default();
@@ -219,16 +222,16 @@ mod tests {
             ),
             (
                 "message_agent",
-                json!({ "session": "3", "text": "t" }),
-                "`session` must be an integer",
+                json!({ "conversation": "3", "text": "t" }),
+                "`conversation` must be an integer",
             ),
             (
                 "message_agent",
-                json!({ "session": 3 }),
+                json!({ "conversation": 3 }),
                 "`text` is required",
             ),
-            ("rename_conversation", json!("title"), "`title` is required"),
-            ("rename_conversation", Value::Null, "`title` is required"),
+            ("rename_flow", json!("title"), "`title` is required"),
+            ("rename_flow", Value::Null, "`title` is required"),
             (
                 "set_working_directory",
                 json!({ "path": "src" }),

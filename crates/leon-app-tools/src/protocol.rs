@@ -177,7 +177,7 @@ mod tests {
                 json!({ "jsonrpc": "2.0", "id": 3, "error": { "code": -32602, "message": "Unknown tool: nope" } }),
             ),
             (
-                r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"rename_conversation"}}"#,
+                r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"rename_flow"}}"#,
                 json!({ "jsonrpc": "2.0", "id": 4, "result": {
                     "content": [{ "type": "text", "text": "`title` is required: a non-empty string" }],
                     "isError": true,
@@ -203,7 +203,7 @@ mod tests {
             [
                 "start_agent",
                 "message_agent",
-                "rename_conversation",
+                "rename_flow",
                 "set_working_directory"
             ]
         );
@@ -225,7 +225,7 @@ mod tests {
     fn a_valid_call_goes_to_the_core() {
         assert_eq!(
             handle(
-                br#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"rename_conversation","arguments":{"title":"New"}}}"#
+                br#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"rename_flow","arguments":{"title":"New"}}}"#
             ),
             Reply::Call {
                 id: json!(5),

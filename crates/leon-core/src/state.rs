@@ -267,7 +267,7 @@ pub(crate) fn title_from(text: &str) -> String {
     let line = text
         .lines()
         .find(|l| !l.trim().is_empty())
-        .unwrap_or("New conversation")
+        .unwrap_or("New flow")
         .trim();
     if line.chars().count() <= 60 {
         return line.to_owned();
@@ -287,7 +287,7 @@ mod tests {
             title_from("\n  Fix the login bug\nmore"),
             "Fix the login bug"
         );
-        assert_eq!(title_from(""), "New conversation");
+        assert_eq!(title_from(""), "New flow");
         let long = "Implement the export of every invoice as CSV with the filters the user applied in the table";
         assert_eq!(
             title_from(long),

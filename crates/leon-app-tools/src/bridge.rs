@@ -158,7 +158,7 @@ mod tests {
         let input = [
             json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
             json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "rename_conversation", "arguments": { "title": "T" } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "rename_flow", "arguments": { "title": "T" } } }),
         ]
         .map(|message| format!("{message}\n"))
         .concat();

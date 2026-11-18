@@ -38,8 +38,8 @@ restart Leon after adding one.
 project's `.agents/skills/` (a later one hides an earlier one of the same
 name). In `.agents/skills/`, a skill is a `<name>.md` file or a
 `<name>/SKILL.md` folder; in a source folder, a `<name>/SKILL.md` folder.
-Leon reads them each time an agent session starts: a new skill shows up in
-the next session.
+Leon reads them each time a conversation starts: a new skill shows up in
+the next conversation.
 
 The `/` list of the message box also shows each CLI's own skills and
 commands (`.claude/skills/`, `.github/skills/`, `.claude/commands/`); those
@@ -68,7 +68,7 @@ You review code changes. You never edit files.
 | Field | Leon | Required |
 |---|---|---|
 | `name` | The agent's name; else the file name without `.md` (or `.agent.md`) | No |
-| `description` | Shown in the new-conversation form | Yes |
+| `description` | Shown in the new-flow form | Yes |
 | `model` | Picks the CLI and the model (below) | No |
 | `tools` | Limits what the agent can do (below) | No |
 | body | The agent's instructions | Yes |
@@ -92,7 +92,7 @@ model:
 | a model no CLI offers | The same; the form says so |
 
 The models each CLI offers are the ones its pickers show in Leon. Picking
-the agent in the new-conversation form sets the CLI and model pickers; you
+the agent in the new-flow form sets the CLI and model pickers; you
 can still change them. An agent started by another agent takes its file's
 model and CLI the same way, else the caller's. On another CLI than the
 caller's, the effort is kept when that CLI has it and the permission becomes
@@ -132,7 +132,7 @@ everything); its answer comes back as a message starting `[From …]`.
 ## Shared instructions: `~/.agents/AGENTS.md`
 
 What every agent should know, whatever its CLI: your conventions, how you
-like answers, what never to do. Leon reads it each time an agent session
+like answers, what never to do. Leon reads it each time a conversation
 starts and hands it over:
 
 | CLI | How | Checked |
@@ -173,8 +173,8 @@ How each CLI sees them, without Leon writing into the CLIs' own folders:
 | Copilot CLI | `.agents/skills/<name>/SKILL.md` | the same, copied into a plugin folder, `--plugin-dir=<dir>` |
 
 The copies live in Leon's data folder (`~/Library/Application
-Support/leon/skills/` on macOS) and are refreshed each time a session starts.
-Edit the originals, never the copies.
+Support/leon/skills/` on macOS) and are refreshed each time a conversation
+starts. Edit the originals, never the copies.
 
 ## Not verified
 

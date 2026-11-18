@@ -107,17 +107,16 @@ One word per concept, in code, UI and docs. A new concept: ask to add it here.
 
 | Term | Meaning |
 |---|---|
-| Project | A folder registered in the app, usually a git repo. Groups conversations. |
-| Conversation | One left-pane item: the agent session the user started, plus every agent session started from it. |
-| Agent session | One agent's own CLI conversation (its id, its transcript, one working directory at a time), started by the user or by another agent. |
-| Flow | Who started which agent session, with the prompts sent and the answers returned. |
+| Project | A folder registered in the app, usually a git repo. Groups flows. |
+| Flow | One left-pane item: the conversations the user started in it, every conversation an agent started from them, and who started which, with the prompts sent and the answers returned (its diagram). In code: `Conversation`. |
+| Conversation | One agent's own CLI conversation in a flow (its id, its transcript, one working directory at a time), started by the user or by another agent. In code: `AgentSession`. |
 | Turn | One user message and everything the agent does until it waits again. |
 | Backend | A coding CLI the app drives (`claude`, `codex`, `copilot`). Not an agent's *tool*. |
 | Agent | A named definition (markdown + frontmatter) the user talks to directly. |
-| Subagent | An agent the CLI itself runs inside an agent session. Shown only as counts. |
+| Subagent | An agent the CLI itself runs inside a conversation. Shown only as counts. |
 | Pending review | Diff comments collected before being sent as one message. |
 | Skill | A folder with a `SKILL.md` (Agent Skills standard). |
 | Tool | What an agent calls in a turn: a CLI built-in or an MCP tool. |
-| Working directory | Where an agent session's CLI runs: the main checkout or a worktree. |
-| Base | Branch and commit the conversation's branch started from. |
+| Working directory | Where a conversation's CLI runs: the main checkout or a worktree. |
+| Base | Branch and commit a flow's branch started from. |
 | Status | `idle`, `running`, `needs_input`, `error`. |

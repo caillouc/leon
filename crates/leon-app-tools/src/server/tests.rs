@@ -90,14 +90,14 @@ async fn each_tool_call_reaches_the_core_with_the_session() {
         ),
         (
             "message_agent",
-            json!({ "session": 12, "text": "And the tests?" }),
+            json!({ "conversation": 12, "text": "And the tests?" }),
             AppToolCall::MessageAgent {
                 session: AgentSessionId(12),
                 text: "And the tests?".to_owned(),
             },
         ),
         (
-            "rename_conversation",
+            "rename_flow",
             json!({ "title": "Parser fix", "unknown": 1 }),
             AppToolCall::RenameConversation {
                 title: "Parser fix".to_owned(),
@@ -132,16 +132,20 @@ async fn each_tool_call_reaches_the_core_with_the_session() {
 async fn an_error_from_the_core_is_a_tool_error() {
     let (mut client, mut requests) = connect(1).await;
     client
-        .call(4, "message_agent", json!({ "session": 99, "text": "hi" }))
+        .call(
+            4,
+            "message_agent",
+            json!({ "conversation": 99, "text": "hi" }),
+        )
         .await;
     request(&mut requests)
         .await
         .reply
-        .send(Err("No session 99 in this conversation".to_owned()))
+        .send(Err("No conversation 99 in this flow".to_owned()))
         .unwrap();
     assert_eq!(
         client.next().await,
-        Some(tool_result(4, "No session 99 in this conversation", true))
+        Some(tool_result(4, "No conversation 99 in this flow", true))
     );
 }
 
@@ -149,10 +153,10 @@ async fn an_error_from_the_core_is_a_tool_error() {
 async fn a_slow_call_does_not_block_the_next_ones() {
     let (mut client, mut requests) = connect(1).await;
     client
-        .call(1, "rename_conversation", json!({ "title": "First" }))
+        .call(1, "rename_flow", json!({ "title": "First" }))
         .await;
     client
-        .call(2, "rename_conversation", json!({ "title": "Second" }))
+        .call(2, "rename_flow", json!({ "title": "Second" }))
         .await;
     let first = request(&mut requests).await;
     let second = request(&mut requests).await;
@@ -173,9 +177,7 @@ async fn a_slow_call_does_not_block_the_next_ones() {
 async fn core_gone_means_leon_is_not_running() {
     // The core drops the reply without answering.
     let (mut client, mut requests) = connect(1).await;
-    client
-        .call(1, "rename_conversation", json!({ "title": "T" }))
-        .await;
+    client.call(1, "rename_flow", json!({ "title": "T" })).await;
     drop(request(&mut requests).await);
     assert_eq!(
         client.next().await,
@@ -183,9 +185,7 @@ async fn core_gone_means_leon_is_not_running() {
     );
     // The core's receiver is gone.
     drop(requests);
-    client
-        .call(2, "rename_conversation", json!({ "title": "T" }))
-        .await;
+    client.call(2, "rename_flow", json!({ "title": "T" })).await;
     assert_eq!(
         client.next().await,
         Some(tool_result(2, "Leon is not running", true))
@@ -236,9 +236,7 @@ async fn a_connection_without_a_session_line_is_closed() {
 #[tokio::test]
 async fn closing_the_input_still_delivers_pending_answers() {
     let (mut client, mut requests) = connect(1).await;
-    client
-        .call(1, "rename_conversation", json!({ "title": "T" }))
-        .await;
+    client.call(1, "rename_flow", json!({ "title": "T" })).await;
     let pending = request(&mut requests).await;
     client.write.shutdown().await.unwrap();
     pending.reply.send(Ok("done".to_owned())).unwrap();

@@ -1,19 +1,23 @@
-//! New conversation (CONV-2): pick a project, an agent, the CLI and its
+//! A new flow (CONV-2), or another conversation in a flow (FLOW-7): pick a
+//! project (or one of the flow's folders), an agent, the CLI and its
 //! settings, and write the first message.
 
 use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*, px};
 use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
+use leon_domain::ConversationId;
 
 use crate::icons::{Icon, icon};
 use crate::picker::{Choice, Look};
 use crate::theme;
 use crate::widgets::{button, empty, primary};
-use crate::workspace::{Screen, Workspace};
+use crate::workspace::{Screen, Tab, Workspace};
 
 impl Workspace {
+    /// The form: a new flow, or with `flow`, another conversation in it.
     pub(crate) fn render_new_conversation(
         &mut self,
+        flow: Option<ConversationId>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -24,7 +28,7 @@ impl Workspace {
                 .flex_col()
                 .gap_3()
                 .child(empty(
-                    "Add a project folder first: conversations belong to a project.",
+                    "Add a project folder first: flows belong to a project.",
                 ))
                 .child(div().child(primary(
                     "form-add-project",
@@ -33,9 +37,11 @@ impl Workspace {
                 )))
                 .into_any_element();
         }
-        let project = self
-            .form
-            .project
+        let in_flow = flow.and_then(|id| self.snapshot.conversation(id)).cloned();
+        let project = in_flow
+            .as_ref()
+            .map(|view| view.conversation.project)
+            .or(self.form.project)
             .and_then(|id| self.snapshot.projects.iter().find(|p| p.id == id))
             .or_else(|| self.snapshot.projects.first())
             .cloned();
@@ -150,10 +156,16 @@ impl Workspace {
                 div()
                     .text_size(px(15.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child("New conversation"),
+                    .child(match &in_flow {
+                        Some(view) => format!("New conversation in {}", view.conversation.title),
+                        None => "New flow".to_owned(),
+                    }),
             )
             .child(pair(
-                field("Project", project_picker),
+                match &in_flow {
+                    Some(view) => field("Folder", self.form_folder_picker(view, cx)),
+                    None => field("Project", project_picker),
+                },
                 field("Agent", agent_picker),
             ))
             // Two lines at most, always the same height: picking another
@@ -177,7 +189,7 @@ impl Workspace {
                         .flex()
                         .flex_col()
                         .gap_2()
-                        .children(self.form.issue.as_ref().map(|issue| {
+                        .children(self.form.issue.as_ref().filter(|_| flow.is_none()).map(|issue| {
                             div()
                                 .flex()
                                 .items_center()
@@ -228,22 +240,26 @@ impl Workspace {
                     .child(button(
                         "form-cancel",
                         "Cancel",
-                        cx.listener(|this, _, _, cx| {
-                            this.screen = Screen::Nothing;
+                        cx.listener(move |this, _, _, cx| {
+                            match flow {
+                                Some(id) => {
+                                    this.tabs.insert(id, Tab::Flow);
+                                }
+                                None => this.screen = Screen::Nothing,
+                            }
                             cx.notify();
                         }),
                     ))
                     .child(primary(
                         "form-start",
                         "Start",
-                        cx.listener(|this, _, window, cx| {
-                            this.start_conversation(window, cx);
-                        }),
+                        cx.listener(|this, _, window, cx| this.submit_form(window, cx)),
                     )),
             );
         div()
             .id("new-conversation")
-            .size_full()
+            .when(flow.is_none(), gpui::Styled::size_full)
+            .when(flow.is_some(), |d| d.flex_1().min_h_0().w_full())
             .overflow_y_scroll()
             .flex()
             .justify_center()
@@ -288,6 +304,100 @@ impl Workspace {
             &self.snapshot.settings.cli_order,
             &self.snapshot.options,
         )
+    }
+
+    /// The folder picker of a new conversation in `view`'s flow: one of its
+    /// folders, the one the right pane shows first.
+    fn form_folder_picker(
+        &mut self,
+        view: &leon_core::ConversationView,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let picked = self.form_folder(view.conversation.id);
+        let name = |folder: &std::path::Path| {
+            crate::right_folders::folder_name(folder, self.snapshot.git.get(folder))
+        };
+        let choices: Vec<Choice> = view
+            .folders
+            .iter()
+            .map(|f| {
+                (
+                    f.display().to_string(),
+                    format!("{} · {}", name(f), f.display()),
+                )
+            })
+            .collect();
+        let current = picked.as_deref().map_or_default(name);
+        self.picker_look(
+            Look::Field,
+            "form-folder",
+            &current,
+            choices,
+            cx,
+            |this, value, _, _| this.form.folder = Some(value.into()),
+        )
+    }
+
+    /// The folder a new conversation in `flow` starts in: the one picked,
+    /// else the one the right pane shows.
+    fn form_folder(&self, flow: ConversationId) -> Option<std::path::PathBuf> {
+        let view = self.snapshot.conversation(flow)?;
+        self.form
+            .folder
+            .clone()
+            .filter(|f| view.folders.contains(f))
+            .or_else(|| self.folder(flow))
+    }
+
+    /// Opens the form for another conversation in `flow` (FLOW-7), with
+    /// the default agent.
+    pub(crate) fn open_new_in_flow(&mut self, flow: ConversationId, cx: &mut Context<Self>) {
+        self.form.project = self
+            .snapshot
+            .conversation(flow)
+            .map(|v| v.conversation.project);
+        self.form.folder = None;
+        self.form.settings.agent = None;
+        self.default_agent();
+        self.tabs.insert(flow, Tab::New);
+        cx.notify();
+    }
+
+    /// Start, or Enter in the form's message: a new flow, or a new
+    /// conversation in the flow whose form is shown.
+    pub(crate) fn submit_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.screen {
+            Screen::Conversation(id) if self.tabs.get(&id) == Some(&Tab::New) => {
+                self.start_in_flow(id, window, cx);
+            }
+            _ => self.start_conversation(window, cx),
+        }
+    }
+
+    /// Starts another conversation in `flow`; its tab opens once it exists.
+    fn start_in_flow(&mut self, flow: ConversationId, window: &mut Window, cx: &mut Context<Self>) {
+        let text = crate::message_input::message(&self.form_text.read(cx).content(), &self.pasted);
+        let (Some(working_dir), Some(view)) =
+            (self.form_folder(flow), self.snapshot.conversation(flow))
+        else {
+            return;
+        };
+        if text.is_empty() {
+            return;
+        }
+        let before = view.sessions.len();
+        self.pasted.clear();
+        self.core.send(Intent::NewSession {
+            conversation: flow,
+            settings: self.form.settings.clone(),
+            working_dir,
+            text,
+        });
+        self.form_text
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.tabs.insert(flow, Tab::Flow);
+        self.pending_session = Some((flow, before));
+        cx.notify();
     }
 
     pub(crate) fn start_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {

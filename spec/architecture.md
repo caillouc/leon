@@ -11,10 +11,10 @@ How the code is organised. Owned by agents; must follow
   (`tools.sock`, folder mode 0700). A second Leon finding it in use stops.
 - Each CLI starts `leon mcp` (the app's own binary) as a stdio MCP server; that
   bridge only pipes bytes between its stdio and the socket, after one line
-  naming its session (`LEON_SESSION`, `LEON_SOCKET` in its environment).
-- One CLI child process per agent session while a turn runs or input is
+  naming its conversation (`LEON_SESSION`, `LEON_SOCKET` in its environment).
+- One CLI child process per conversation while a turn runs or input is
   awaited; stopped after an idle timeout, resumed by the CLI's session id. A CLI
-  crash sets that agent session to `error`; it never takes the app down.
+  crash sets that conversation to `error`; it never takes the app down.
 - `git` and `gh` spawned per query (P6, P7). GitHub goes through the `gh` CLI,
   not direct HTTPS calls (P7, D6).
 - Every adapter that starts a program gets the user's login-shell `PATH` from
@@ -47,52 +47,56 @@ CLI output ─▶ adapter ─▶ domain Event ─▶ apply(state, event) ─▶ 
 - The core is the only writer of state; the UI reads snapshots.
 - `apply(SessionState, Event) -> SessionState` is pure (in `leon-domain`);
   status, unread and usage derive from events. Replaying stored events rebuilds
-  an agent session.
-- A conversation's status and unread are derived from its agent sessions
+  a conversation.
+- A flow's status and unread are derived from its conversations
   (running if any runs, `needs_input` if any waits, and so on).
 
-## Agent sessions (D5, P15)
+## Conversations (D5, P15)
 
 ```
-Conversation (folders: every working tree its agents work in, D3, CTX-2)
- ├─ AgentSession  planner   (started_by: none, the user)
- ├─ AgentSession  coder     (started_by: planner)
- └─ AgentSession  reviewer  (started_by: planner)
+Flow (folders: every working tree its agents work in, D3, CTX-2)
+ ├─ Conversation  planner   (started_by: none, the user)
+ ├─ Conversation  coder     (started_by: planner)
+ ├─ Conversation  reviewer  (started_by: planner)
+ └─ Conversation  tester    (started_by: none, the user, with "+ New": FLOW-7)
 ```
 
-1. Every session's CLI gets Leon's MCP server: Claude Code through
+In code, a flow is still `Conversation` (`ConversationId`, SQLite table
+`conversations`) and a conversation `AgentSession` (`agent_sessions`).
+
+1. Every conversation's CLI gets Leon's MCP server: Claude Code through
    `--mcp-config` and `--allowedTools mcp__leon`, Codex through `thread/start`
    `config.mcp_servers.leon` with `default_tools_approval_mode = "approve"`
    (checked live with Codex 0.160.0 and Claude Code 2.1.288 on 2026-11-17:
    both call Leon's tools without a prompt).
 2. The planner calls `start_agent(agent, prompt, working_directory?)`. The core
-   (`crates/leon-core/src/agents.rs`) creates the coder's session in the same
-   conversation with the planner's CLI, model, effort and permission, sends
-   the prompt as `[From planner · session N]` and answers the tool at once.
+   (`crates/leon-core/src/agents.rs`) creates the coder's conversation in the
+   same flow with the planner's CLI, model, effort and permission, sends the
+   prompt as `[From planner · conversation N]` and answers the tool at once.
 3. The coder's transcript records the prompt as `Entry::FromAgent { answer:
    false }`; the coder's `reply_to` is the planner.
 4. When the coder's turn ends, its answer (its agent messages since the
    prompt) is sent to the planner as `Entry::FromAgent { answer: true }`, now
-   if the planner is idle, else when its turn ends (the session's inbox).
+   if the planner is idle, else when its turn ends (the conversation's inbox).
    Answers between agents raise no notification.
-5. `message_agent(session, text)` follows the same path. A message the user
-   types in the coder's session is answered to the user.
-6. `rename_conversation` edits the conversation. A folder joins the
-   conversation (`crates/leon-core/src/folders.rs`) when an agent calls
+5. `message_agent(conversation, text)` follows the same path. A message the
+   user types in the coder's conversation is answered to the user.
+6. `rename_flow` edits the flow. A folder joins the flow
+   (`crates/leon-core/src/folders.rs`) when an agent calls
    `set_working_directory`, or when its CLI reports a file edit
    (`BackendEvent::FilesChanged`): the core asks git for the working tree
    holding the file (`Git::working_tree`, a repository or one of its
    worktrees) and adds it once. The folder the calling CLI was started in
    never changes (its resume depends on it).
 7. Git state (`GitView`) and pull requests are kept per folder; a
-   conversation's issues are the one it was started for, then those its
+   flow's issues are the one it was started for, then those its
    folders' pull requests close (`closingIssuesReferences`). The right pane
    shows one folder at a time (`crates/leon-ui/src/right_folders.rs`).
-8. Every session is told, in its CLI's system prompt or first message, to
+8. Every conversation is told, in its CLI's system prompt or first message, to
    keep Leon up to date with these tools (`AppTools::instructions`, CTX-3;
    assembled in `crates/leon-backends/src/told.rs`).
-9. The flow view (FLOW-4) is built from the sessions' `started_by`, their
-   agents and their transcripts only (`crates/leon-ui/src/flow_model.rs`).
+9. The flow diagram (FLOW-4) is built from the conversations' `started_by`,
+   their agents and their transcripts only (`crates/leon-ui/src/flow_model.rs`).
 
 ## Events (sketch, shaped like ACP session updates — P2)
 
@@ -150,15 +154,15 @@ project's folders in the same order. It feeds the agent picker, the `/` list
 (CONV-11) and Settings' folder list. Agent files give `model` and `tools`
 (EXT-4, EXT-6, EXT-7): `leon_domain::agent_file` holds the tools vocabulary
 and the model-to-CLI pick, `leon_core::settings_for_agent` applies it to a
-session's settings (the form, and an agent another agent starts).
+conversation's settings (the form, and an agent another agent starts).
 
-Each session gets the source folders, Leon's generic skills (EXT-5) and
+Each conversation gets the source folders, Leon's generic skills (EXT-5) and
 `~/.agents/AGENTS.md` (EXT-8: `--append-system-prompt` for Claude Code, first in
 Codex's `developerInstructions`, `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` for Copilot
 CLI).
 `leon-backends/src/bridge.rs` copies the skills a CLI does not read itself
 into `<data folder>/skills/<cli>/<hash>/`, in that CLI's layout, at each
-session start:
+conversation start:
 
 - Claude Code: `--plugin-dir <folder>` per source folder (local `--help`,
   2.1.288), so its skills, commands, agents and MCP servers load natively
@@ -190,7 +194,7 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   `origin/HEAD`, else the first of `origin/main`, `origin/master`, `main`,
   `master` that exists.
 - Read off the core's async workers (`spawn_blocking`); refreshes of one
-  conversation coalesce. Triggers: opening the conversation, clicking the
+  flow coalesce. Triggers: opening the flow, clicking the
   Changes or Branch tab, an agent's edit or command finishing, the turn ending.
   No file watcher yet.
 - The UI renders a diff as one virtualised list of rows (summary, file,
@@ -202,9 +206,9 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 
 - `gh` with the user's own login; the app never reads the token
   (`crates/leon-github`). Reads are one `gh api graphql` query each.
-- A conversation's PR: read when the conversation is opened, when its branch
-  changes, after a review request or comment, and every 120 s for every open
-  conversation (one `gh` call each, not batched yet).
+- A flow's PR: read when the flow is opened, when its branch changes, after a
+  review request or comment, and every 120 s for every open flow (one `gh`
+  call each, not batched yet).
 - My issues and PRs: read at startup and when the list is opened. Issues
   come with their GitHub Project "Status", "Priority" (a board single-select
   or an organization issue field) and iterations
@@ -215,7 +219,7 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 - Details (the drawer): one query for the issue (body, assignees, comments)
   or the PR (checks, reviewers, comments, description, unresolved review
   threads), by repository and number, read in
-  the background (`Intent::ShowDetail`). A conversation started from an issue
+  the background (`Intent::ShowDetail`). A flow started from an issue
   keeps it (`conversations.issue`, store migration 5).
 - Ready / draft: `gh pr ready <n> [--undo] --repo <owner/name>` (flags from
   `gh pr ready --help`, gh 2.101.0, 2026-11-18; never run for real).
@@ -271,7 +275,7 @@ Agents measure against them; they are not features.
 | Switch to a 1,000-message conversation | < 50 ms |
 | 10 conversations streaming at once | 60 fps |
 | Open a 10,000-line diff | first screen < 200 ms, scroll at 60 fps |
-| Idle memory, 50 conversations listed | < 150 MB |
+| Idle memory, 50 flows listed | < 150 MB |
 | Idle CPU | ~0 % |
 
 ## Files (P9, P5)

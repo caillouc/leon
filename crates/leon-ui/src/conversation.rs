@@ -21,11 +21,14 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(view) = self.snapshot.conversation(id).cloned() else {
-            return empty("This conversation no longer exists.");
+            return empty("This flow no longer exists.");
         };
         let session = self.current_session();
         let body = match session {
-            None if view.sessions.is_empty() => empty("No agent session yet."),
+            None if self.tabs.get(&id) == Some(&Tab::New) => {
+                self.render_new_conversation(Some(id), window, cx)
+            }
+            None if view.sessions.is_empty() => empty("No conversation yet."),
             None => self.render_flow(id, window, cx),
             Some(session) => {
                 let transcript = self.render_transcript(session, cx);
@@ -98,11 +101,12 @@ impl Workspace {
             });
 
         let current = self.current_session();
+        let adding = self.tabs.get(&id) == Some(&Tab::New);
         let mut tabs = div().flex().gap_1().child(Self::tab_button(
             "tab-flow",
             "Flow".into(),
             None,
-            current.is_none(),
+            current.is_none() && !adding,
             id,
             Tab::Flow,
             cx,
@@ -127,6 +131,35 @@ impl Workspace {
                 ));
             }
         }
+        // Another conversation in this flow (FLOW-7).
+        tabs = tabs.child(
+            div()
+                .id("tab-new")
+                .px_2()
+                .pb_2()
+                .pt_1()
+                .flex()
+                .items_center()
+                .gap_1()
+                .border_b_2()
+                .border_color(if adding {
+                    theme::accent()
+                } else {
+                    gpui::transparent_black().into()
+                })
+                .text_size(px(13.))
+                .text_color(if adding {
+                    theme::fg()
+                } else {
+                    theme::fg_muted()
+                })
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::fg()))
+                .child(icon(Icon::Plus, theme::fg_muted(), 13.))
+                // Short: the tab row has the flow's other tabs to hold.
+                .child("New")
+                .on_click(cx.listener(move |this, _, _, cx| this.open_new_in_flow(id, cx))),
+        );
         let _ = window;
         div()
             .flex_none()

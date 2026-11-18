@@ -197,7 +197,7 @@ fn entry_view(
             let name = names
                 .get(from)
                 .cloned()
-                .unwrap_or_else(|| format!("session {}", from.0));
+                .unwrap_or_else(|| format!("conversation {}", from.0));
             let what = if *answer {
                 "Answer from"
             } else {

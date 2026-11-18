@@ -296,7 +296,7 @@ impl Workspace {
             .child(labels(&issue.labels));
         let item = GhRef::issue(&issue.repo, issue.number);
         // A linked conversation is a link in the details line; otherwise
-        // "Start conversation" floats over the row's end on hover.
+        // "Start flow" floats over the row's end on hover.
         let linked = self.conversation_for_issue(&item);
         let meta = meta.children(linked.map(|c| conversation_link(&item, c, cx)));
         Row {
@@ -310,7 +310,7 @@ impl Workspace {
         .render(cx)
     }
 
-    /// "Open conversation" when one was started for the issue, else "Start
+    /// "Open flow" when one was started for the issue, else "Start
     /// conversation" in the project whose repository it belongs to.
     pub(crate) fn issue_action(&self, issue: &Issue, cx: &mut Context<Self>) -> AnyElement {
         let item = GhRef::issue(&issue.repo, issue.number);
@@ -362,7 +362,7 @@ impl Workspace {
         .render(cx)
     }
 
-    /// "Open conversation" when a conversation works on the pull request.
+    /// "Open flow" when a conversation works on the pull request.
     pub(crate) fn pr_action(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
         match self.conversation_for_pr(pr) {
             Some(conversation) => open_conversation(
@@ -412,7 +412,7 @@ fn open_conversation(
 ) -> AnyElement {
     button(
         id,
-        "Open conversation",
+        "Open flow",
         cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
             this.core.send(Intent::ShowDetail(None));
@@ -564,7 +564,7 @@ fn repo_text(repo: &str) -> Div {
         .child(repo.to_owned())
 }
 
-/// "Open conversation" as a link in a row's details line.
+/// "Open flow" as a link in a row's details line.
 fn conversation_link(
     item: &GhRef,
     conversation: ConversationId,
@@ -579,7 +579,7 @@ fn conversation_link(
         .cursor_pointer()
         .hover(|s| s.opacity(0.8))
         .child(icon(Icon::Conversation, theme::accent(), 12.))
-        .child("Open conversation")
+        .child("Open flow")
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
             this.select(conversation, cx);

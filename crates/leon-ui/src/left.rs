@@ -72,7 +72,7 @@ impl Workspace {
             }
             if rows.is_empty() {
                 body = body.child(empty(if query.is_empty() {
-                    "No conversations"
+                    "No flows"
                 } else {
                     "No match"
                 }));

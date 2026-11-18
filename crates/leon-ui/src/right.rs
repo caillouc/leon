@@ -146,7 +146,7 @@ impl Workspace {
         let Screen::Conversation(id) = self.screen else {
             return frame
                 .child(empty(
-                    "Select a conversation to see its changes, branch diff and pull request.",
+                    "Select a flow to see its changes, branch diff and pull request.",
                 ))
                 .into_any_element();
         };
@@ -284,7 +284,7 @@ impl Workspace {
     /// for, and one card per agent session.
     fn render_info(&self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
         let Some(view) = self.snapshot.conversation(id) else {
-            return empty("This conversation no longer exists.");
+            return empty("This flow no longer exists.");
         };
         let project = self
             .snapshot
@@ -428,7 +428,7 @@ impl Workspace {
             .child(self.now_card(&sessions))
             .child(place)
             .children(links)
-            .child(label("Agent sessions").pt_1())
+            .child(label("Conversations").pt_1())
             .children(session_cards)
             .into_any_element()
     }

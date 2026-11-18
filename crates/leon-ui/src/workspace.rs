@@ -40,6 +40,8 @@ pub(crate) enum Screen {
 pub(crate) enum Tab {
     Flow,
     Session(AgentSessionId),
+    /// The form starting another conversation in the flow (FLOW-7).
+    New,
 }
 
 /// Choices in the new-conversation form.
@@ -49,6 +51,8 @@ pub(crate) struct NewForm {
     pub settings: SessionSettings,
     /// The issue the conversation is started for (GH-2).
     pub issue: Option<leon_domain::GhRef>,
+    /// In a flow: the folder picked for the new conversation (FLOW-7).
+    pub folder: Option<std::path::PathBuf>,
 }
 
 /// Root view of the window.
@@ -92,6 +96,9 @@ pub struct Workspace {
     flash: Option<(u64, String)>,
     /// Open the next new conversation when it shows up.
     pub(crate) pending_open: bool,
+    /// A flow and how many conversations it had when the user started one
+    /// in it: its tab opens when it shows up (FLOW-7).
+    pub(crate) pending_session: Option<(ConversationId, usize)>,
     /// The conversation last said to be read (an agent's tab on screen).
     pub(crate) reading: Option<AgentSessionId>,
     shown_notifications: u64,
@@ -132,7 +139,7 @@ impl Workspace {
                 .submit_on_enter(true)
                 .placeholder("What should the agent do?")
         });
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search conversations"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search flows"));
         let (right, right_subscriptions) = RightState::new(window, cx);
         let tools_form = crate::tools_view::ToolsForm::new(window, cx);
         let settings_form = crate::settings_view::SettingsForm::new(window, cx);
@@ -151,7 +158,7 @@ impl Workspace {
                 window,
                 |this, _, event: &InputEvent, window, cx| {
                     if let InputEvent::PressEnter { shift: false, .. } = event {
-                        this.start_conversation(window, cx);
+                        this.submit_form(window, cx);
                     }
                 },
             ),
@@ -192,6 +199,7 @@ impl Workspace {
                     permission: defaults.permission,
                 },
                 issue: None,
+                folder: None,
             },
             open_picker: None,
             show_archived: false,
@@ -208,6 +216,7 @@ impl Workspace {
             settings_form,
             flash: None,
             pending_open: false,
+            pending_session: None,
             reading: None,
             shown_notifications: 0,
             started: Some(started),
@@ -227,6 +236,15 @@ impl Workspace {
         if let Some(id) = new_conversation.filter(|_| self.pending_open) {
             self.pending_open = false;
             self.select(id, cx);
+        }
+        if let Some((flow, before)) = self.pending_session
+            && let Some(view) = self.snapshot.conversation(flow)
+            && view.sessions.len() > before
+        {
+            self.pending_session = None;
+            if let Some(newest) = view.sessions.last() {
+                self.tabs.insert(flow, Tab::Session(*newest));
+            }
         }
         if first_load {
             // Notifications from before this window opened are not shown again.
@@ -414,9 +432,9 @@ impl Render for Workspace {
             self.core.send(Intent::Read(reading));
         }
         let main: AnyElement = match self.screen {
-            Screen::Nothing => crate::widgets::empty("Select a conversation, or start a new one."),
+            Screen::Nothing => crate::widgets::empty("Select a flow, or start a new one."),
             Screen::Conversation(id) => self.render_conversation(id, window, cx),
-            Screen::NewConversation => self.render_new_conversation(window, cx),
+            Screen::NewConversation => self.render_new_conversation(None, window, cx),
             Screen::GitHub(list) => self.render_github_list(list, cx),
             Screen::Doctor => self.render_doctor(cx),
             Screen::Tools => self.render_tools(cx),

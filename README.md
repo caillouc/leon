@@ -4,7 +4,7 @@ One native window to run and follow many coding-agent conversations across
 many repositories, on top of the coding CLIs you already use: Claude Code,
 Codex and Copilot CLI.
 
-<!-- Screenshot of the Flow view goes here: docs/flow.png -->
+<!-- Screenshot of the Flow tab goes here: docs/flow.png -->
 
 ## Why Leon
 
@@ -13,18 +13,17 @@ reviewer checks it, and you juggle several of these at once, in several
 repositories, in several terminal tabs. Leon puts all of them in one fast
 window:
 
-- **The Flow view** — Leon's signature. Each conversation is drawn as a live
-  diagram: you, every agent, and the prompts, reports and questions flowing
+- **The Flow tab** — Leon's signature. Each flow is drawn as a live diagram:
+  you, every agent, and the prompts, reports and questions flowing
   between them. Agents that hand work back and forth show up as a loop. Click
   a box to talk to that agent, an arrow to read what was said.
 - **Agents that start agents.** Any agent can start or message another
   through Leon's own tools, whichever CLI it runs on: a Claude Code planner
   can hand work to a Codex coder.
-- **Your work around it**: the git changes and branch diff of each
-  conversation with line comments sent back as one review, the branch's pull
-  request with its checks, your GitHub issues by board column, priority and
-  sprint (start a conversation from an issue in one click), and the
-  connectors each CLI can reach.
+- **Your work around it**: the git changes and branch diff of each flow with
+  line comments sent back as one review, the branch's pull request with its
+  checks, your GitHub issues by board column, priority and sprint (start a
+  flow from an issue in one click), and the connectors each CLI can reach.
 - **Your subscriptions, your CLIs.** Leon drives the official CLIs with your
   own logins; it never calls a model API itself and stores everything locally.
 - **Native and fast**: Rust and GPUI (Zed's UI framework), no web view.
@@ -111,7 +110,7 @@ Runs formatting, clippy (warnings are errors), tests, the crate layer check and
   ```toml
   version = 1
 
-  [defaults]            # prefilled for a new conversation
+  [defaults]            # prefilled for a new flow
   backend = "claude"    # claude, codex, copilot
   permission = "auto"
 
@@ -129,7 +128,7 @@ Runs formatting, clippy (warnings are errors), tests, the crate layer check and
   `~/.agents/`, `~/.claude/`, and the project's `.agents/`, `.claude/`,
   `.github/`.
 - App data: `~/Library/Application Support/leon/` on macOS,
-  `~/.local/share/leon/` on Linux: the conversations (`state.db`) and the
+  `~/.local/share/leon/` on Linux: the flows (`state.db`) and the
   socket agents use to reach Leon's tools (`tools.sock`).
 
 ## Licence

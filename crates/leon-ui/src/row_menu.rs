@@ -179,8 +179,8 @@ impl Workspace {
             .count();
         let conversations = match count {
             0 => String::new(),
-            1 => "Its conversation is deleted from Leon. ".to_owned(),
-            n => format!("Its {n} conversations are deleted from Leon. "),
+            1 => "Its flow is deleted from Leon. ".to_owned(),
+            n => format!("Its {n} flows are deleted from Leon. "),
         };
         self.confirm(
             &format!("Remove \u{201c}{}\u{201d} from Leon?", project.name),

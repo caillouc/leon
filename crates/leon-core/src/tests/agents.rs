@@ -75,14 +75,17 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
         working_directory: None,
     };
     let reply = call(&h, planner, start).await.unwrap();
-    assert!(reply.starts_with("Started coder as session 2."), "{reply}");
+    assert!(
+        reply.starts_with("Started coder as conversation 2."),
+        "{reply}"
+    );
     started(&h, 2).await;
     let coder = h.backends.started.lock().unwrap()[1].spec.clone();
     assert_eq!(coder.settings.agent.as_deref(), Some("coder"));
     assert_eq!(coder.working_dir, PathBuf::from("/code/api"));
     assert_eq!(
         next_command(&h, 1).await,
-        BackendCommand::Send("[From planner · session 1]\n\nImplement step 1".into())
+        BackendCommand::Send("[From planner · conversation 1]\n\nImplement step 1".into())
     );
 
     // The planner is still in its turn: the coder's answer waits for it.
@@ -100,7 +103,7 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     end_turn(&h, 0, "Waiting for the coder.");
     assert_eq!(
         next_command(&h, 0).await,
-        BackendCommand::Send("[From coder · session 2]\n\nStep 1 done.".into())
+        BackendCommand::Send("[From coder · conversation 2]\n\nStep 1 done.".into())
     );
     let s = until(&h.core, "answer in the planner", |s| {
         entries(s, planner).last()
@@ -141,14 +144,14 @@ async fn bad_tool_calls_explain_what_is_wrong() {
                 session: AgentSessionId(99),
                 text: "hi".into(),
             },
-            "Session 99 is not in this conversation.",
+            "Conversation 99 is not in this flow.",
         ),
         (
             AppToolCall::MessageAgent {
                 session: planner,
                 text: "hi".into(),
             },
-            "A session cannot message itself.",
+            "A conversation cannot message itself.",
         ),
     ];
     for (tool, expected) in cases {
@@ -213,4 +216,40 @@ async fn only_the_agent_that_answered_you_is_to_review() {
     h.core.send(Intent::Read(Some(coder)));
     let s = until(&h.core, "read", |s| !s.conversations[0].conversation.unread).await;
     assert!(!s.sessions[&coder].session.unread);
+}
+
+/// The user starts a second conversation in the same flow, in the folder
+/// they picked (FLOW-7).
+#[tokio::test(flavor = "multi_thread")]
+async fn the_user_starts_another_conversation_in_a_flow() {
+    let h = harness();
+    new_conversation(&h, BackendKind::ClaudeCode).await;
+    let flow = until(&h.core, "flow", |s| !s.conversations.is_empty())
+        .await
+        .conversations[0]
+        .conversation
+        .id;
+    h.core.send(Intent::NewSession {
+        conversation: flow,
+        settings: settings(BackendKind::Codex),
+        working_dir: PathBuf::from("/code/api/.worktrees/fix"),
+        text: "Review the branch".into(),
+    });
+    started(&h, 2).await;
+    assert_eq!(
+        next_command(&h, 1).await,
+        BackendCommand::Send("Review the branch".into())
+    );
+    let s = until(&h.core, "two conversations", |s| {
+        s.conversations[0].sessions.len() == 2
+    })
+    .await;
+    let second = &s.sessions[&s.conversations[0].sessions[1]].session;
+    assert_eq!(second.started_by, None);
+    assert_eq!(second.settings.backend, BackendKind::Codex);
+    assert_eq!(
+        second.working_dir,
+        PathBuf::from("/code/api/.worktrees/fix")
+    );
+    assert_eq!(s.conversations.len(), 1);
 }

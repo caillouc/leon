@@ -32,44 +32,43 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 
 ### Left pane
 
-- **NAV-1** Several projects and conversations at once; conversations run
-  concurrently. The left and right panes are resized by dragging their edge.
+- **NAV-1** Several projects and flows at once; flows run concurrently. The
+  left and right panes are resized by dragging their edge.
   The right pane closes with its panel button, or by dragging its edge far
-  enough; the same button in the conversation's header opens it again.
-- **NAV-2** Conversations grouped by project/folder. Click a project to fold
-  or unfold its conversations; the choice is kept. A project is added with
+  enough; the same button in the flow's header opens it again.
+- **NAV-2** Flows grouped by project/folder. Click a project to fold or
+  unfold its flows; the choice is kept. A project is added with
   its own button in the Projects header, and removed from Leon with its
-  right-click menu, after a confirmation: its conversations go with it, the
+  right-click menu, after a confirmation: its flows go with it, the
   folder and the CLIs' own sessions stay.
-- **NAV-3** Pinned conversations sit at the top of the left pane, above the
+- **NAV-3** Pinned flows sit at the top of the left pane, above the
   projects.
-- **NAV-4** Unread indicator per conversation; the user can also mark one as
+- **NAV-4** Unread indicator per flow; the user can also mark one as
   unread. An answer that arrives while the user is not looking — another
-  conversation shown, its Flow or another agent's tab, or Leon behind
+  flow shown, its Flow or another agent's tab, or Leon behind
   another app — is unread until the user opens that agent's tab or replies to
-  it; the conversation stays unread while one of its agents' answers is.
-- **NAV-5** Each conversation's row says what it asks of the user: working
+  it; the flow stays unread while one of its agents' answers is.
+- **NAV-5** Each flow's row says what it asks of the user: working
   (a turning loader, also on the agent's tab and Flow box, "Working…"), needs you — an answer or a decision — (amber
   edge, "Needs you"), to review — done and not looked at yet — (green edge,
   "To review"), failed (red), or nothing. A folded project shows its most
   pressing colour.
-- **NAV-6** The status of each of the conversation's PRs.
-- **NAV-7** Selecting a conversation opens it in the main pane.
-- **NAV-8** Rename, pin, mark as unread, archive and delete a conversation
-  from its right-click menu in the left pane; search conversations.
+- **NAV-6** The status of each of the flow's PRs.
+- **NAV-7** Selecting a flow opens it in the main pane.
+- **NAV-8** Rename, pin, mark as unread, archive and delete a flow from its
+  right-click menu in the left pane; search flows.
 - **NAV-9** Titles are generated automatically, as in Claude Code.
-- **NAV-10** A + next to each project starts a conversation in it.
-- **NAV-11** A conversation linked to issues (CTX-2) shows the first issue's
+- **NAV-10** A + next to each project starts a flow in it.
+- **NAV-11** A flow linked to issues (CTX-2) shows the first issue's
   number in its row, and how many more; clicking it opens Leon's view of the
   issue (GH-2).
 
 ### Main pane
 
 - **CONV-1** Send messages; see the agent's answer stream live.
-- **CONV-2** Start a conversation directly with a chosen agent. The
-  new-conversation form is a card like the mock's (labelled fields in two
-  columns). A conversation always opens on its Flow tab (FLOW-4), also when
-  clicked again in the left pane.
+- **CONV-2** Start a flow directly with a chosen agent. The new-flow form is
+  a card like the mock's (labelled fields in two columns). A flow always
+  opens on its Flow tab (FLOW-4), also when clicked again in the left pane.
 - **CONV-3** Choose the CLI per conversation: Claude Code, Codex, Copilot CLI.
 - **CONV-4** Choose the model, the effort and the permission mode (default:
   auto). Models show their version (e.g. "Opus 5.5"); a picker never shows
@@ -92,64 +91,68 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   expandable, as in the Claude CLI.
 - **CONV-14** An agent's plan, when its CLI keeps one (Claude Code's task
   list, Codex's plan): its steps above the message box — done, in progress,
-  to do — and its progress on the agent's box in the Flow. Per agent
-  session, while Leon runs.
+  to do — and its progress on the agent's box in the Flow tab. Per
+  conversation, while Leon runs.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
-- **CONV-14** The worktree / branch name of the conversation is visible (the
+- **CONV-14** The worktree / branch name of the flow is visible (the
   folder picked in the right pane, CTX-2); one click copies it. *(proposal: in the main-pane header)*
 
 ### Agents working together
 
-An agent can start another agent **in a new agent session**: a separate CLI
+An agent can start another agent **in a new conversation**: a separate CLI
 conversation with its own history (a planner starting a coder, then a
 reviewer…). These are not CLI subagents (those stay counts only, CONV-13). All
-agent sessions that come from the user's first message belong to the **same
-conversation**: one item in the left pane (D5).
+conversations that come from the user's first message belong to the **same
+flow**: one item in the left pane (D5).
 
-- **FLOW-1** An agent starts another agent in a new session, with a prompt, and
-  gets its answer back.
-- **FLOW-2** An agent can send a follow-up to a session it started (e.g. the
-  same coder fixes the reviewer's findings).
-- **FLOW-3** Switch between the agent sessions of a conversation and talk to any
-  of them directly.
-- **FLOW-4** A flow diagram is the conversation's main tab: one box per agent
-  session (plus a "You" box), arrows for the prompts sent and the reports
-  returned, a highlighted arrow for a question waiting for you, and live status
-  on each box, with "To review" or "Needs you" on the agent whose answer or
-  question waits for you, as the left pane says it. Click a box to open its session; click an arrow to read its
-  prompts or reports. Each agent has its own colour. The boxes fill the
-  space rather than a long line: one region per agent, the sessions of the
-  same agent together in it, regions in the order the agents appeared on rows
-  that snake, so a loop (planner → coder → reviewer → planner) reads as a
-  loop. Arrows run as straight segments with
+- **FLOW-1** An agent starts another agent in a new conversation, with a
+  prompt, and gets its answer back.
+- **FLOW-2** An agent can send a follow-up to a conversation it started (e.g.
+  the same coder fixes the reviewer's findings).
+- **FLOW-3** Switch between the conversations of a flow and talk to any of
+  them directly.
+- **FLOW-4** A flow diagram is the flow's main tab: one box per conversation
+  (plus a "You" box), arrows for the prompts sent and the reports returned, a
+  highlighted arrow for a question waiting for you, and live status on each
+  box, with "To review" or "Needs you" on the agent whose answer or question
+  waits for you, as the left pane says it. Click a box to open its
+  conversation; click an arrow to read its prompts or reports. Each agent has
+  its own colour. The boxes fill the space rather than a long line: one region
+  per agent, the conversations of the same agent together in it, regions in the
+  order the agents appeared on rows that snake, so a loop (planner → coder →
+  reviewer → planner) reads as a loop. Arrows run as straight segments with
   rounded bends.
-- **FLOW-5** Nothing hardcoded: the flow is built from what the agents actually
-  do. A new agent that starts another agent shows up on its own.
+- **FLOW-5** Nothing hardcoded: the flow diagram is built from what the agents
+  actually do. A new agent that starts another agent shows up on its own.
 - **FLOW-6** The diagram is a canvas: drag to pan, scroll or pinch to zoom, drag
   a box to rearrange it; "Reset view" fits everything, "Reset layout" puts the
   boxes back.
+- **FLOW-7** Start a new conversation in an existing flow: "+ New" after its
+  tabs opens the form (one of the flow's folders, agent, CLI, model, effort,
+  permission, first message); the new conversation gets its own tab and
+  message box, and the user is the one who started it on the flow diagram.
 
 ### Right pane
 
-- **CTX-1** Information about the current conversation, its issue and pull
+- **CTX-1** Information about the current flow, its issue and pull
   request (each opening Leon's view of it, GitHub from there), and
   first what each agent is doing now: working on which commands and for how
-  long, how many subagents run, the answer it waits for, or idle. A
-  conversation opens the right pane on Info until it works in its own
-  worktree, then on Changes; a tab picked by hand is kept per conversation.
-- **CTX-2** One conversation can edit several repositories, in several
+  long, how many subagents run, the answer it waits for, or idle. A flow
+  opens the right pane on Info until it works in its own worktree, then on
+  Changes; a tab picked by hand is kept per flow.
+- **CTX-2** One flow can edit several repositories, in several
   worktrees, with several PRs, linked to several issues, and Leon follows
-  what the agents do: a folder joins the conversation when an agent edits a
+  what the agents do: a folder joins the flow when an agent edits a
   file in it or tells Leon it moved there; each folder's branch brings its
-  PR; each PR brings the issues it closes, after the issue the conversation
+  PR; each PR brings the issues it closes, after the issue the flow
   was started for. Info lists them all. Changes, Branch and PR show one
   folder at a time, picked from a row of chips (repository · branch · PR
   state) when there are several.
-- **CTX-3** Leon tells every agent session, in every CLI, to keep it up to
+- **CTX-3** Leon tells every agent conversation, in every CLI, to keep it up to
   date with its tools each time it is needed (moving to another folder,
-  naming the conversation), so the app always shows the current work.
-- **GIT-1** Uncommitted files of the conversation's folder (CTX-2).
+  naming the flow), so the app always shows the current work.
+- **GIT-1** Uncommitted files of the flow's folder (CTX-2).
 - **GIT-2** Diff of each uncommitted file. Changes and Branch list the files
   (with lines added and removed on the tab); clicking one opens a large drawer
   over the middle of the window with every file's diff, at the one clicked,
@@ -161,7 +164,7 @@ conversation**: one item in the left pane (D5).
 - **GIT-5** Comment on lines of a diff: click a line's +, or drag it over
   several lines. Comments pile up as one pending review; "Send" posts them all
   as a single message to the conversation (file, lines, quoted code, comment).
-- **GH-1** Status of each of the conversation's PRs.
+- **GH-1** Status of each of the flow's PRs.
 
 ### GitHub
 
@@ -172,11 +175,10 @@ conversation**: one item in the left pane (D5).
   board colour), filterable by sprint: the current sprint by default, each
   sprint shown with its dates.
   Clicking one opens its details in a drawer (fields, text, comments, link to
-  GitHub). "Start conversation" opens the new-conversation form in the project
-  whose repository it belongs to, the message starting with the issue
-  (`owner/repo#12` and a blank line, the caret on it); the
-  conversation remembers the issue, and the issue then offers "Open
-  conversation".
+  GitHub). "Start flow" opens the new-flow form in the project whose
+  repository it belongs to, the message starting with the issue
+  (`owner/repo#12` and a blank line, the caret on it); the flow remembers the
+  issue, and the issue then offers "Open flow".
 - **GH-3** My open PRs, grouped by repository (each group foldable), with
   their state icon and checks. Clicking one opens its details in a drawer,
   laid out like its GitHub page: title and state pill, who wants to merge
@@ -184,7 +186,7 @@ conversation**: one item in the left pane (D5).
   named), its description (GitHub's folded sections stay folded) and each
   review thread still open with the code it is on, people as coloured
   avatars, a box to comment. Its actions (ready or draft, Copilot review,
-  "Open conversation" when it has one) sit left of "Open on GitHub".
+  "Open flow" when it has one) sit left of "Open on GitHub".
 - **GH-4** Labels of issues and PRs.
 - **GH-5** Request a Copilot review on a PR.
 - **GH-6** Post a comment.
@@ -205,11 +207,11 @@ conversation**: one item in the left pane (D5).
   user installed or connected is listed, not what a CLI ships or turns on by
   itself. The CLIs are asked at the same time; each column fills in when its
   CLI answers and says it is still checking until then. Then Leon's shared MCP list, which
-  every CLI's sessions get (add and remove servers there, I14).
+  every CLI's conversations get (add and remove servers there, I14).
 
 ### Settings
 
-- **SETTINGS-1** A Settings view edits the config file: new-conversation
+- **SETTINGS-1** A Settings view edits the config file: new-flow
   defaults (agent — picked when the project has it —, CLI, model, effort,
   permission), diff auto-fold patterns, the folders of agents and skills (the
   ones Leon finds itself and the ones the user adds, each with how many
@@ -271,8 +273,8 @@ conversation**: one item in the left pane (D5).
 - **QUAL-2** Small footprint.
 - **QUAL-3** Clean, modern UI: one coherent colour theme, no emoji in the UI.
 - **QUAL-4** The usual menus and shortcuts: Quit, Hide, Close, Minimize, an
-  Edit menu (macOS dictation and emoji), ⌘N new conversation, ⌘, Settings,
-  ⌘L message box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous conversation, Esc
+  Edit menu (macOS dictation and emoji), ⌘N new flow, ⌘, Settings,
+  ⌘L message box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous flow, Esc
   closes what is open on top. The left and right panes resize by dragging.
 - **OSS-1** Open source.
 
@@ -294,15 +296,15 @@ conversation**: one item in the left pane (D5).
 
 - **Status** (NAV-5): idle · running · needs input · error — shown with colour
   and shape, not emoji.
-- **Unread** (NAV-4): set when a conversation whose messages are not on
-  screen — not shown, shown on its Flow, or Leon's window not the active one
-  — finishes an answer, needs input or fails; cleared when the user opens one
+- **Unread** (NAV-4): set when a flow whose messages are not on screen —
+  not shown, shown on its Flow tab, or Leon's window not the active one —
+  finishes an answer, needs input or fails; cleared when the user opens one
   of its agents' tabs or replies in it.
 - **PR badge** (NAV-6): draft · open + checks (pending / passing / failing) ·
-  merged · closed. One per folder of the conversation (CTX-2): the PR whose
+  merged · closed. One per folder of the flow (CTX-2): the PR whose
   head is that folder's branch, or one bound explicitly.
-- **Tabs** (FLOW-3, FLOW-4): Flow first, then one tab per agent session. Flow is
-  the default tab when the conversation has more than one agent session.
+- **Tabs** (FLOW-3, FLOW-4): Flow first, then one tab per conversation. Flow is
+  the default tab when the flow has more than one conversation.
 - **Flow diagram** (FLOW-4, FLOW-6): laid out on a grid of regions (You, then
   one region per agent in the order it appeared, the rows snaking), right-angled
   arrows. One arrow per direction between two boxes, labelled with a count
@@ -323,7 +325,7 @@ conversation**: one item in the left pane (D5).
 | M1 | Claude Code end to end: conversation with an agent, stream, stop, cards, resume | CONV-* |
 | M2 | Codex, to prove the CLI abstraction early | CONV-3 |
 | M3 | Left pane: groups, pins, unread, status, rename/archive/delete/search, notifications | NAV-*, NOTIF-1 |
-| M4 | Agents working together: tabs, counts, flow view | FLOW-*, CONV-13 |
+| M4 | Agents working together: tabs, counts, flow diagram | FLOW-*, CONV-13 |
 | M5 | Git: uncommitted, branch diff, auto-fold, review comments | GIT-1…5 |
 | M6 | GitHub | NAV-6, GH-* |
 | M7 | Shared agents, skills, tools | EXT-* |

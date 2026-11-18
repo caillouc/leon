@@ -67,7 +67,7 @@ async fn calls_a_leon_tool(backend: BackendKind) {
     channel
         .commands
         .send(BackendCommand::Send(
-            "Call the tool rename_conversation of the leon MCP server with the title \"pong\", then reply with the single word: done".into(),
+            "Call the tool rename_flow of the leon MCP server with the title \"pong\", then reply with the single word: done".into(),
         ))
         .unwrap();
     let mut called = None;

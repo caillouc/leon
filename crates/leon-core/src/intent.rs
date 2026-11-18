@@ -35,6 +35,18 @@ pub enum Intent {
         /// The issue it is started for (GH-2), if any.
         issue: Option<leon_domain::GhRef>,
     },
+    /// Start another conversation in an existing flow, as the user, and
+    /// send its first message (FLOW-7).
+    NewSession {
+        /// The flow.
+        conversation: ConversationId,
+        /// Backend, agent, model, effort, permission.
+        settings: SessionSettings,
+        /// Where its CLI runs: one of the flow's folders.
+        working_dir: std::path::PathBuf,
+        /// First message.
+        text: String,
+    },
     /// Send a message to an agent session (CONV-1).
     Send {
         /// Target session.

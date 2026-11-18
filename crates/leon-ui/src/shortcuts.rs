@@ -50,7 +50,7 @@ pub(crate) fn install(cx: &mut App) {
             MenuItem::action("Quit Leon", Quit),
         ]),
         Menu::new("File").items([
-            MenuItem::action("New Conversation", NewConversation),
+            MenuItem::action("New Flow", NewConversation),
             MenuItem::action("Add Project…", AddProject),
             MenuItem::separator(),
             MenuItem::action("Close Window", CloseWindow),
@@ -66,10 +66,10 @@ pub(crate) fn install(cx: &mut App) {
         ]),
         Menu::new("Go").items([
             MenuItem::action("Message Box", FocusMessage),
-            MenuItem::action("Search Conversations", FocusSearch),
+            MenuItem::action("Search Flows", FocusSearch),
             MenuItem::separator(),
-            MenuItem::action("Next Conversation", NextConversation),
-            MenuItem::action("Previous Conversation", PreviousConversation),
+            MenuItem::action("Next Flow", NextConversation),
+            MenuItem::action("Previous Flow", PreviousConversation),
         ]),
         Menu::new("Window").items([
             MenuItem::action("Minimize", Minimize),

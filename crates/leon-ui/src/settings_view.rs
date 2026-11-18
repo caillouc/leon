@@ -168,8 +168,8 @@ impl Workspace {
             .flex_col()
             .gap_4()
             .child(section(
-                "New conversations",
-                "What the new-conversation form starts with.",
+                "New flows",
+                "What the new-flow form starts with.",
                 div()
                     .flex()
                     .flex_col()

@@ -34,6 +34,8 @@ pub enum Shot {
     NewConversation,
     /// The new-conversation form with this agent picked.
     NewConversationWith(&'static str),
+    /// A flow with its form for another conversation open (FLOW-7).
+    NewInFlow(ConversationId),
     /// A conversation with the right pane closed.
     RightClosed(ConversationId),
     /// A conversation with this text typed in its message box.
@@ -118,6 +120,10 @@ impl Workspace {
                 self.tabs.remove(id);
             }
             Shot::NewConversation => self.show_new_conversation(cx),
+            Shot::NewInFlow(id) => {
+                self.select(*id, cx);
+                self.open_new_in_flow(*id, cx);
+            }
             Shot::NewConversationWith(agent) => {
                 self.show_new_conversation(cx);
                 self.form.settings.agent = Some((*agent).to_owned());
