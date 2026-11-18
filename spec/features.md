@@ -74,6 +74,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   `/` opens a searchable list with each command's description)*
 - **CONV-12** Long pasted text is folded into a "Pasted text · N lines" block,
   expandable, as in the Claude CLI.
+- **CONV-14** An agent's plan, when its CLI keeps one (Claude Code's task
+  list, Codex's plan): its steps above the message box — done, in progress,
+  to do — and its progress on the agent's box in the Flow. Per agent
+  session, while Leon runs.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the conversation is visible; one

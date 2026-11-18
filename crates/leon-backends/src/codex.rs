@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
-use leon_domain::Usage;
+use leon_domain::{PlanStep, StepStatus, Usage};
 use serde_json::{Value, json};
 
 use crate::options::codex_policy;
@@ -264,6 +264,25 @@ impl Session {
                 self.turn = p["turn"]["id"].as_str().map(str::to_owned);
                 Vec::new()
             }
+            // `TurnPlanUpdatedNotification` in the app-server schema Codex
+            // 0.160.0 generates: `plan: [{step, status}]`, status one of
+            // pending, inProgress, completed (read 2026-11-18).
+            "turn/plan/updated" => {
+                let steps = p["plan"]
+                    .as_array()
+                    .map_or(&[][..], Vec::as_slice)
+                    .iter()
+                    .filter_map(|s| {
+                        let status = match s["status"].as_str() {
+                            Some("inProgress") => StepStatus::InProgress,
+                            Some("completed") => StepStatus::Done,
+                            _ => StepStatus::Pending,
+                        };
+                        Some(PlanStep::new(s["step"].as_str()?, status))
+                    })
+                    .collect();
+                vec![BackendEvent::Plan(steps)]
+            }
             "thread/tokenUsage/updated" => {
                 let last = &p["tokenUsage"]["last"];
                 self.usage = Some(Usage {
@@ -432,7 +451,7 @@ mod tests {
     use std::path::PathBuf;
 
     use leon_core::ports::{AgentDefinition, BackendCommand, BackendEvent, SessionSpec};
-    use leon_domain::{BackendKind, SessionSettings, Usage};
+    use leon_domain::{BackendKind, PlanStep, SessionSettings, StepStatus, Usage};
     use serde_json::{Value, json};
 
     use super::Session;
@@ -615,6 +634,27 @@ mod tests {
                     usage: None
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn plan_updates_become_the_plan() {
+        let (mut session, _) = Session::new(&spec(None));
+        let update = json!({ "method": "turn/plan/updated", "params": {
+            "threadId": "t", "turnId": "u", "explanation": null,
+            "plan": [
+                { "step": "Read the retry code", "status": "completed" },
+                { "step": "Cap the delay", "status": "inProgress" },
+                { "step": "Add a test", "status": "pending" }
+            ]
+        } });
+        assert_eq!(
+            session.handle(&update).0,
+            [BackendEvent::Plan(vec![
+                PlanStep::new("Read the retry code", StepStatus::Done),
+                PlanStep::new("Cap the delay", StepStatus::InProgress),
+                PlanStep::new("Add a test", StepStatus::Pending),
+            ])]
         );
     }
 }

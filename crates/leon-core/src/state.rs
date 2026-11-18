@@ -19,6 +19,8 @@ pub(crate) struct SessionState {
     pub session: AgentSession,
     pub status: Status,
     pub subagents: (u32, u32),
+    /// The agent's plan (CONV-14); kept while Leon runs.
+    pub plan: Vec<leon_domain::PlanStep>,
     pub question: Option<Question>,
     /// Replies the CLI suggests after its answer (CONV-10).
     pub suggestions: Vec<String>,
@@ -51,6 +53,7 @@ impl SessionState {
             session,
             status: Status::Idle,
             subagents: (0, 0),
+            plan: Vec::new(),
             question: None,
             suggestions: Vec::new(),
             transcript: None,
@@ -168,6 +171,7 @@ impl State {
                     session: s.session.clone(),
                     status: s.status,
                     subagents: s.subagents,
+                    plan: s.plan.clone(),
                     question: s.question.clone(),
                     suggestions: s.suggestions.clone(),
                 };

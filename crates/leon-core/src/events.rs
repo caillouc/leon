@@ -55,6 +55,11 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
                 s.suggestions.push(text);
             }
         }
+        BackendEvent::Plan(steps) => {
+            if let Some(s) = core.state_mut().sessions.get_mut(&id) {
+                s.plan = steps;
+            }
+        }
         BackendEvent::Subagents { started, running } => {
             if let Some(s) = core.state_mut().sessions.get_mut(&id) {
                 s.subagents = (started, running);

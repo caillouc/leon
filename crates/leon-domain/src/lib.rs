@@ -10,6 +10,7 @@ mod diff;
 mod doctor;
 mod github;
 mod mcp;
+mod plan;
 mod project;
 mod review;
 mod settings;
@@ -30,6 +31,7 @@ pub use github::{
     PullRequest, issues_by_status,
 };
 pub use mcp::{McpServer, mcp_servers_map, split_command};
+pub use plan::{PlanStep, StepStatus};
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
 pub use settings::{ArrowStyle, SessionDefaults, Settings};

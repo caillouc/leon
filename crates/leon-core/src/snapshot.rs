@@ -100,6 +100,8 @@ pub struct SessionView {
     pub status: Status,
     /// Subagents run by the CLI: started, still running (CONV-13).
     pub subagents: (u32, u32),
+    /// The agent's plan: its steps and where each stands (CONV-14).
+    pub plan: Vec<leon_domain::PlanStep>,
     /// A question or permission request waiting for the user (CONV-9).
     pub question: Option<Question>,
     /// Replies the CLI suggests after its answer (CONV-10).

@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
-use leon_domain::Usage;
+use leon_domain::{PlanStep, StepStatus, Usage};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -163,6 +163,8 @@ async fn run(
 pub(crate) struct Parser {
     subagents_running: HashSet<String>,
     subagents_started: u32,
+    /// The agent's task list, by task id, in creation order (CONV-14).
+    tasks: Vec<(String, PlanStep)>,
 }
 
 impl Parser {
@@ -275,7 +277,49 @@ impl Parser {
                 out.push(self.subagents());
             }
         }
+        if self.task_change(&v["tool_use_result"]) {
+            out.push(BackendEvent::Plan(
+                self.tasks.iter().map(|(_, step)| step.clone()).collect(),
+            ));
+        }
         out
+    }
+
+    /// Follows the agent's task list through its task tools' results, as
+    /// Claude Code 2.1.288 reports them (seen in a real run, 2026-11-18):
+    /// `{"task": {"id", "subject"}}` when one is created, `{"taskId",
+    /// "statusChange": {"to"}}` when one moves. Whether it changed.
+    fn task_change(&mut self, result: &Value) -> bool {
+        if let (Some(id), Some(subject)) = (
+            result["task"]["id"].as_str(),
+            result["task"]["subject"].as_str(),
+        ) {
+            self.tasks
+                .push((id.to_owned(), PlanStep::new(subject, StepStatus::Pending)));
+            return true;
+        }
+        let (Some(id), Some(to)) = (
+            result["taskId"].as_str(),
+            result["statusChange"]["to"].as_str(),
+        ) else {
+            return false;
+        };
+        if to == "deleted" {
+            self.tasks.retain(|(t, _)| t != id);
+            return true;
+        }
+        let status = match to {
+            "in_progress" => StepStatus::InProgress,
+            "completed" => StepStatus::Done,
+            _ => StepStatus::Pending,
+        };
+        match self.tasks.iter_mut().find(|(t, _)| t == id) {
+            Some((_, step)) => {
+                step.status = status;
+                true
+            }
+            None => false,
+        }
     }
 
     fn subagents(&self) -> BackendEvent {
@@ -303,7 +347,7 @@ mod tests {
     use std::path::PathBuf;
 
     use leon_core::ports::{AgentDefinition, BackendEvent, SessionSpec};
-    use leon_domain::{BackendKind, SessionSettings};
+    use leon_domain::{BackendKind, PlanStep, SessionSettings, StepStatus};
     use serde_json::{Value, json};
 
     use super::{Parser, args};
@@ -452,6 +496,46 @@ mod tests {
         assert_eq!(
             events,
             vec![BackendEvent::Suggestion("Run the tests".into())]
+        );
+    }
+
+    /// The tool results of Claude Code 2.1.288's task tools, as seen in a
+    /// real run on 2026-11-18 (three tasks created, two moved).
+    #[test]
+    fn task_tools_make_the_plan() {
+        let result = |id: &str, extra: &str| {
+            format!(
+                r#"{{"type":"user","parent_tool_use_id":null,"message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","content":"ok"}}]}},"tool_use_result":{extra}}}"#
+            )
+        };
+        let lines = [
+            result("t1", r#"{"task":{"id":"1","subject":"alpha"}}"#),
+            result("t2", r#"{"task":{"id":"2","subject":"beta"}}"#),
+            result("t3", r#"{"task":{"id":"3","subject":"gamma"}}"#),
+            result(
+                "t4",
+                r#"{"success":true,"taskId":"1","updatedFields":["status"],"statusChange":{"from":"pending","to":"completed"}}"#,
+            ),
+            result(
+                "t5",
+                r#"{"success":true,"taskId":"2","updatedFields":["status"],"statusChange":{"from":"pending","to":"in_progress"}}"#,
+            ),
+        ];
+        let plans: Vec<Vec<PlanStep>> = parse_all(&lines.join("\n"))
+            .into_iter()
+            .filter_map(|e| match e {
+                BackendEvent::Plan(steps) => Some(steps),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(plans.len(), 5);
+        assert_eq!(
+            plans.last().unwrap(),
+            &[
+                PlanStep::new("alpha", StepStatus::Done),
+                PlanStep::new("beta", StepStatus::InProgress),
+                PlanStep::new("gamma", StepStatus::Pending),
+            ]
         );
     }
 }

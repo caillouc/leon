@@ -14,6 +14,7 @@ pub(crate) enum Icon {
     Pending,
     Passed,
     Issue,
+    Working,
     Failed,
     External,
     AddProject,
@@ -44,6 +45,7 @@ impl Icon {
             Self::Pending => "icons/circle.svg",
             Self::Passed => "icons/circle-check.svg",
             Self::Issue => "icons/circle-dot.svg",
+            Self::Working => "icons/loader-circle.svg",
             Self::Failed => "icons/circle-x.svg",
             Self::External => "icons/external-link.svg",
             Self::AddProject => "icons/folder-plus.svg",
@@ -108,12 +110,13 @@ impl AssetSource for Assets {
     }
 }
 
-const ALL: [Icon; 25] = [
+const ALL: [Icon; 26] = [
     Icon::ChevronDown,
     Icon::ChevronRight,
     Icon::Pending,
     Icon::Passed,
     Icon::Issue,
+    Icon::Working,
     Icon::Failed,
     Icon::External,
     Icon::AddProject,
@@ -143,6 +146,7 @@ fn bytes(path: &str) -> Option<&'static [u8]> {
         "icons/circle.svg" => include_bytes!("../../../assets/icons/circle.svg"),
         "icons/circle-check.svg" => include_bytes!("../../../assets/icons/circle-check.svg"),
         "icons/circle-dot.svg" => include_bytes!("../../../assets/icons/circle-dot.svg"),
+        "icons/loader-circle.svg" => include_bytes!("../../../assets/icons/loader-circle.svg"),
         "icons/circle-x.svg" => include_bytes!("../../../assets/icons/circle-x.svg"),
         "icons/external-link.svg" => include_bytes!("../../../assets/icons/external-link.svg"),
         "icons/folder-plus.svg" => include_bytes!("../../../assets/icons/folder-plus.svg"),

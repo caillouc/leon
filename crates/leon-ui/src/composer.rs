@@ -8,6 +8,7 @@ use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
 use leon_domain::{AgentSessionId, Status};
 
+use crate::icons::{Icon, icon};
 use crate::picker::Look;
 use crate::theme;
 use crate::widgets::{button, primary};
@@ -123,6 +124,9 @@ impl Workspace {
                         }),
                     )),
             );
+        }
+        if !s.plan.is_empty() {
+            column = column.child(plan_card(&s.plan));
         }
         if let Some(line) = Self::status_line(&s) {
             column = column.child(
@@ -271,4 +275,60 @@ impl Workspace {
         self.composer.focus_handle(cx).focus(window, cx);
         cx.notify();
     }
+}
+
+/// The agent's plan (CONV-14): its steps, the one being worked on stressed,
+/// finished ones dimmed, and how many are done.
+fn plan_card(plan: &[leon_domain::PlanStep]) -> AnyElement {
+    use leon_domain::StepStatus;
+    let done = plan.iter().filter(|s| s.status == StepStatus::Done).count();
+    let steps = plan.iter().map(|step| {
+        let (glyph, color, text) = match step.status {
+            StepStatus::Done => (Icon::Passed, theme::ok(), theme::fg_faint()),
+            StepStatus::InProgress => (Icon::Working, theme::accent(), theme::fg()),
+            StepStatus::Pending => (Icon::Pending, theme::fg_faint(), theme::fg_muted()),
+        };
+        div()
+            .flex()
+            .items_start()
+            .gap_2()
+            .child(div().pt(px(2.)).child(icon(glyph, color, 13.)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_color(text)
+                    .when(step.status == StepStatus::InProgress, |d| {
+                        d.font_weight(gpui::FontWeight::MEDIUM)
+                    })
+                    .when(step.status == StepStatus::Done, gpui::Styled::line_through)
+                    .child(step.text.clone()),
+            )
+    });
+    div()
+        .id("plan")
+        .max_h(px(180.))
+        .overflow_y_scroll()
+        .px_3()
+        .py_2()
+        .flex()
+        .flex_col()
+        .gap(px(5.))
+        .rounded_lg()
+        .border_1()
+        .border_color(theme::border())
+        .bg(theme::panel())
+        .text_size(px(12.5))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_size(px(11.5))
+                .text_color(theme::fg_muted())
+                .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child("Plan"))
+                .child(format!("{done}/{} done", plan.len())),
+        )
+        .children(steps)
+        .into_any_element()
 }

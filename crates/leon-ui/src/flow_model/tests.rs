@@ -32,6 +32,7 @@ fn session(id: i64, started_by: Option<i64>) -> SessionView {
         },
         status: Status::Idle,
         subagents: (0, 0),
+        plan: Vec::new(),
         question: None,
         suggestions: Vec::new(),
     }

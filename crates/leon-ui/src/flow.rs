@@ -456,7 +456,20 @@ impl Workspace {
                     .mt_auto()
                     .text_size(px(11. * s))
                     .text_color(theme::fg_faint())
-                    .child(format!("{messages} messages · {tools} tool calls")),
+                    .child({
+                        // The plan's progress, when the agent keeps one.
+                        let done = session
+                            .plan
+                            .iter()
+                            .filter(|p| p.status == leon_domain::StepStatus::Done)
+                            .count();
+                        let plan = if session.plan.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" · plan {done}/{}", session.plan.len())
+                        };
+                        format!("{messages} messages · {tools} tool calls{plan}")
+                    }),
             )
             .into_any_element()
     }

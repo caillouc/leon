@@ -9,8 +9,8 @@ use std::sync::Arc;
 use leon_core::ports::{AgentDefinition, BackendOptions};
 use leon_core::{ConversationView, Detail, Question, SessionView, Snapshot, TranscriptView};
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Entry, Project,
-    ProjectId, SessionSettings, Settings, Status, TimedEntry, Usage,
+    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Entry, PlanStep,
+    Project, ProjectId, SessionSettings, Settings, Status, StepStatus, TimedEntry, Usage,
 };
 use leon_ui::preview::{Shot, capture};
 
@@ -60,6 +60,16 @@ fn session(
         },
         status,
         subagents: if id == 1 { (2, 1) } else { (0, 0) },
+        plan: if id == 1 {
+            vec![
+                PlanStep::new("Find where retries stop", StepStatus::Done),
+                PlanStep::new("Raise the window to 15 minutes", StepStatus::Done),
+                PlanStep::new("Cap each delay at 2 minutes", StepStatus::InProgress),
+                PlanStep::new("Test the delay sequence", StepStatus::Pending),
+            ]
+        } else {
+            Vec::new()
+        },
         question: (id == 3).then(|| Question {
             id: "q".into(),
             title: "Run this command?".into(),

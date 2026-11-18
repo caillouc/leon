@@ -200,6 +200,8 @@ pub enum BackendEvent {
     /// Something the user should know that is not the agent's answer, e.g.
     /// the CLI could not resume its session and started a new one.
     Notice(String),
+    /// The agent's plan, whole, each time it changes (CONV-14).
+    Plan(Vec<leon_domain::PlanStep>),
     /// Subagents run by the CLI inside this session (CONV-13).
     Subagents {
         /// Started so far in this session.
