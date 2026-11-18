@@ -31,10 +31,14 @@ impl Workspace {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("Now"),
             )
-            .children(conversations.iter().map(|s| self.now_conversation(s)))
+            .children(conversations.iter().map(|s| {
+                self.now_conversation(s, crate::agent_color::agent_color(conversations, s))
+            }))
     }
 
-    fn now_conversation(&self, s: &ConversationView) -> Div {
+    /// One agent, in its colour from the flow diagram: a band on its left,
+    /// its name, its CLI and model.
+    fn now_conversation(&self, s: &ConversationView, agent: gpui::Rgba) -> Div {
         let id = s.conversation.id.0;
         let (state, color) = match s.status {
             Status::Running => ("Working", theme::accent()),
@@ -52,10 +56,14 @@ impl Workspace {
             .map_or_default(|t| running_tools(&t.entries));
         let (started, running) = s.subagents;
         let thinking = s.status == Status::Running && tools.is_empty() && running == 0;
+        let (model, _) = self.model_and_effort(&s.conversation.settings);
         div()
             .flex()
             .flex_col()
             .gap(px(4.))
+            .pl_2()
+            .border_l_2()
+            .border_color(agent)
             .child(
                 div()
                     .flex()
@@ -70,7 +78,21 @@ impl Workspace {
                         div()
                             .flex_none()
                             .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(agent)
                             .child(self.conversation_name(s)),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .px(px(5.))
+                            .rounded(px(4.))
+                            .bg(theme::surface_2())
+                            .text_size(px(10.5))
+                            .text_color(theme::fg_muted())
+                            .child(format!(
+                                "{} · {model}",
+                                s.conversation.settings.backend.display_name()
+                            )),
                     )
                     // A narrow pane cuts it short rather than overflow.
                     .child(

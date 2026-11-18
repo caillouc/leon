@@ -107,9 +107,10 @@ impl Workspace {
                 .min_w_0()
                 .child(Input::new(input))
                 .into_any_element(),
+            // Never squeezed away by what sits beside it.
             _ => div()
                 .flex_1()
-                .min_w_0()
+                .min_w(px(80.))
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
@@ -153,10 +154,10 @@ impl Workspace {
                         attention_icon(attention).into_any_element()
                     })
                     .child(title)
-                    .children(attention_pill(attention, 1.))
-                    .children(self.snapshot.prs_of(c).into_iter().map(pr_badge)),
+                    .children(attention_pill(attention, 1.)),
             )
-            .child(self.row_meta(c, attention, show_project, cx))
+            .child(self.row_meta(c, attention, show_project))
+            .children(self.row_refs(c, cx))
             .on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
             .on_mouse_down(
                 gpui::MouseButton::Right,
@@ -168,15 +169,8 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// The line under the title: project, agents, what it is doing, the
-    /// issue it works on.
-    fn row_meta(
-        &self,
-        c: &FlowView,
-        attention: Attention,
-        show_project: bool,
-        cx: &mut Context<Self>,
-    ) -> Div {
+    /// The line under the title: project, agents, what it is doing.
+    fn row_meta(&self, c: &FlowView, attention: Attention, show_project: bool) -> Div {
         let project = if show_project {
             self.snapshot
                 .projects
@@ -217,14 +211,42 @@ impl Workspace {
                     .text_color(color)
                     .child(format!("{project}{agents}{what}")),
             )
-            .children(c.issues.first().map(|issue| issue_chip(issue, cx)))
-            .when(c.issues.len() > 1, |d| {
-                d.child(
-                    div()
-                        .flex_none()
-                        .text_color(theme::fg_faint())
-                        .child(format!("+{}", c.issues.len() - 1)),
-                )
+    }
+
+    /// A last line for the issues and pull requests of the flow, when it has
+    /// any (CTX-2): issues first, then pull requests, each opening Leon's
+    /// view of it; past a few, how many more.
+    fn row_refs(&self, c: &FlowView, cx: &mut Context<Self>) -> Option<Div> {
+        const SHOWN: usize = 3;
+        let prs = self.snapshot.prs_of(c);
+        if c.issues.is_empty() && prs.is_empty() {
+            return None;
+        }
+        let more = |n: usize| {
+            (n > SHOWN).then(|| {
+                div()
+                    .flex_none()
+                    .text_color(theme::fg_faint())
+                    .child(format!("+{}", n - SHOWN))
             })
+        };
+        Some(
+            div()
+                .pl(px(22.))
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(4.))
+                .text_size(px(11.5))
+                .children(c.issues.iter().take(SHOWN).map(|i| issue_chip(i, cx)))
+                .children(more(c.issues.len()))
+                .children(
+                    prs.iter()
+                        .take(SHOWN)
+                        .map(|pr| pr_badge(pr, cx))
+                        .collect::<Vec<_>>(),
+                )
+                .children(more(prs.len())),
+        )
     }
 }

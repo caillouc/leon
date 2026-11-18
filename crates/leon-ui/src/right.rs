@@ -16,9 +16,9 @@ use crate::diff_rows::{DiffList, counts};
 use crate::diff_view::{DiffSource, DraftAt};
 use crate::github::pr_icon;
 use crate::icons::{Icon, icon};
-use crate::spinner::status_mark;
+
 use crate::theme;
-use crate::widgets::{HEADER_HEIGHT, button, empty, label, primary};
+use crate::widgets::{HEADER_HEIGHT, button, empty, primary};
 use crate::workspace::{Screen, Workspace};
 
 /// The right pane's tabs.
@@ -26,7 +26,6 @@ use crate::workspace::{Screen, Workspace};
 pub(crate) enum RightTab {
     Changes,
     Branch,
-    Pr,
     Info,
 }
 
@@ -67,8 +66,12 @@ pub(crate) struct RightState {
     pub selecting: Option<crate::diff_rows::Selecting>,
     /// The drawer shows diffs side by side instead of unified.
     pub split: bool,
+    /// Side by side: the old side's share of the width, and whether its
+    /// divider is being dragged (GIT-2).
+    pub split_ratio: f32,
+    pub split_drag: bool,
+    pub split_area: crate::diff_split::Area,
     pub comment: Entity<TextareaState>,
-    pub pr_comment: Entity<TextareaState>,
     /// The answer to a review thread being written, and that thread's id
     /// (GH-8).
     pub thread_reply: Entity<TextareaState>,
@@ -88,11 +91,6 @@ impl RightState {
                 .auto_grow(2, 8)
                 .submit_on_enter(true)
                 .placeholder("Comment for the agent")
-        });
-        let pr_comment = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .auto_grow(2, 8)
-                .placeholder("Comment on the pull request")
         });
         let thread_reply = cx.new(|cx| {
             TextareaState::new(window, cx)
@@ -117,8 +115,10 @@ impl RightState {
             draft: None,
             selecting: None,
             split: false,
+            split_ratio: 0.5,
+            split_drag: false,
+            split_area: std::rc::Rc::default(),
             comment,
-            pr_comment,
             thread_reply,
             replying: None,
             lists: HashMap::new(),
@@ -153,11 +153,10 @@ impl Workspace {
         let body = match self.right_tab(id) {
             RightTab::Changes => self.render_diff(id, DiffSource::Changes, cx),
             RightTab::Branch => self.render_diff(id, DiffSource::Branch, cx),
-            RightTab::Pr => self.render_pr(id, cx),
             RightTab::Info => self.render_info(id, cx),
         };
         let chips = match self.right_tab(id) {
-            RightTab::Changes | RightTab::Branch | RightTab::Pr => self.folder_chips(id, cx),
+            RightTab::Changes | RightTab::Branch => self.folder_chips(id, cx),
             RightTab::Info => None,
         };
         frame
@@ -203,17 +202,6 @@ impl Workspace {
                 "Branch",
                 git.and_then(|g| lines(&g.branch_diff)),
             ),
-            (
-                RightTab::Pr,
-                "PR",
-                self.folder_pr(id).map(|pr| {
-                    div()
-                        .flex()
-                        .items_center()
-                        .child(pr_icon(pr.state, 13.))
-                        .into_any_element()
-                }),
-            ),
             (RightTab::Info, "Info", None),
         ];
         div()
@@ -256,7 +244,7 @@ impl Workspace {
                             RightTab::Changes | RightTab::Branch => {
                                 this.core.send(Intent::RefreshGit(id));
                             }
-                            RightTab::Pr | RightTab::Info => {}
+                            RightTab::Info => {}
                         }
                         cx.notify();
                     }))
@@ -296,28 +284,23 @@ impl Workspace {
             .iter()
             .filter_map(|s| self.snapshot.conversations.get(s))
             .collect();
-        // Every folder its agents work in, with its branch and base (CTX-2).
-        let none = || "none".to_owned();
-        let mut rows = vec![(
-            "Project",
-            project.map_or_default(|p| p.path.display().to_string()),
-            true,
-        )];
-        for folder in &view.folders {
-            let git = self.snapshot.git.get(folder);
-            let branch = git.and_then(|g| g.branch.clone()).unwrap_or_else(none);
-            let base = git.and_then(|g| g.base.clone()).unwrap_or_else(none);
-            rows.push(("Folder", folder.display().to_string(), true));
-            rows.push(("Branch", format!("{branch} · from {base}"), true));
-        }
-        let place = card("Where", rows);
+        let place = self.folders_card(view, project, cx);
         // The issues it works on and its pull requests: each opens in
         // Leon's details drawer first, GitHub from there (CTX-1, CTX-2).
+        // Each issue and pull request with its title and labels, when
+        // known (an issue of mine is; a pull request always is).
         let issues = view.issues.iter().map(|item| {
+            let known = self
+                .snapshot
+                .my_issues
+                .iter()
+                .find(|i| i.repo == item.repo && i.number == item.number);
             (
                 item.clone(),
                 icon(Icon::Issue, theme::fg_muted(), 14.),
                 "Issue",
+                known.map(|i| i.title.clone()),
+                known.map_or_default(|i| i.labels.clone()),
             )
         });
         let prs = self.snapshot.prs_of(view).into_iter().map(|pr| {
@@ -325,102 +308,61 @@ impl Workspace {
                 GhRef::pull_request(&pr.repo, pr.number),
                 pr_icon(pr.state, 14.),
                 "Pull request",
+                Some(pr.title.clone()),
+                pr.labels.clone(),
             )
         });
-        let links = issues
-            .chain(prs)
-            .enumerate()
-            .map(|(ix, (item, glyph, what))| {
-                let text = item.text();
-                div()
-                    .id(("info-link", ix))
-                    .mx_3()
-                    .px_3()
-                    .py_2()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .rounded_lg()
-                    .border_1()
-                    .border_color(theme::border())
-                    .bg(theme::window())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()))
-                    .child(glyph)
-                    .child(div().text_size(px(12.5)).child(what))
-                    .child(
-                        div()
-                            .flex_1()
-                            .font_family(theme::MONO)
-                            .text_size(px(12.))
-                            .text_color(theme::fg_muted())
-                            .child(text),
-                    )
-                    .on_click(cx.listener(move |this, _, _, _| {
-                        this.core.send(Intent::ShowDetail(Some(item.clone())));
-                    }))
-            });
-        let conversation_cards = conversations.iter().map(|s| {
-            let settings = &s.conversation.settings;
-            let (model, effort) = self.model_and_effort(settings);
-            let usage = self
-                .snapshot
-                .transcripts
-                .get(&s.conversation.id)
-                .map_or_else(
-                    || "not loaded".to_owned(),
-                    |t| crate::transcript::usage_text(leon_domain::Usage::total(&t.entries)),
-                );
-            card(
-                "",
-                vec![
-                    ("Model", model, false),
-                    ("Effort", effort, false),
-                    ("Permission", settings.permission.clone(), false),
-                    (
-                        "CLI session",
-                        s.conversation
-                            .cli_session
-                            .clone()
-                            .unwrap_or_else(|| "not started".into()),
-                        true,
-                    ),
-                    ("Usage", usage, false),
-                ],
-            )
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .right_0()
-                    .px_3()
-                    .pt_2()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(status_mark(
-                        SharedString::from(format!("spin-info-{}", s.conversation.id.0)),
-                        s.status,
-                    ))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(self.conversation_name(s)),
-                    )
-                    .child(
-                        div()
-                            .px(px(6.))
-                            .rounded(px(4.))
-                            .bg(theme::surface_2())
-                            .text_size(px(11.))
-                            .text_color(theme::fg_muted())
-                            .child(settings.backend.display_name()),
-                    ),
-            )
-        });
+        let links =
+            issues
+                .chain(prs)
+                .enumerate()
+                .map(|(ix, (item, glyph, what, title, labels))| {
+                    let text = item.text();
+                    div()
+                        .id(("info-link", ix))
+                        .mx_3()
+                        .px_3()
+                        .py_2()
+                        .flex()
+                        .flex_col()
+                        .gap(px(5.))
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(theme::border())
+                        .bg(theme::window())
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::surface_2()))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(glyph)
+                                .child(div().text_size(px(12.5)).child(what))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .font_family(theme::MONO)
+                                        .text_size(px(12.))
+                                        .text_color(theme::fg_muted())
+                                        .child(text),
+                                ),
+                        )
+                        .children(title.map(|t| {
+                            div()
+                                .text_size(px(12.5))
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .child(t)
+                        }))
+                        .when(!labels.is_empty(), |d| {
+                            d.child(crate::pr_view::labels(&labels))
+                        })
+                        .on_click(cx.listener(move |this, _, _, _| {
+                            this.core.send(Intent::ShowDetail(Some(item.clone())));
+                        }))
+                });
         div()
             .id("right-info")
             .flex_1()
@@ -432,8 +374,6 @@ impl Workspace {
             .child(self.now_card(&conversations))
             .child(place)
             .children(links)
-            .child(label("Conversations").pt_1())
-            .children(conversation_cards)
             .into_any_element()
     }
 
@@ -561,56 +501,6 @@ impl Workspace {
         });
         cx.notify();
     }
-}
-
-/// A bordered card: an optional title, then keys and values; a value is in
-/// monospace when it is a path, a branch or an id.
-fn card(title: &'static str, rows: Vec<(&'static str, String, bool)>) -> gpui::Div {
-    div()
-        .relative()
-        .mx_3()
-        .px_3()
-        .pb_3()
-        .pt(px(if title.is_empty() { 36. } else { 10. }))
-        .flex()
-        .flex_col()
-        .gap(px(6.))
-        .rounded_lg()
-        .border_1()
-        .border_color(theme::border())
-        .bg(theme::window())
-        .when(!title.is_empty(), |d| {
-            d.child(
-                div()
-                    .pb_1()
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(title),
-            )
-        })
-        .children(rows.into_iter().map(|(k, v, mono)| {
-            div()
-                .flex()
-                .gap_3()
-                .text_size(px(12.5))
-                .child(
-                    div()
-                        .w(px(88.))
-                        .flex_none()
-                        .text_color(theme::fg_muted())
-                        .child(k),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .when(mono, |d| d.font_family(theme::MONO).text_size(px(12.)))
-                        .child(v),
-                )
-        }))
 }
 
 #[cfg(test)]

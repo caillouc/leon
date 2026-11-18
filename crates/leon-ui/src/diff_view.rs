@@ -38,6 +38,9 @@ pub(crate) struct DraftAt {
     pub end: u32,
     /// Kind of the last line, under which the comment box shows.
     pub kind: LineKind,
+    /// The lines chosen, as (hunk, line) in the file's diff: they stay
+    /// highlighted while the comment is written.
+    pub lines: ((usize, usize), (usize, usize)),
     /// The lines, one per line.
     pub code: String,
 }

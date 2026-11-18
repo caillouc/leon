@@ -222,6 +222,20 @@ pub fn install(cx: &mut gpui::App) {
         a: 0.35,
         ..accent()
     });
+    // Tables in messages: the app's surfaces, a tinted header, rows apart.
+    theme.table = hsla(surface());
+    theme.table_even = hsla(panel());
+    theme.table_head = hsla(surface_2());
+    theme.table_head_foreground = hsla(fg());
+    theme.table_hover = hsla(surface_2());
+    theme.table_row_border = hsla(border());
+    theme.table_active = hsla(accent_soft());
+    theme.table_active_border = hsla(accent());
+    // The base layer (markdown, tables) reads its own copy of the colours:
+    // bring it in line, or tables keep the stock near-black surface.
+    let tokens = theme.semantic_tokens();
+    theme.apply_semantic_tokens(&tokens);
+    gpui_component::Theme::sync_base(cx);
 }
 
 #[cfg(test)]

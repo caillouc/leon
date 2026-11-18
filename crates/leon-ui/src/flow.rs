@@ -10,19 +10,16 @@ use std::rc::Rc;
 use gpui::{
     AnyElement, Bounds, Context, FontWeight, IntoElement, MouseButton, MouseDownEvent,
     MouseMoveEvent, PinchEvent, Pixels, Point, Rgba, ScrollEvent, SharedString, Window, canvas,
-    div, prelude::*, px,
+    div, prelude::*, px, relative,
 };
-use gpui_component::text::TextView;
 use leon_core::ConversationView;
 use leon_domain::{ConversationId, FlowId};
 
-use crate::flow_model::{
-    self, Edge, EdgeKind, Node, Pt, Rect, View, label_at, layout, rect, route, status_text,
-};
+use crate::flow_model::{self, Edge, EdgeKind, Node, Pt, Rect, View, rect, status_text};
 use crate::flow_paint::{Arrow, legend};
 use crate::spinner::status_mark;
 use crate::theme;
-use crate::widgets::button;
+use crate::widgets::{button, primary};
 use crate::workspace::{Tab, Workspace};
 
 /// What the flow tab remembers per flow.
@@ -30,8 +27,10 @@ use crate::workspace::{Tab, Workspace};
 pub(crate) struct FlowState {
     /// Pan and zoom, and whether the user changed it (else it fits).
     views: HashMap<FlowId, (View, bool)>,
-    /// Boxes the user moved, in diagram units.
-    moved: HashMap<(FlowId, Node), Pt>,
+    /// Each flow's boxes, moving under the forces (FLOW-4).
+    sims: HashMap<FlowId, flow_model::Sim>,
+    /// The box being dragged and where its corner is, in diagram units.
+    held: Option<(FlowId, Node, Pt)>,
     /// The arrow whose messages are shown.
     selected: Option<(FlowId, Node, Node, EdgeKind)>,
     drag: Option<Drag>,
@@ -84,12 +83,28 @@ impl Workspace {
             .filter_map(|s| self.snapshot.conversations.get(s))
             .collect();
         let model = flow_model::build(&conversations, &self.snapshot.transcripts);
-        let mut pos = layout(&model);
-        for (node, at) in &mut pos {
-            if let Some(moved) = self.flow.moved.get(&(id, *node)) {
-                *at = *moved;
+        // The forces keep acting: a box let go bounces back, or finds a new
+        // place when dragged far enough (FLOW-6). A frame is asked for as
+        // long as something moves.
+        let held = self
+            .flow
+            .held
+            .filter(|(flow, _, _)| *flow == id)
+            .map(|(_, node, at)| (node, at));
+        let sim = self
+            .flow
+            .sims
+            .entry(id)
+            .or_insert_with(|| flow_model::Sim::new(&model));
+        sim.update(&model);
+        if held.is_some() || sim.moving() {
+            if cx.reduce_motion() {
+                sim.settle();
+            } else if sim.tick(held) {
+                window.request_animation_frame();
             }
         }
+        let pos = sim.positions();
         let rects: HashMap<Node, Rect> = pos.iter().map(|(n, p)| (*n, rect(*n, *p))).collect();
         let area = self.flow.area.get();
         let view = if let Some((view, true)) = self.flow.views.get(&id) {
@@ -115,21 +130,14 @@ impl Workspace {
             self.flow.views.insert(id, (fitted, false));
             fitted
         };
-        let routes: Vec<(Edge, Vec<Pt>)> = model
-            .edges
+        // The arrows between two boxes go as one bundle, under one label.
+        let drawing = flow_model::draw(&model, &rects);
+        let routes: Vec<(Edge, Vec<Pt>)> = drawing
+            .arrows
             .iter()
-            .filter_map(|e| {
-                let (a, b) = (rects.get(&e.from)?, rects.get(&e.to)?);
-                // Each kind on its own lane, so a question and an answer
-                // between the same boxes never overlap.
-                let off = match e.kind {
-                    EdgeKind::Prompt => -18.,
-                    EdgeKind::Report => 18.,
-                    EdgeKind::Question => 46.,
-                };
-                let world = route(*a, *b, off);
-                let points = world.into_iter().map(|p| view.to_screen(p)).collect();
-                Some((e.clone(), points))
+            .map(|(e, world)| {
+                let points = world.iter().map(|p| view.to_screen(*p)).collect();
+                (model.edges[*e].clone(), points)
             })
             .collect();
         let selected = self.flow.selected.filter(|s| s.0 == id);
@@ -157,55 +165,75 @@ impl Workspace {
             .absolute()
             .size_full()
         };
-        let labels = routes
+        // One label per bundle: a chip per arrow, in its colour, each
+        // opening its messages.
+        let s = view.scale.max(0.7);
+        let labels = drawing
+            .labels
             .iter()
             .enumerate()
-            .map(|(ix, (edge, points))| {
-                let at = label_at(points);
-                let key = (id, edge.from, edge.to, edge.kind);
-                let on = selected == Some(key);
-                let c = color(edge.kind);
-                // Labels scale with the boxes, so they never dwarf them.
-                let s = view.scale.max(0.7);
+            .map(|(ix, (spot, edges))| {
+                let at = view.to_screen(*spot);
+                let chips = edges.iter().map(|e| {
+                    let edge = &model.edges[*e];
+                    let key = (id, edge.from, edge.to, edge.kind);
+                    let on = selected == Some(key);
+                    let c = color(edge.kind);
+                    div()
+                        .id(SharedString::from(format!("flow-label-{ix}-{e}")))
+                        .px(px(6. * s))
+                        .rounded_full()
+                        .bg(if on {
+                            c
+                        } else {
+                            gpui::transparent_black().into()
+                        })
+                        .text_color(if on { theme::window() } else { c })
+                        .cursor_pointer()
+                        .hover(|st| st.bg(theme::surface_2()))
+                        .child(edge.label())
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.flow.selected = if this.flow.selected == Some(key) {
+                                None
+                            } else {
+                                Some(key)
+                            };
+                            cx.notify();
+                        }))
+                });
                 div()
-                    .id(("flow-label", ix))
                     .absolute()
-                    .left(px(at.x - 50.))
+                    .left(px(at.x - 140.))
                     .top(px(at.y - 10. * s))
-                    .w(px(100.))
+                    .w(px(280.))
                     .flex()
                     .justify_center()
                     .child(
                         div()
-                            .px(px(7. * s))
+                            .flex()
+                            .items_center()
+                            .gap(px(2. * s))
+                            .px(px(2. * s))
                             .py(px(1.5 * s))
                             .rounded_full()
                             .border_1()
-                            .border_color(c)
-                            .bg(if on { c } else { theme::surface() })
-                            .text_color(if on { theme::window() } else { c })
+                            .border_color(theme::border_strong())
+                            .bg(theme::surface())
                             .text_size(px(11. * s))
                             .whitespace_nowrap()
-                            .child(edge.label()),
+                            .children(chips),
                     )
-                    .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.flow.selected = if this.flow.selected == Some(key) {
-                            None
-                        } else {
-                            Some(key)
-                        };
-                        cx.notify();
-                    }))
             })
             .collect::<Vec<_>>();
+        let review = to_review(&model, &conversations, flow.flow.unread);
         let boxes: Vec<AnyElement> = model
             .nodes
             .iter()
             .filter_map(|node| {
                 let r = rects.get(node)?;
-                Some(self.flow_box(id, *node, *r, view, &conversations, cx))
+                let review = review.contains(node);
+                Some(self.flow_box(id, *node, *r, view, (&conversations, review), cx))
             })
             .collect();
         let inspector = selected.and_then(|key| {
@@ -252,6 +280,8 @@ impl Workspace {
             .children(boxes)
             .children(labels)
             .child(self.flow_controls(id, view, cx))
+            .child(self.flow_totals(&conversations))
+            .child(Self::new_conversation_button(id, cx))
             .child(legend())
             .children(inspector)
             .into_any_element()
@@ -263,7 +293,7 @@ impl Workspace {
         node: Node,
         r: Rect,
         view: View,
-        conversations: &[&ConversationView],
+        (conversations, review): (&[&ConversationView], bool),
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let at = view.to_screen(Pt { x: r.x, y: r.y });
@@ -282,9 +312,9 @@ impl Workspace {
                     cx.stop_propagation();
                     let start = this
                         .flow
-                        .moved
-                        .get(&(id, node))
-                        .copied()
+                        .sims
+                        .get(&id)
+                        .and_then(|sim| sim.positions().get(&node).copied())
                         .unwrap_or(Pt { x: r.x, y: r.y });
                     this.flow.drag = Some(Drag::Box {
                         node,
@@ -345,30 +375,37 @@ impl Workspace {
                 x.conversation.started_by == Some(sid) && x.status == leon_domain::Status::Running
             })
             .map(|x| self.conversation_name(x));
-        // Working shows as the turning loader, not as the border.
-        let border = match conversation.status {
-            leon_domain::Status::NeedsInput => theme::warn(),
-            leon_domain::Status::Error => theme::err(),
-            leon_domain::Status::Running | leon_domain::Status::Idle => theme::border_strong(),
+        // Working shows as the turning loader, not as the border; an answer
+        // to read, in green, as the left pane shows it (NAV-5).
+        let attention = leon_domain::Attention::of(conversation.status, review);
+        let border = match attention {
+            leon_domain::Attention::NeedsYou => theme::warn(),
+            leon_domain::Attention::Failed => theme::err(),
+            leon_domain::Attention::Review => theme::ok(),
+            leon_domain::Attention::Working | leon_domain::Attention::Nothing => {
+                theme::border_strong()
+            }
         };
-        let (messages, tools) = self.snapshot.transcripts.get(&sid).map_or((0, 0), |t| {
-            t.entries.iter().fold((0, 0), |(m, k), e| match e.entry {
-                leon_domain::Entry::Tool { .. } => (m, k + 1),
-                leon_domain::Entry::User { .. }
-                | leon_domain::Entry::Agent { .. }
-                | leon_domain::Entry::FromAgent { .. } => (m + 1, k),
-                _ => (m, k),
-            })
-        });
+        let (messages, tools) = self
+            .snapshot
+            .transcripts
+            .get(&sid)
+            .map_or((0, 0), |t| leon_domain::activity(&t.entries));
         let (model, effort) = self.model_and_effort(settings);
         let model = format!("{model} · effort {effort}");
-        let agent = agent_color(conversations, conversation, |x| self.conversation_name(x));
+        let agent = crate::agent_color::agent_color(conversations, conversation);
         shell
             .rounded(px(10. * s))
             .line_height(gpui::relative(1.25))
             .border_2()
             .border_color(border)
             .bg(theme::surface())
+            .when(attention == leon_domain::Attention::Review, |d| {
+                d.bg(Rgba {
+                    a: 0.12,
+                    ..theme::ok()
+                })
+            })
             .p(px(10. * s))
             .flex()
             .flex_col()
@@ -450,13 +487,7 @@ impl Workspace {
                     )
                     // Which agent has an answer or a question for the user,
                     // as the left pane says it of the flow (NAV-5).
-                    .children(crate::flow_row::attention_pill(
-                        leon_domain::Attention::of(
-                            conversation.status,
-                            conversation.conversation.unread,
-                        ),
-                        s,
-                    )),
+                    .children(crate::flow_row::attention_pill(attention, s)),
             )
             .child(
                 div()
@@ -510,7 +541,7 @@ impl Workspace {
                         x: start.x + dx / scale,
                         y: start.y + dy / scale,
                     };
-                    self.flow.moved.insert((id, node), at);
+                    self.flow.held = Some((id, node, at));
                 }
                 self.flow.drag = Some(Drag::Box {
                     node,
@@ -540,6 +571,8 @@ impl Workspace {
         {
             self.tabs.insert(id, Tab::Conversation(conversation));
         }
+        // Let go: the forces take it from here.
+        self.flow.held = None;
         self.flow.drag = None;
         cx.notify();
     }
@@ -557,6 +590,76 @@ impl Workspace {
         cx.notify();
     }
 
+    /// The whole flow at a glance (FLOW-4): its conversations, their
+    /// messages and tool calls, and what they used, added up.
+    fn flow_totals(&self, conversations: &[&ConversationView]) -> AnyElement {
+        let (mut messages, mut tools, mut usage) = (0, 0, leon_domain::Usage::nothing());
+        for c in conversations {
+            if let Some(t) = self.snapshot.transcripts.get(&c.conversation.id) {
+                let (m, k) = leon_domain::activity(&t.entries);
+                messages += m;
+                tools += k;
+                usage = usage.plus(leon_domain::Usage::total(&t.entries));
+            }
+        }
+        let n = conversations.len();
+        let running = conversations
+            .iter()
+            .filter(|c| c.status == leon_domain::Status::Running)
+            .count();
+        let part = |text: String, color: Rgba| div().text_color(color).child(text);
+        // Wraps short of the "+ New conversation" button, top right.
+        div()
+            .absolute()
+            .left_3()
+            .top_3()
+            .max_w(relative(0.62))
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_x_3()
+            .gap_y_1()
+            .px_3()
+            .py(px(6.))
+            .rounded_lg()
+            .border_1()
+            .border_color(theme::border())
+            .bg(theme::surface())
+            .text_size(px(12.))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(part(
+                format!("{n} conversation{}", if n == 1 { "" } else { "s" }),
+                theme::fg(),
+            ))
+            .when(running > 0, |d| {
+                d.child(part(format!("{running} working"), theme::accent()))
+            })
+            .child(part(format!("{messages} messages"), theme::fg_muted()))
+            .child(part(format!("{tools} tool calls"), theme::fg_muted()))
+            .when(usage.input_tokens + usage.output_tokens > 0, |d| {
+                d.child(part(
+                    crate::transcript::usage_text(usage),
+                    theme::fg_faint(),
+                ))
+            })
+            .into_any_element()
+    }
+
+    /// Starts another conversation in this flow (FLOW-7), in plain sight.
+    fn new_conversation_button(id: FlowId, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .absolute()
+            .right_3()
+            .top_3()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(primary(
+                "flow-new-conversation",
+                "+ New conversation",
+                cx.listener(move |this, _, _, cx| this.open_new_in_flow(id, cx)),
+            ))
+            .into_any_element()
+    }
+
     fn flow_controls(&self, id: FlowId, view: View, cx: &mut Context<Self>) -> AnyElement {
         let center = self
             .flow
@@ -566,7 +669,6 @@ impl Workspace {
                 x: f32::from(b.origin.x + b.size.width / 2.),
                 y: f32::from(b.origin.y + b.size.height / 2.),
             });
-        let moved = self.flow.moved.keys().any(|(c, _)| *c == id);
         div()
             .absolute()
             .right_3()
@@ -608,17 +710,16 @@ impl Workspace {
                     cx.notify();
                 }),
             ))
-            .child(
-                button(
-                    "flow-reset-layout",
-                    "Reset layout",
-                    cx.listener(move |this, _, _, cx| {
-                        this.flow.moved.retain(|(c, _), _| *c != id);
-                        cx.notify();
-                    }),
-                )
-                .when(!moved, |b| b.opacity(0.5)),
-            )
+            // Back to where the forces first settled it, after a box was
+            // dragged into a new place.
+            .child(button(
+                "flow-reset-layout",
+                "Reset layout",
+                cx.listener(move |this, _, _, cx| {
+                    this.flow.sims.remove(&id);
+                    cx.notify();
+                }),
+            ))
             .into_any_element()
     }
 
@@ -653,9 +754,9 @@ impl Workspace {
                             crate::left::ago(item.at)
                         )),
                 )
-                .child(TextView::markdown(
+                .child(crate::markdown::markdown(
                     SharedString::from(format!("flow-item-{ix}")),
-                    SharedString::from(item.text.clone()),
+                    &item.text,
                 ))
         });
         div()
@@ -715,23 +816,28 @@ impl Workspace {
     }
 }
 
-/// An agent's colour in the diagram: one per agent name, in the order the
-/// agents first appear in the flow, so two agents never share one.
-fn agent_color(
+/// The boxes whose answer waits to be read (NAV-4, FLOW-4): those marked so;
+/// in a flow unread with none marked (an older flow, or one marked unread by
+/// hand), the agent that answered you last.
+fn to_review(
+    model: &flow_model::FlowModel,
     conversations: &[&ConversationView],
-    conversation: &ConversationView,
-    name: impl Fn(&ConversationView) -> String,
-) -> Rgba {
-    let mut names: Vec<String> = Vec::new();
-    for s in conversations {
-        let n = name(s);
-        if !names.contains(&n) {
-            names.push(n);
-        }
-    }
-    let ix = names
+    flow_unread: bool,
+) -> Vec<Node> {
+    let marked: Vec<Node> = conversations
         .iter()
-        .position(|n| *n == name(conversation))
-        .unwrap_or(0);
-    theme::agent_color(ix)
+        .filter(|c| c.conversation.unread)
+        .map(|c| Node::Conversation(c.conversation.id))
+        .collect();
+    if !marked.is_empty() || !flow_unread {
+        return marked;
+    }
+    model
+        .edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Report && e.to == Node::You)
+        .max_by_key(|e| e.items.iter().map(|i| i.at).max().unwrap_or(0))
+        .map(|e| e.from)
+        .into_iter()
+        .collect()
 }

@@ -222,7 +222,9 @@ impl View {
     /// Everything visible in a `width` × `height` area, centred, not bigger
     /// than 110 %.
     pub(crate) fn fit(world: Rect, width: f32, height: f32) -> Self {
-        let (pad_x, top, bottom) = (36., 40., 76.);
+        // Room above for the totals bar and the "+ New conversation" button,
+        // below for the legend and the zoom.
+        let (pad_x, top, bottom) = (36., 110., 76.);
         let scale = ((width - pad_x * 2.) / world.w)
             .min((height - top - bottom) / world.h)
             .clamp(MIN_ZOOM, 1.1);
@@ -252,8 +254,12 @@ impl View {
     }
 }
 
-mod layout;
+pub(crate) mod arrows;
+pub(crate) mod force;
+pub(crate) mod layout;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use layout::{Pt, Rect, Step, bends, bounds, label_at, layout, rect, route};
+pub(crate) use arrows::draw;
+pub(crate) use force::Sim;
+pub(crate) use layout::{Pt, Rect, Step, bends, bounds, rect};

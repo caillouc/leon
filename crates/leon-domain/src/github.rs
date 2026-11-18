@@ -85,6 +85,29 @@ impl GhRef {
         (repo.contains('/')).then_some(())?;
         Some(Self::issue(repo, number.parse().ok()?))
     }
+
+    /// The issue or pull request a GitHub page's address names:
+    /// `https://github.com/owner/name/issues/12` or `…/pull/12`, with or
+    /// without a tab, a query or an anchor after it.
+    pub fn from_url(url: &str) -> Option<Self> {
+        let rest = url
+            .strip_prefix("https://github.com/")
+            .or_else(|| url.strip_prefix("http://github.com/"))?;
+        let rest = rest.split(['?', '#']).next()?;
+        let mut parts = rest.split('/');
+        let (owner, name, kind, number) =
+            (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+        if owner.is_empty() || name.is_empty() {
+            return None;
+        }
+        let repo = format!("{owner}/{name}");
+        let number = number.parse().ok()?;
+        match kind {
+            "issues" => Some(Self::issue(&repo, number)),
+            "pull" => Some(Self::pull_request(&repo, number)),
+            _ => None,
+        }
+    }
 }
 
 /// A label (GH-4), with GitHub's own color.
@@ -256,6 +279,35 @@ pub fn prs_by_repo(prs: &[PullRequest]) -> Vec<(&str, Vec<&PullRequest>)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn github_addresses_name_issues_and_pull_requests() {
+        use super::GhRef;
+        let cases = [
+            (
+                "https://github.com/acme/api/issues/12",
+                Some(GhRef::issue("acme/api", 12)),
+            ),
+            (
+                "https://github.com/acme/api/pull/7/files",
+                Some(GhRef::pull_request("acme/api", 7)),
+            ),
+            (
+                "https://github.com/acme/api/pull/7#discussion_r1",
+                Some(GhRef::pull_request("acme/api", 7)),
+            ),
+            (
+                "https://github.com/acme/api/issues/12?q=1",
+                Some(GhRef::issue("acme/api", 12)),
+            ),
+            ("https://github.com/acme/api/blob/main/a.rs", None),
+            ("https://github.com/acme/api/pull/new", None),
+            ("https://example.com/acme/api/pull/7", None),
+        ];
+        for (url, expected) in cases {
+            assert_eq!(GhRef::from_url(url), expected, "{url}");
+        }
+    }
+
     use super::{
         BoardOption, Check, CheckState, Issue, PrState, PullRequest, issues_by_status, prs_by_repo,
     };

@@ -8,7 +8,8 @@ use leon_domain::{
     TimedEntry,
 };
 
-use super::{EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build, layout, route};
+use super::layout::columns;
+use super::{EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build};
 
 fn conversation(id: i64, started_by: Option<i64>) -> ConversationView {
     ConversationView {
@@ -132,37 +133,12 @@ fn arrows_come_from_what_the_conversations_did() {
     }
     assert_eq!(model.parent[&coder], planner);
 
-    // You, the planner to the right, the coder it started below it.
-    let pos = layout(&model);
-    assert!(pos[&Node::You].x < pos[&planner].x && pos[&planner].y < pos[&coder].y);
+    // You above; both are the CLI's own agent, so one region: the one
+    // started second below the first.
+    let pos = columns(&model);
+    assert!(pos[&Node::You].y < pos[&planner].y && pos[&planner].y < pos[&coder].y);
+    assert!((pos[&planner].x - pos[&coder].x).abs() < 1.);
     assert_eq!(model.agent[&coder], "Codex");
-}
-
-#[test]
-fn routes_go_straight_when_boxes_line_up() {
-    let a = Rect {
-        x: 0.,
-        y: 0.,
-        w: 100.,
-        h: 50.,
-    };
-    let b = Rect {
-        x: 300.,
-        y: 0.,
-        w: 100.,
-        h: 50.,
-    };
-    assert_eq!(
-        route(a, b, 0.),
-        vec![Pt { x: 100., y: 25. }, Pt { x: 300., y: 25. }]
-    );
-    let below = Rect {
-        x: 300.,
-        y: 200.,
-        w: 100.,
-        h: 50.,
-    };
-    assert_eq!(route(a, below, 0.).len(), 4);
 }
 
 #[test]
@@ -251,52 +227,106 @@ fn model(conversations: &[(i64, &str, Option<i64>)]) -> FlowModel {
     }
 }
 
-/// The planner, two coders and a reviewer: regions on a 2 × 2 grid that
-/// snakes — You, then the planner to its right, the coders under the
-/// planner, the reviewer back on the left — each agent's conversations together.
+/// The planner, two coders and a reviewer: You above the planner, then the
+/// agents it started in the next column, each agent's conversations
+/// together.
 #[test]
-fn agents_fill_a_grid_each_in_its_own_region() {
+fn columns_follow_who_started_whom_each_agent_in_one_region() {
     let s = |id| Node::Conversation(ConversationId(id));
     let m = model(&[
         (1, "planner", None),
         (2, "coder", Some(1)),
         (3, "reviewer", Some(1)),
-        (4, "coder", Some(1)),
+        (4, "coder", Some(2)),
     ]);
-    let pos = layout(&m);
-    let centre = |node: Node| {
-        let r = super::rect(node, pos[&node]);
-        Pt {
-            x: r.x + r.w / 2.,
-            y: r.y + r.h / 2.,
-        }
+    let pos = columns(&m);
+    // "You" above what it started.
+    assert!(pos[&Node::You].y < pos[&s(1)].y, "{pos:?}");
+    assert!(
+        pos[&Node::You].x > pos[&s(1)].x && pos[&Node::You].x < pos[&s(1)].x + 250.,
+        "{pos:?}"
+    );
+    assert!(pos[&s(1)].x < pos[&s(2)].x, "{pos:?}");
+    assert!((pos[&s(2)].x - pos[&s(3)].x).abs() < 1., "{pos:?}");
+    // The coder the first coder started stays in the coders' region.
+    assert!((pos[&s(2)].x - pos[&s(4)].x).abs() < 1., "{pos:?}");
+    assert!(pos[&s(4)].y > pos[&s(2)].y, "{pos:?}");
+}
+
+/// Two agents each start a helper: the helpers sit in their starters'
+/// order, so the "started" links do not cross.
+#[test]
+fn columns_are_ordered_so_links_do_not_cross() {
+    let s = |id| Node::Conversation(ConversationId(id));
+    // The second helper's starter comes first in its column.
+    let m = model(&[
+        (1, "b", None),
+        (2, "a", None),
+        (3, "helper-a", Some(2)),
+        (4, "helper-b", Some(1)),
+    ]);
+    let pos = columns(&m);
+    let above = |x: i64, y: i64| pos[&s(x)].y < pos[&s(y)].y;
+    assert_eq!(above(1, 2), above(4, 3), "{pos:?}");
+}
+
+/// The forces keep boxes apart and settle the same flow the same way; a box
+/// nudged a little bounces back, held by the user it stays under the mouse.
+#[test]
+fn boxes_settle_apart_and_bounce_back() {
+    let s = |id| Node::Conversation(ConversationId(id));
+    let m = model(&[
+        (1, "planner", None),
+        (2, "coder", Some(1)),
+        (3, "coder", Some(1)),
+        (4, "reviewer", Some(1)),
+        (5, "reviewer", Some(1)),
+    ]);
+    let sim = super::Sim::new(&m);
+    let pos = sim.positions();
+    let rects: Vec<Rect> = pos.iter().map(|(n, p)| super::rect(*n, *p)).collect();
+    assert!(!super::force::overlapping(&rects), "{pos:?}");
+    assert!(!sim.moving());
+    assert_eq!(pos, super::Sim::new(&m).positions());
+    // Nudged 40 units and let go: back near its place.
+    let mut nudged = sim.clone();
+    let home = pos[&s(2)];
+    let near = Pt {
+        x: home.x + 40.,
+        y: home.y + 30.,
     };
-    let (you, planner, coder, reviewer, coder_2) = (
-        centre(Node::You),
-        centre(s(1)),
-        centre(s(2)),
-        centre(s(3)),
-        centre(s(4)),
+    nudged.tick(Some((s(2), near)));
+    assert_eq!(nudged.positions()[&s(2)], near);
+    nudged.settle();
+    let back = nudged.positions()[&s(2)];
+    assert!(
+        (back.x - home.x).abs() < 15. && (back.y - home.y).abs() < 15.,
+        "{home:?} → {back:?}"
+    );
+}
+
+/// An arrow runs straight between the boxes, from edge to edge.
+#[test]
+fn arrows_run_straight_from_edge_to_edge() {
+    let r = |x, y| Rect {
+        x,
+        y,
+        w: 100.,
+        h: 50.,
+    };
+    let line = super::arrows::line(r(0., 0.), r(300., 0.), 0.);
+    assert_eq!(line.len(), 2);
+    assert!(
+        (line[0].x - 103.).abs() < 0.5 && (line[0].y - 25.).abs() < 0.5,
+        "{line:?}"
     );
     assert!(
-        (you.y - planner.y).abs() < 1. && planner.x > you.x,
-        "{pos:?}"
+        (line[1].x - 297.).abs() < 0.5 && (line[1].y - 25.).abs() < 0.5,
+        "{line:?}"
     );
-    assert!(
-        (coder.x - planner.x).abs() < 1. && coder.y > planner.y,
-        "{pos:?}"
-    );
-    assert!(
-        (coder.x - coder_2.x).abs() < 1. && coder_2.y > coder.y,
-        "{pos:?}"
-    );
-    assert!(
-        (reviewer.x - you.x).abs() < 1. && reviewer.y > planner.y,
-        "{pos:?}"
-    );
-    // About as tall as wide, not a long line.
-    let world = super::bounds(pos.iter().map(|(n, p)| super::rect(*n, *p))).unwrap();
-    assert!(world.w < 2. * world.h, "{world:?}");
+    // Two arrows of one bundle run side by side.
+    let beside = super::arrows::line(r(0., 0.), r(300., 0.), 8.);
+    assert!((beside[0].y - 33.).abs() < 0.5, "{beside:?}");
 }
 
 /// Four conversations of one agent stack three high, then start a new column.
@@ -309,7 +339,7 @@ fn a_busy_agent_stacks_its_conversations() {
         (3, "coder", None),
         (4, "coder", None),
     ]);
-    let pos = layout(&m);
+    let pos = columns(&m);
     assert!((pos[&s(1)].x - pos[&s(3)].x).abs() < 1., "{pos:?}");
     assert!(
         pos[&s(3)].y > pos[&s(2)].y && pos[&s(2)].y > pos[&s(1)].y,

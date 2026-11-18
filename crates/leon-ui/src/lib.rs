@@ -10,9 +10,11 @@
     reason = "GPUI element trees are long builder chains; views are split by meaning, not by line count"
 )]
 
+mod agent_color;
 mod composer;
 mod diff_drawer;
 mod diff_rows;
+mod diff_split;
 mod diff_view;
 mod doctor;
 mod drawer;

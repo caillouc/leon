@@ -136,7 +136,11 @@ Zeron (MIT, GPUI, 3.7k ★) covers much of the same scope. Build our own, study
 its notes, and reuse MIT/Apache code with attribution where it fits (e.g. the
 `claude-codes` crate for Claude's `stream-json` types).
 
-**P13 — Licence:** `MIT OR Apache-2.0`.
+**P13 — Licence:** `AGPL-3.0-only`. (changed 2026-11-18)
+In the maintainer's words: "I want an open one, but still avoid someone
+stealing my idea which is free and public just make full money outside of
+it", then "AGPL-3.0". Anyone who distributes a changed Leon, or offers it as
+an online service, must publish their changes under the same licence.
 
 **P14 — Name:** `leon` (binary and config folder).
 

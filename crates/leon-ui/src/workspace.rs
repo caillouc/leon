@@ -116,6 +116,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        cx.set_global(crate::markdown::Core(core.clone()));
         let mut snapshots = core.subscribe();
         let updates = cx.spawn(async move |this, cx| {
             while snapshots.changed().await.is_ok() {

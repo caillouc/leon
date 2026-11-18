@@ -135,7 +135,6 @@ impl Workspace {
                 self.open_first_conversation(*id);
                 let tab = match *tab {
                     "branch" => RightTab::Branch,
-                    "pr" => RightTab::Pr,
                     "info" => RightTab::Info,
                     _ => RightTab::Changes,
                 };
@@ -152,6 +151,7 @@ impl Workspace {
                     end: line,
                     kind: LineKind::Added,
                     code: String::new(),
+                    lines: ((0, 0), (0, 0)),
                 };
                 let first = at(12);
                 self.right.review.insert(

@@ -78,21 +78,55 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The user's login-shell `PATH`, read once on first use. An app started
-/// from the Finder inherits a minimal `PATH` that misses where `git`, `gh`
-/// and the coding CLIs usually live.
+/// The user's shell `PATH`, read once on first use. An app started from
+/// the Finder inherits a minimal `PATH` that misses where `git`, `gh` and
+/// the coding CLIs usually live. Read from an interactive login shell:
+/// many setups add to `PATH` only in `~/.zshrc` or `~/.bashrc` (Claude
+/// Code's installer adds `~/.local/bin` there; seen on 2026-11-18); a plain
+/// login shell is the fallback.
 fn login_path() -> Option<&'static OsString> {
     static PATH: OnceLock<Option<OsString>> = OnceLock::new();
     PATH.get_or_init(|| {
         let shell = std::env::var_os("SHELL")?;
-        let out = std::process::Command::new(shell)
-            .args(["-l", "-c", "printf %s \"$PATH\""])
-            .output()
-            .ok()?;
-        let path = String::from_utf8(out.stdout).ok()?;
-        (!path.trim().is_empty()).then(|| OsString::from(path.trim()))
+        let path = shell_path(&shell, "-ilc").or_else(|| shell_path(&shell, "-lc"))?;
+        Some(OsString::from(path))
     })
     .as_ref()
+}
+
+/// Marks the `PATH` in a shell's output, which may also hold what its
+/// startup files print.
+const MARK: &str = "__LEON_PATH__";
+
+/// `PATH` as `shell` with `flags` sees it, or `None` when it fails or takes
+/// more than a few seconds (a startup file waiting for input).
+fn shell_path(shell: &std::ffi::OsStr, flags: &str) -> Option<String> {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let mut child = Command::new(shell)
+        .args([flags, &format!("printf '{MARK}%s{MARK}' \"$PATH\"")])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while child.try_wait().ok()?.is_none() {
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let out = child.wait_with_output().ok()?;
+    marked_path(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// The `PATH` between the marks, when not empty.
+fn marked_path(out: &str) -> Option<String> {
+    let (_, rest) = out.split_once(MARK)?;
+    let (path, _) = rest.split_once(MARK)?;
+    (!path.trim().is_empty()).then(|| path.trim().to_owned())
 }
 
 fn now_ms() -> i64 {
@@ -138,4 +172,25 @@ fn data_dir() -> anyhow::Result<std::path::PathBuf> {
 fn open_store(dir: &std::path::Path) -> anyhow::Result<leon_store::Store> {
     let path = dir.join("state.db");
     leon_store::Store::open(&path).with_context(|| format!("opening {}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::marked_path;
+
+    #[test]
+    fn the_path_is_read_between_marks_whatever_the_shell_prints() {
+        let cases = [
+            ("__LEON_PATH__/a:/b__LEON_PATH__", Some("/a:/b")),
+            (
+                "Welcome!\n__LEON_PATH__/a:/b__LEON_PATH__\nbye",
+                Some("/a:/b"),
+            ),
+            ("__LEON_PATH____LEON_PATH__", None),
+            ("/a:/b", None),
+        ];
+        for (out, expected) in cases {
+            assert_eq!(marked_path(out).as_deref(), expected, "{out:?}");
+        }
+    }
 }

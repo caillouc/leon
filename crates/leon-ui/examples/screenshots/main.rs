@@ -42,11 +42,10 @@ fn conversation(
         conversation: Conversation {
             id: ConversationId(id),
             flow: FlowId(flow),
-            // planner (1) → coder (2) → reviewer (4), who reports back to the
-            // planner: a loop.
+            // The planner (1) starts two coders (2, 5) and two reviewers
+            // (4, 6); the user also asks the second reviewer directly.
             started_by: match id {
-                2 => Some(ConversationId(1)),
-                4 => Some(ConversationId(2)),
+                2 | 4 | 5 | 6 => Some(ConversationId(1)),
                 _ => None,
             },
             settings: ConversationSettings {
@@ -126,7 +125,7 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
         timed(Entry::Tool { id: "1".into(), name: "Read".into(), detail: "src/webhooks/retry.rs".into(), output: Some("…".into()), failed: false }),
         timed(Entry::Tool { id: "2".into(), name: "Ran".into(), detail: "cargo test webhook".into(), output: Some("test result: ok. 6 passed".into()), failed: false }),
         timed(Entry::Agent {
-            text: "**Recap.** Deliveries stop retrying after 30 s (`MAX_ELAPSED` in `src/webhooks/retry.rs:13`).\n\n**Plan**\n1. Raise the retry window to 15 minutes.\n2. Cap each delay at 2 minutes.\n3. Test the delay sequence.\n\n```rust\nconst MAX_DELAY: Duration = Duration::from_secs(120);\n```".into(),
+            text: "**Recap.** Deliveries stop retrying after 30 s (`MAX_ELAPSED` in `src/webhooks/retry.rs:13`).\n\n**Plan**\n1. Raise the retry window to 15 minutes.\n2. Cap each delay at 2 minutes.\n3. Test the delay sequence.\n\n| File | Change | Risk |\n|---|---|---|\n| `src/webhooks/retry.rs` | cap each delay at 2 minutes | low |\n| `src/webhooks/mod.rs` | retry for 15 minutes | medium |\n| `tests/webhook_retry.rs` | delay sequence, attempt 0 | none |\n\n```rust\nconst MAX_DELAY: Duration = Duration::from_secs(120);\n```".into(),
         }),
         timed(Entry::TurnEnd { usage: Some(Usage { input_tokens: 41_200, output_tokens: 1_830, cost_usd: Some(0.42) }) }),
         timed(Entry::User { text: "Go ahead".into() }),
@@ -156,7 +155,7 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
         Arc::new(TranscriptView {
             entries: Arc::new(vec![
                 timed(Entry::FromAgent {
-                    from: ConversationId(2),
+                    from: ConversationId(1),
                     text: "Review the retry change.".into(),
                     answer: false,
                 }),
@@ -193,6 +192,7 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
             partial: None,
         }),
     );
+    helpers(&mut transcripts);
     transcripts.insert(
         ConversationId(3),
         Arc::new(TranscriptView {
@@ -201,6 +201,44 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
         }),
     );
     transcripts
+}
+
+/// The second coder and the tester of the first flow.
+fn helpers(transcripts: &mut HashMap<ConversationId, Arc<TranscriptView>>) {
+    let from = |id: i64, text: &str, answer: bool| {
+        timed(Entry::FromAgent {
+            from: ConversationId(id),
+            text: text.into(),
+            answer,
+        })
+    };
+    let turn = |text: &str| {
+        [
+            timed(Entry::Agent { text: text.into() }),
+            timed(Entry::TurnEnd { usage: None }),
+        ]
+    };
+    let mut coder_2 = vec![from(1, "Write the tests for the capped delays.", false)];
+    coder_2.extend(turn("Added 4 tests; all pass."));
+    transcripts.insert(
+        ConversationId(5),
+        Arc::new(TranscriptView {
+            entries: Arc::new(coder_2),
+            partial: None,
+        }),
+    );
+    let mut tester = vec![from(1, "Review the tests for the capped delays.", false)];
+    tester.extend(turn("12 of 12 deliveries retried as expected."));
+    tester.push(timed(Entry::User {
+        text: "Also try a 20-minute outage.".into(),
+    }));
+    transcripts.insert(
+        ConversationId(6),
+        Arc::new(TranscriptView {
+            entries: Arc::new(tester),
+            partial: Some("Simulating a 20-minute outage".into()),
+        }),
+    );
 }
 
 /// What the sample CLIs offer.
@@ -245,7 +283,13 @@ fn sample() -> Snapshot {
         FlowView {
             flow: flow(1, 1, "Fix webhook retry timeout", false, false),
             status: Status::Running,
-            conversations: vec![ConversationId(1), ConversationId(2), ConversationId(4)],
+            conversations: vec![
+                ConversationId(1),
+                ConversationId(2),
+                ConversationId(4),
+                ConversationId(5),
+                ConversationId(6),
+            ],
             folders: vec![repo::API.into(), repo::WEB.into()],
             issues: vec![
                 leon_domain::GhRef::issue("acme/payments-api", 401),
@@ -279,6 +323,8 @@ fn sample() -> Snapshot {
         conversation(2, 1, "coder", BackendKind::Codex, Status::Idle),
         conversation(3, 2, "coder", BackendKind::Codex, Status::NeedsInput),
         conversation(4, 1, "reviewer", BackendKind::ClaudeCode, Status::Idle),
+        conversation(5, 1, "coder", BackendKind::Codex, Status::Idle),
+        conversation(6, 1, "reviewer", BackendKind::ClaudeCode, Status::Running),
     ];
     let transcripts = transcripts();
     let options = options();
@@ -416,7 +462,6 @@ fn main() {
             Shot::NewFlowWith("coder"),
         ),
         ("right-branch".to_owned(), Shot::Right(FlowId(1), "branch")),
-        ("right-pr".to_owned(), Shot::Right(FlowId(1), "pr")),
         ("right-info".to_owned(), Shot::Right(FlowId(1), "info")),
         ("review".to_owned(), Shot::Review(FlowId(1))),
         ("my-prs".to_owned(), Shot::MyPullRequests),

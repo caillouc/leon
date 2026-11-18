@@ -6,10 +6,11 @@
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, div, prelude::*, px};
 use gpui_component::input::{Textarea, TextareaState};
 use leon_core::Intent;
-use leon_domain::{Check, CheckState, GhRef, PrState, PullRequest};
+use leon_domain::{Check, CheckState, Comment, GhRef, PrState, PullRequest};
 
 use crate::github::pr_glyph;
 use crate::icons::{Icon, icon};
+use crate::left::since;
 use crate::pr_view::{check_color, labels, pr_state};
 use crate::theme;
 use crate::widgets::{button, primary};
@@ -383,6 +384,42 @@ impl Workspace {
                         },
                     )),
             )
+    }
+
+    /// Comments, oldest first, as cards with their authors, then a box to
+    /// post one on `item` (GH-6).
+    pub(crate) fn comments(
+        &self,
+        comments: &[Comment],
+        item: GhRef,
+        input: &Entity<TextareaState>,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let list = comments.iter().enumerate().map(|(ix, c)| {
+            self.comment_card(
+                &format!("{}-comment-{ix}", item.text()),
+                &c.author,
+                &format!("commented {}", since(c.at)),
+                &c.body,
+                cx,
+            )
+        });
+        div()
+            .px_4()
+            .pt_4()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .when(comments.is_empty(), |d| {
+                d.child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(theme::fg_faint())
+                        .child("No comments yet."),
+                )
+            })
+            .children(list)
+            .child(Self::comment_box(item, input, cx))
     }
 
     /// A card to post a comment on `item` (GH-6), its button at the right.

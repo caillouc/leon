@@ -4,7 +4,7 @@ One native window to run and follow many coding-agent conversations across
 many repositories, on top of the coding CLIs you already use: Claude Code,
 Codex and Copilot CLI.
 
-<!-- Screenshot of the Flow tab goes here: docs/flow.png -->
+![A flow in Leon: the Flow tab with a planner, two coders, a reviewer and a tester, the prompts and reports between them, and the folders and pull requests of the flow in the right pane (sample data)](docs/flow.png)
 
 ## Why Leon
 
@@ -133,4 +133,6 @@ Runs formatting, clippy (warnings are errors), tests, the crate layer check and
 
 ## Licence
 
-MIT or Apache-2.0, at your option.
+[GNU AGPL-3.0](LICENSE): free to use, study, change and share. Anyone who
+distributes a changed Leon, or offers it as an online service, must publish
+their changes under the same licence.

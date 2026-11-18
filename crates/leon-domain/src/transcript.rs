@@ -79,18 +79,40 @@ impl Usage {
                 Entry::TurnEnd { usage } => *usage,
                 _ => None,
             })
-            .fold(
-                Self {
-                    cost_usd: Some(0.),
-                    ..Self::default()
-                },
-                |a, b| Self {
-                    input_tokens: a.input_tokens + b.input_tokens,
-                    output_tokens: a.output_tokens + b.output_tokens,
-                    cost_usd: a.cost_usd.zip(b.cost_usd).map(|(x, y)| x + y),
-                },
-            )
+            .fold(Self::nothing(), Self::plus)
     }
+
+    /// No usage yet, at no cost: what adding starts from.
+    pub fn nothing() -> Self {
+        Self {
+            cost_usd: Some(0.),
+            ..Self::default()
+        }
+    }
+
+    /// Two usages added up; the cost is known only when both are.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            input_tokens: self.input_tokens + other.input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
+            cost_usd: self.cost_usd.zip(other.cost_usd).map(|(x, y)| x + y),
+        }
+    }
+}
+
+/// What a transcript holds, as the flow diagram counts it (FLOW-4): its
+/// messages (the user's, the agent's, other agents') and its tool calls.
+pub fn activity(entries: &[TimedEntry]) -> (usize, usize) {
+    entries
+        .iter()
+        .fold((0, 0), |(messages, tools), e| match e.entry {
+            Entry::Tool { .. } => (messages, tools + 1),
+            Entry::User { .. } | Entry::Agent { .. } | Entry::FromAgent { .. } => {
+                (messages + 1, tools)
+            }
+            Entry::Notice { .. } | Entry::Error { .. } | Entry::TurnEnd { .. } => (messages, tools),
+        })
 }
 
 /// A transcript entry with its time (Unix milliseconds).

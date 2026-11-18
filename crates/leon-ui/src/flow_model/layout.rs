@@ -22,10 +22,10 @@ pub(crate) struct Rect {
 
 const NODE: Pt = Pt { x: 250., y: 96. };
 const YOU: Pt = Pt { x: 140., y: 56. };
-/// Space between two regions: room for an arrow and its label.
-const GAP: Pt = Pt { x: 170., y: 120. };
-/// Space between two boxes of one region.
-const INNER: Pt = Pt { x: 40., y: 36. };
+/// Space between two regions: room for arrows and their labels.
+const GAP: Pt = Pt { x: 190., y: 90. };
+/// Space between two boxes of one region: room for an arrow's label.
+const INNER: Pt = Pt { x: 40., y: 64. };
 /// Most boxes stacked in one column of a region.
 const STACK: usize = 3;
 
@@ -36,45 +36,192 @@ fn size_of(node: Node) -> Pt {
     }
 }
 
-/// The automatic layout: regions on a grid that fills the space instead of
-/// a long line. "You" first, then one region per agent in the order each
-/// first appeared; the rows snake (left to right, then right to left), so
-/// each region sits next to the one before and a planner → coder →
-/// reviewer → planner loop reads as a loop. An agent's conversations share its
-/// region, stacked, a new column every `STACK` boxes.
-#[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
-pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
+/// Where the forces start from (FLOW-4): columns by who started whom — what you
+/// started, then what those started — with one region per agent, its
+/// conversations stacked together in the column of its first one, and "You"
+/// above the first column. Within each column the regions are ordered so
+/// that arrows cross as little as possible.
+pub(crate) fn columns(model: &FlowModel) -> HashMap<Node, Pt> {
     let groups = groups(model);
-    let cols = grid_columns(groups.len());
-    let rows = groups.len().div_ceil(cols);
-    let cell = |ix: usize| {
-        let (row, i) = (ix / cols, ix % cols);
-        (row, if row % 2 == 1 { cols - 1 - i } else { i })
-    };
-    let sizes: Vec<Pt> = groups.iter().map(|g| region_size(g)).collect();
-    let (mut widths, mut heights) = (vec![0f32; cols], vec![0f32; rows]);
-    for (ix, size) in sizes.iter().enumerate() {
-        let (row, col) = cell(ix);
-        widths[col] = widths[col].max(size.x);
-        heights[row] = heights[row].max(size.y);
+    let region_of: HashMap<Node, usize> = groups
+        .iter()
+        .enumerate()
+        .flat_map(|(r, g)| g.iter().map(move |n| (*n, r)))
+        .collect();
+    let depth = depths(model);
+    let layer: Vec<usize> = groups
+        .iter()
+        .map(|g| {
+            g.iter()
+                .filter_map(|n| depth.get(n))
+                .min()
+                .copied()
+                .unwrap_or(0)
+        })
+        .collect();
+    // Columns in layer order, empty layers dropped; "You" (region 0) apart.
+    let mut layers: Vec<usize> = layer[1..].to_vec();
+    layers.sort_unstable();
+    layers.dedup();
+    let mut columns: Vec<Vec<usize>> = layers
+        .iter()
+        .map(|l| (1..groups.len()).filter(|r| layer[*r] == *l).collect())
+        .collect();
+    let links = links(model, &region_of);
+    untangle(&mut columns, &links);
+    place(&groups, &columns)
+}
+
+/// How many "started" steps each box is from "You".
+fn depths(model: &FlowModel) -> HashMap<Node, usize> {
+    let mut depth = HashMap::from([(Node::You, 0)]);
+    // Parents come before the conversations they start.
+    for node in &model.nodes {
+        if *node != Node::You {
+            let parent = model.parent.get(node).copied().unwrap_or(Node::You);
+            let d = depth.get(&parent).copied().unwrap_or(0) + 1;
+            depth.insert(*node, d);
+        }
     }
-    let (xs, ys) = (starts(&widths, GAP.x), starts(&heights, GAP.y));
-    let mut pos = HashMap::new();
-    for (ix, group) in groups.iter().enumerate() {
-        let (row, col) = cell(ix);
-        let origin = Pt {
-            x: xs[col] + (widths[col] - sizes[ix].x) / 2.,
-            y: ys[row] + (heights[row] - sizes[ix].y) / 2.,
-        };
-        for (k, node) in group.iter().enumerate() {
-            let size = size_of(*node);
+    depth
+}
+
+/// Pairs of regions joined by an arrow or a "started" link, once per link.
+fn links(model: &FlowModel, region_of: &HashMap<Node, usize>) -> Vec<(usize, usize)> {
+    let started = model.parent.iter().map(|(child, parent)| (*parent, *child));
+    let arrows = model.edges.iter().map(|e| (e.from, e.to));
+    started
+        .chain(arrows)
+        .filter_map(|(a, b)| Some((*region_of.get(&a)?, *region_of.get(&b)?)))
+        .filter(|(a, b)| a != b)
+        .collect()
+}
+
+/// Orders the regions of each column by the mean place of what they link
+/// to (barycentre sweeps, both ways), keeping the order with the fewest
+/// crossings between neighbouring columns.
+#[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
+fn untangle(columns: &mut [Vec<usize>], links: &[(usize, usize)]) {
+    let place_of = |columns: &[Vec<usize>]| {
+        // "You" (region 0) sits above the first column: what you talk to
+        // is pulled up, next to it.
+        let mut at: HashMap<usize, (usize, f32)> = HashMap::from([(0, (0, -0.5))]);
+        for (c, column) in columns.iter().enumerate() {
+            for (i, r) in column.iter().enumerate() {
+                at.insert(*r, (c, (i as f32 + 0.5) / column.len() as f32));
+            }
+        }
+        at
+    };
+    let mut best = (crossings(columns, links), columns.to_vec());
+    for _ in 0..6 {
+        for forward in [true, false] {
+            let order: Vec<usize> = if forward {
+                (1..columns.len()).collect()
+            } else {
+                (0..columns.len().saturating_sub(1)).rev().collect()
+            };
+            for c in order {
+                let at = place_of(columns);
+                let key = |r: usize| {
+                    let near: Vec<f32> = links
+                        .iter()
+                        .filter_map(|(a, b)| match (*a == r, *b == r) {
+                            (true, _) => Some(*b),
+                            (_, true) => Some(*a),
+                            _ => None,
+                        })
+                        .filter_map(|n| at.get(&n))
+                        .filter(|(nc, _)| if forward { *nc < c } else { *nc > c } || (*nc == 0 && c > 0))
+                        .map(|(_, p)| *p)
+                        .collect();
+                    if near.is_empty() {
+                        at.get(&r).map_or(0., |(_, p)| *p)
+                    } else {
+                        near.iter().sum::<f32>() / near.len() as f32
+                    }
+                };
+                columns[c].sort_by(|a, b| key(*a).total_cmp(&key(*b)));
+            }
+            let now = crossings(columns, links);
+            if now < best.0 {
+                best = (now, columns.to_vec());
+            }
+        }
+    }
+    columns.clone_from_slice(&best.1);
+}
+
+/// Crossings between the links of neighbouring columns, "You" (region 0)
+/// counted at the top of the first column.
+fn crossings(columns: &[Vec<usize>], links: &[(usize, usize)]) -> usize {
+    let mut at: HashMap<usize, (usize, usize)> = HashMap::from([(0, (0, 0))]);
+    for (c, column) in columns.iter().enumerate() {
+        for (i, r) in column.iter().enumerate() {
+            at.insert(*r, (c, i + usize::from(c == 0)));
+        }
+    }
+    let spans: Vec<(usize, usize, usize)> = links
+        .iter()
+        .filter_map(|(a, b)| {
+            let ((ca, ia), (cb, ib)) = (*at.get(a)?, *at.get(b)?);
+            match ca.abs_diff(cb) {
+                1 if ca < cb => Some((ca, ia, ib)),
+                1 => Some((cb, ib, ia)),
+                _ => None,
+            }
+        })
+        .collect();
+    let mut count = 0;
+    for (i, (c1, a1, b1)) in spans.iter().enumerate() {
+        for (c2, a2, b2) in &spans[i + 1..] {
+            if c1 == c2 && ((a1 < a2 && b1 > b2) || (a1 > a2 && b1 < b2)) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// Where each box goes: columns left to right, each column's regions top
+/// to bottom and centred on the same line, "You" above the first column.
+#[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
+fn place(groups: &[Vec<Node>], columns: &[Vec<usize>]) -> HashMap<Node, Pt> {
+    let mut pos = HashMap::from([(Node::You, Pt { x: 0., y: 0. })]);
+    let sizes: Vec<Pt> = groups.iter().map(|g| region_size(g)).collect();
+    let widths: Vec<f32> = columns
+        .iter()
+        .map(|c| c.iter().map(|r| sizes[*r].x).fold(0., f32::max))
+        .collect();
+    let xs = starts(&widths, GAP.x);
+    for (c, column) in columns.iter().enumerate() {
+        let heights: Vec<f32> = column.iter().map(|r| sizes[*r].y).collect();
+        let total = heights.iter().sum::<f32>() + GAP.y * heights.len().saturating_sub(1) as f32;
+        if c == 0 {
             pos.insert(
-                *node,
+                Node::You,
                 Pt {
-                    x: origin.x + (k / STACK) as f32 * (size.x + INNER.x),
-                    y: origin.y + (k % STACK) as f32 * (size.y + INNER.y),
+                    x: (widths[0] - YOU.x) / 2.,
+                    y: -total / 2. - GAP.y - YOU.y,
                 },
             );
+        }
+        let ys = starts(&heights, GAP.y);
+        for (r, y) in column.iter().zip(ys) {
+            let origin = Pt {
+                x: xs[c] + (widths[c] - sizes[*r].x) / 2.,
+                y: y - total / 2.,
+            };
+            for (k, node) in groups[*r].iter().enumerate() {
+                let size = size_of(*node);
+                pos.insert(
+                    *node,
+                    Pt {
+                        x: origin.x + (k / STACK) as f32 * (size.x + INNER.x),
+                        y: origin.y + (k % STACK) as f32 * (size.y + INNER.y),
+                    },
+                );
+            }
         }
     }
     pos
@@ -82,7 +229,7 @@ pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
 
 /// "You", then the conversations of each agent, agents in the order they first
 /// appear.
-fn groups(model: &FlowModel) -> Vec<Vec<Node>> {
+pub(crate) fn groups(model: &FlowModel) -> Vec<Vec<Node>> {
     let mut groups: Vec<(Option<&str>, Vec<Node>)> = Vec::new();
     for node in &model.nodes {
         let agent = match node {
@@ -98,11 +245,6 @@ fn groups(model: &FlowModel) -> Vec<Vec<Node>> {
         }
     }
     groups.into_iter().map(|(_, members)| members).collect()
-}
-
-/// The fewest grid columns that make the grid about square.
-fn grid_columns(regions: usize) -> usize {
-    (1..=regions).find(|c| c * c >= regions).unwrap_or(1)
 }
 
 /// The size of a region holding `group`'s boxes.
@@ -153,51 +295,6 @@ pub(crate) fn bounds(rects: impl IntoIterator<Item = Rect>) -> Option<Rect> {
     })
 }
 
-/// An orthogonal route from box `a` to box `b`, shifted by `off` so that the
-/// two directions between the same boxes do not overlap.
-pub(crate) fn route(a: Rect, b: Rect, off: f32) -> Vec<Pt> {
-    let (acx, acy) = (a.x + a.w / 2., a.y + a.h / 2.);
-    let (bcx, bcy) = (b.x + b.w / 2., b.y + b.h / 2.);
-    let gap_x = (bcx - acx).abs() - f32::midpoint(a.w, b.w);
-    let gap_y = (bcy - acy).abs() - f32::midpoint(a.h, b.h);
-    if gap_x >= gap_y {
-        let right = bcx > acx;
-        let (x1, x2) = if right {
-            (a.x + a.w, b.x)
-        } else {
-            (a.x, b.x + b.w)
-        };
-        let (y1, y2) = (acy + off, bcy + off);
-        if (y1 - y2).abs() < 2. {
-            return vec![Pt { x: x1, y: y1 }, Pt { x: x2, y: y1 }];
-        }
-        let mx = f32::midpoint(x1, x2) + off;
-        return vec![
-            Pt { x: x1, y: y1 },
-            Pt { x: mx, y: y1 },
-            Pt { x: mx, y: y2 },
-            Pt { x: x2, y: y2 },
-        ];
-    }
-    let down = bcy > acy;
-    let (y1, y2) = if down {
-        (a.y + a.h, b.y)
-    } else {
-        (a.y, b.y + b.h)
-    };
-    let (x1, x2) = (acx + off, bcx + off);
-    if (x1 - x2).abs() < 2. {
-        return vec![Pt { x: x1, y: y1 }, Pt { x: x1, y: y2 }];
-    }
-    let my = f32::midpoint(y1, y2) + off;
-    vec![
-        Pt { x: x1, y: y1 },
-        Pt { x: x1, y: my },
-        Pt { x: x2, y: my },
-        Pt { x: x2, y: y2 },
-    ]
-}
-
 /// One piece of an arrow after its first point.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Step {
@@ -234,7 +331,7 @@ pub(crate) fn bends(points: &[Pt], radius: f32) -> Vec<Step> {
     steps
 }
 
-fn distance(a: Pt, b: Pt) -> f32 {
+pub(crate) fn distance(a: Pt, b: Pt) -> f32 {
     (b.x - a.x).hypot(b.y - a.y)
 }
 
@@ -244,21 +341,5 @@ fn toward(from: Pt, to: Pt, d: f32) -> Pt {
     Pt {
         x: from.x + (to.x - from.x) * d / len,
         y: from.y + (to.y - from.y) * d / len,
-    }
-}
-
-/// Where an arrow's label sits: a third of the way along its first long
-/// segment, so the labels of the two directions between the same boxes,
-/// travelling opposite ways, never sit side by side.
-pub(crate) fn label_at(points: &[Pt]) -> Pt {
-    const ALONG: f32 = 0.35;
-    let (a, b) = match points {
-        [a, b] | [_, a, b, ..] => (*a, *b),
-        [a] => (*a, *a),
-        [] => (Pt { x: 0., y: 0. }, Pt { x: 0., y: 0. }),
-    };
-    Pt {
-        x: a.x + (b.x - a.x) * ALONG,
-        y: a.y + (b.y - a.y) * ALONG,
     }
 }

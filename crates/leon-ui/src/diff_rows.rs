@@ -8,7 +8,7 @@ use std::sync::Arc;
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, IntoElement, ListAlignment, ListOffset,
     ListState, MouseButton, MouseMoveEvent, SharedString, Styled, WeakEntity, div, list,
-    prelude::*, px, relative,
+    prelude::*, px,
 };
 use gpui_component::input::{Textarea, TextareaState};
 use leon_domain::{DiffLine, FileDiff, FileStatus, FlowId, LineKind, fold_reason};
@@ -47,13 +47,13 @@ pub(crate) struct Selecting {
 impl Selecting {
     /// Whether line `l` of hunk `h` is in the selection.
     fn holds(&self, h: usize, l: usize) -> bool {
-        let (a, b) = if self.from <= self.to {
-            (self.from, self.to)
-        } else {
-            (self.to, self.from)
-        };
-        (a..=b).contains(&(h, l))
+        within(self.from, self.to, (h, l))
     }
+}
+
+/// Whether `at` is between `from` and `to`, in either order.
+fn within(from: (usize, usize), to: (usize, usize), at: (usize, usize)) -> bool {
+    (from.min(to)..=from.max(to)).contains(&at)
 }
 
 /// The comment place for lines `from`..=`to` of `file` (any order).
@@ -79,6 +79,7 @@ fn draft_for(file: &FileDiff, selecting: &Selecting) -> Option<DraftAt> {
         line: line_number(first),
         end: line_number(last).max(line_number(first)),
         kind: last.kind,
+        lines: (selecting.from, selecting.to),
         code: lines
             .iter()
             .map(|l| l.text.as_str())
@@ -94,18 +95,22 @@ pub(crate) struct DiffList {
 }
 
 /// Everything a row needs to render, shared by the list's rows.
-struct Data {
+pub(crate) struct Data {
     flow: FlowId,
     source: DiffSource,
     files: Arc<Vec<FileDiff>>,
     rows: Arc<Vec<Row>>,
     opened: Vec<bool>,
     folded_by: Vec<Option<String>>,
-    review: Vec<Pending>,
+    pub(crate) review: Vec<Pending>,
     comment: Entity<TextareaState>,
     /// Lines being chosen, when in this diff.
     selecting: Option<Selecting>,
-    view: WeakEntity<Workspace>,
+    /// The comment being written, when in this diff.
+    pub(crate) draft: Option<DraftAt>,
+    /// Side by side: the old side's share of the width.
+    pub(crate) split: Option<f32>,
+    pub(crate) view: WeakEntity<Workspace>,
 }
 
 impl Workspace {
@@ -151,6 +156,7 @@ impl Workspace {
             .filter(|d| d.flow == id && d.source == source);
         let split = self.right.split;
         let rows = build_rows(&files, &opened, source, &review, draft.as_ref(), split);
+        let area = std::rc::Rc::clone(&self.right.split_area);
         let (state, rows) = self.diff_list((id, source), rows);
         let target = scroll_to.and_then(|path| {
             let f = files.iter().position(|file| file.path == path)?;
@@ -176,6 +182,8 @@ impl Workspace {
                 .selecting
                 .clone()
                 .filter(|s| s.flow == id && s.source == source),
+            draft,
+            split: split.then_some(self.right.split_ratio),
             view: cx.entity().downgrade(),
         });
         let rows = list(state, move |ix, _window, cx| {
@@ -197,8 +205,16 @@ impl Workspace {
             .flex_col()
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(|this, _, window, cx| this.finish_selection(window, cx)),
+                cx.listener(|this, _, window, cx| {
+                    this.right.split_drag = false;
+                    this.finish_selection(window, cx);
+                }),
             )
+            // Side by side, the divider follows the mouse while dragged.
+            .on_mouse_move(cx.listener(|this, e: &gpui::MouseMoveEvent, _, cx| {
+                this.drag_split(e, cx);
+            }))
+            .child(crate::diff_split::area_probe(area))
             .child(rows)
             .into_any_element()
     }
@@ -354,20 +370,22 @@ fn render_row(data: &Rc<Data>, row: Row, cx: &mut App) -> AnyElement {
                 Some(l) => line_row(data, f, h, l, numbers),
                 None => mono(div().size_full().bg(theme::panel())).into_any_element(),
             };
-            div()
-                .flex()
-                .child(
-                    div()
-                        .w(relative(0.5))
-                        .border_r_1()
-                        .border_color(theme::border())
-                        .child(half(left, Numbers::Old)),
-                )
-                .child(div().w(relative(0.5)).child(half(right, Numbers::New)))
-                .into_any_element()
+            crate::diff_split::pair(data, half(left, Numbers::Old), half(right, Numbers::New))
         }
-        Row::Comment(ix) => pending_comment(data, ix),
-        Row::Draft => draft_box(data, cx),
+        Row::Comment(ix) => {
+            let removed = data
+                .review
+                .get(ix)
+                .is_some_and(|p| p.comment.kind == LineKind::Removed);
+            crate::diff_split::under_side(data, removed, pending_comment(data, ix))
+        }
+        Row::Draft => {
+            let removed = data
+                .draft
+                .as_ref()
+                .is_some_and(|d| d.kind == LineKind::Removed);
+            crate::diff_split::under_side(data, removed, draft_box(data, cx))
+        }
     }
 }
 
@@ -473,10 +491,15 @@ enum Numbers {
 fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> AnyElement {
     let line = &data.files[f].hunks[h].lines[l];
     let path = data.files[f].path.clone();
+    // Chosen while dragging, and while their comment is written.
     let chosen = data
         .selecting
         .as_ref()
-        .is_some_and(|s| s.path == path && s.holds(h, l));
+        .is_some_and(|s| s.path == path && s.holds(h, l))
+        || data
+            .draft
+            .as_ref()
+            .is_some_and(|d| d.path == path && within(d.lines.0, d.lines.1, (h, l)));
     let (bg, gutter, sign) = match line.kind {
         LineKind::Added => (Some(theme::add_bg()), Some(theme::add_gutter()), "+"),
         LineKind::Removed => (Some(theme::del_bg()), Some(theme::del_gutter()), "-"),
@@ -721,6 +744,7 @@ mod tests {
             end: 2,
             kind: LineKind::Added,
             code: "x".into(),
+            lines: ((0, 2), (0, 2)),
         };
         let review = [
             pending(DiffSource::Changes, LineKind::Removed, 2),

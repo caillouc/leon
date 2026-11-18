@@ -96,7 +96,11 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    keep Leon up to date with these tools (`AppTools::instructions`, CTX-3;
    assembled in `crates/leon-backends/src/told.rs`).
 9. The flow diagram (FLOW-4) is built from the conversations' `started_by`,
-   their agents and their transcripts only (`crates/leon-ui/src/flow_model.rs`).
+   their agents and their transcripts only (`crates/leon-ui/src/flow_model.rs`):
+   boxes placed by `flow_model/force.rs` (forces, from the columns of who
+   started whom that `flow_model/layout.rs` gives), arrows drawn by
+   `flow_model/arrows.rs` (straight, bundled by pair of boxes, labels in free
+   spots).
 
 ## Events (sketch, shaped like ACP session updates — P2)
 
