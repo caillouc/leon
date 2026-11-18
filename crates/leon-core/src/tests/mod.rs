@@ -225,6 +225,12 @@ impl Catalog for FakeCatalog {
     fn folders(&self) -> Vec<crate::ports::AgentFolder> {
         Vec::new()
     }
+    fn instructions(&self) -> Option<crate::ports::SharedInstructions> {
+        Some(crate::ports::SharedInstructions {
+            file: PathBuf::from("/home/u/.agents/AGENTS.md"),
+            text: "Be brief.".into(),
+        })
+    }
     fn commands(&self, _project: &Path) -> Vec<crate::ports::SlashCommand> {
         Vec::new()
     }

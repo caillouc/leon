@@ -558,7 +558,12 @@ impl Core {
         // Read at each start: a skill file added since shows up (EXT-5).
         let catalog = Arc::clone(&self.ports.catalog);
         let project_dir = project.map(|p| p.path.clone());
-        let skills = blocking(|| project_dir.map_or_default(|dir| catalog.skills(&dir)));
+        let (skills, instructions) = blocking(|| {
+            (
+                project_dir.map_or_default(|dir| catalog.skills(&dir)),
+                catalog.instructions(),
+            )
+        });
         let spec = SessionSpec {
             settings: session.settings.clone(),
             agent,
@@ -567,6 +572,7 @@ impl Core {
             mcp_servers: self.session_servers(self.ports.app_tools.as_ref().map(|t| t.server(id))),
             sources: self.state.sources.to_vec(),
             skills,
+            instructions,
         };
         match self.ports.backends.start(spec) {
             Ok(channel) => {

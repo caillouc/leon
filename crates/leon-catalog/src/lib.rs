@@ -19,7 +19,9 @@ mod sources;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use leon_core::ports::{AgentDefinition, AgentFolder, Catalog, SkillFile, SlashCommand, Source};
+use leon_core::ports::{
+    AgentDefinition, AgentFolder, Catalog, SharedInstructions, SkillFile, SlashCommand, Source,
+};
 use leon_domain::{DoctorCheck, Health};
 
 pub use shared::SharedFile;
@@ -71,6 +73,15 @@ impl Catalog for AgentFiles {
 
     fn sources(&self) -> Vec<Source> {
         self.sources.iter().map(|dir| sources::read(dir)).collect()
+    }
+
+    fn instructions(&self) -> Option<SharedInstructions> {
+        let file = self.home.join(".agents").join("AGENTS.md");
+        let text = std::fs::read_to_string(&file).ok()?;
+        (!text.trim().is_empty()).then(|| SharedInstructions {
+            file,
+            text: text.trim().to_owned(),
+        })
     }
 
     fn folders(&self) -> Vec<AgentFolder> {
@@ -279,6 +290,24 @@ mod tests {
                 (kit_label.as_str(), true, 1, 1),
             ]
         );
+    }
+
+    #[test]
+    fn shared_instructions_come_from_agents_md() {
+        let home = tempfile::tempdir().unwrap();
+        let files = AgentFiles::new(home.path().to_path_buf(), Vec::new());
+        assert_eq!(files.instructions(), None);
+        fs::create_dir_all(home.path().join(".agents")).unwrap();
+        fs::write(home.path().join(".agents/AGENTS.md"), "  \n").unwrap();
+        assert_eq!(files.instructions(), None, "an empty file says nothing");
+        fs::write(
+            home.path().join(".agents/AGENTS.md"),
+            "# Rules\nBe brief.\n",
+        )
+        .unwrap();
+        let shared = files.instructions().unwrap();
+        assert_eq!(shared.text, "# Rules\nBe brief.");
+        assert_eq!(shared.file, home.path().join(".agents/AGENTS.md"));
     }
 
     #[test]

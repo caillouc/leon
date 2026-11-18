@@ -220,6 +220,9 @@ conversation**: one item in the left pane (D5).
   custom-agent words (`read`, `search`, `edit`, `execute`, `web`, `agent`,
   `todo`; Claude Code's tool names are understood too). Without `tools`, the
   agent has every tool its CLI has; MCP tools are never limited.
+- **EXT-8** Shared instructions: `~/.agents/AGENTS.md` goes to every agent, in
+  every CLI, like a `CLAUDE.md` for all of them. A project's own `AGENTS.md`
+  stays with the CLIs, which read it themselves.
 
 ### Platform and quality
 

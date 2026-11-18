@@ -32,6 +32,8 @@ pub(crate) struct Cli {
     label: &'static str,
     program: &'static str,
     args: Vec<String>,
+    /// Environment variables added for it.
+    env: Vec<(String, String)>,
 }
 
 /// `copilot --acp --stdio` (Copilot CLI docs, ACP server page and command
@@ -83,10 +85,24 @@ pub(crate) fn copilot(spec: &SessionSpec, skills: Option<&Path>) -> Cli {
     if let Some(dir) = skills {
         args.push(format!("--plugin-dir={}", dir.display()));
     }
+    // It reads `~/.agents/AGENTS.md` itself from that folder (EXT-8;
+    // `copilot instruction list`, 1.0.113, 2026-11-18; ⚠️ not with `--acp`).
+    let env = spec
+        .instructions
+        .iter()
+        .filter_map(|i| i.file.parent())
+        .map(|dir| {
+            (
+                "COPILOT_CUSTOM_INSTRUCTIONS_DIRS".to_owned(),
+                dir.display().to_string(),
+            )
+        })
+        .collect();
     Cli {
         label: "Copilot CLI",
         program: "copilot",
         args,
+        env,
     }
 }
 
@@ -100,6 +116,7 @@ pub(crate) fn start(
         path,
         program: cli.program,
         args: &cli.args,
+        env: &cli.env,
         cwd: &spec.working_dir,
         label: cli.label,
     };

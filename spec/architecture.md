@@ -141,7 +141,10 @@ project's folders in the same order. It feeds the agent picker, the `/` list
 and the model-to-CLI pick, `leon_core::settings_for_agent` applies it to a
 session's settings (the form, and an agent another agent starts).
 
-Each session gets the source folders and Leon's generic skills (EXT-5).
+Each session gets the source folders, Leon's generic skills (EXT-5) and
+`~/.agents/AGENTS.md` (EXT-8: `--append-system-prompt` for Claude Code, first in
+Codex's `developerInstructions`, `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` for Copilot
+CLI).
 `leon-backends/src/bridge.rs` copies the skills a CLI does not read itself
 into `<data folder>/skills/<cli>/<hash>/`, in that CLI's layout, at each
 session start:

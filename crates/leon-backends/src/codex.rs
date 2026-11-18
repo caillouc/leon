@@ -65,8 +65,15 @@ impl Session {
         if let Some(model) = &s.model {
             params["model"] = json!(model);
         }
-        if let Some(agent) = &spec.agent {
-            params["developerInstructions"] = json!(agent.instructions);
+        // `~/.agents/AGENTS.md` (EXT-8), then the agent's own instructions.
+        let instructions: Vec<&str> = spec
+            .instructions
+            .iter()
+            .map(|i| i.text.as_str())
+            .chain(spec.agent.iter().map(|a| a.instructions.as_str()))
+            .collect();
+        if !instructions.is_empty() {
+            params["developerInstructions"] = json!(instructions.join("\n\n"));
         }
         // The app's own tools (P10) run without asking; the user's servers
         // from their source folders (EXT-2) follow their usual approvals.
@@ -483,6 +490,7 @@ pub(crate) fn start(
         path,
         program: "codex",
         args: &["app-server".to_owned()],
+        env: &[],
         cwd: &spec.working_dir,
         label: "Codex",
     };
@@ -529,6 +537,7 @@ mod tests {
             mcp_servers: Vec::new(),
             sources: Vec::new(),
             skills: Vec::new(),
+            instructions: None,
         }
     }
 
@@ -623,6 +632,17 @@ mod tests {
         assert_eq!(thread_start["approvalPolicy"], "never");
         assert_eq!(thread_start["sandbox"], "workspace-write");
         assert_eq!(thread_start["developerInstructions"], "Write code.");
+        // `~/.agents/AGENTS.md` comes first (EXT-8).
+        let mut shared = spec(None);
+        shared.instructions = Some(leon_core::ports::SharedInstructions {
+            file: PathBuf::from("/home/u/.agents/AGENTS.md"),
+            text: "Be brief.".into(),
+        });
+        let (session, _) = Session::new(&shared, None);
+        assert_eq!(
+            session.thread_request.1["developerInstructions"],
+            "Be brief.\n\nWrite code."
+        );
         assert_eq!(sent[3]["params"]["effort"], "low");
         assert_eq!(
             events,

@@ -61,15 +61,18 @@ pub(crate) fn command(
     cmd
 }
 
-/// Starts `program` in `cwd` with piped stdio (see [`command`]). The process
-/// is killed when the returned [`Child`] is dropped.
+/// Starts `program` in `cwd` with piped stdio and `env` added (see
+/// [`command`]). The process is killed when the returned [`Child`] is
+/// dropped.
 pub(crate) fn spawn(
     path: Option<&OsString>,
     program: &str,
     args: &[String],
+    env: &[(String, String)],
     cwd: &Path,
 ) -> std::io::Result<Child> {
     let mut cmd = Command::from(command(path, program, args, cwd));
+    cmd.envs(env.iter().map(|(k, v)| (k, v)));
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

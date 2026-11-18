@@ -15,6 +15,8 @@ it hands them to each CLI. State on 2026-11-18: Claude Code 2.1.288, Codex
 - A skill is one Markdown file, `<name>.md` (or a `<name>/SKILL.md` folder
   when it brings scripts). Every CLI sees every skill and loads one only when
   the agent needs it.
+- `~/.agents/AGENTS.md` holds what every agent should know, in every CLI,
+  like a `CLAUDE.md` for all of them.
 - Your existing `.claude/agents/` and `.github/agents/` files keep working.
 
 ## Where Leon looks
@@ -127,6 +129,25 @@ the tests") rather than one CLI's tool names. To hand work to another agent,
 use Leon's `start_agent` tool (`agent: "<name>"`, a prompt that says
 everything); its answer comes back as a message starting `[From …]`.
 
+## Shared instructions: `~/.agents/AGENTS.md`
+
+What every agent should know, whatever its CLI: your conventions, how you
+like answers, what never to do. Leon reads it each time an agent session
+starts and hands it over:
+
+| CLI | How | Checked |
+|---|---|---|
+| Claude Code | `--append-system-prompt`: after its default prompt, or after the agent's instructions | 2.1.288, 2026-11-18: an agent run with `--agent` follows it |
+| Codex | first in `developerInstructions`, before the agent's instructions | ⚠️ not in a real turn |
+| Copilot CLI | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS=~/.agents`: it reads the file itself | `copilot instruction list`, 1.0.113; ⚠️ not with `--acp` |
+
+A project's own `AGENTS.md` is left to the CLIs: Codex and Copilot CLI read
+it themselves, Claude Code when the project has no `CLAUDE.md` (or a
+`CLAUDE.md` that imports it with `@AGENTS.md`). Each CLI's personal file
+(`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+`~/.copilot/copilot-instructions.md`) still loads in that CLI: keep only
+what is specific to that CLI there, or an agent reads it twice.
+
 ## A skill file
 
 ```markdown
@@ -156,6 +177,9 @@ Support/leon/skills/` on macOS) and are refreshed each time a session starts.
 Edit the originals, never the copies.
 
 ## Not verified
+
+- Codex: `~/.agents/AGENTS.md` through `developerInstructions` was not
+  checked in a real turn.
 
 - Codex: the extra skill folder was checked with `skills/list`, not in a
   real turn; the `tools` switches (`features.shell_tool`, `web_search`,

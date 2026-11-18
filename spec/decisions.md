@@ -226,3 +226,12 @@ it, in an order the user sets in Settings (`[agents] cli_order`, default
 Claude Code, Codex, Copilot CLI), for the new-conversation form and for an
 agent another agent starts (I7). Chosen by the maintainer on 2026-11-18.
 
+**I18 — Shared instructions (EXT-8).** `~/.agents/AGENTS.md`, read at each
+session start, goes to every agent session: Claude Code through
+`--append-system-prompt`, Codex before the agent's instructions in
+`developerInstructions`, Copilot CLI through `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
+(it then reads the file itself). Project `AGENTS.md` files are left to the
+CLIs. Each CLI's own personal file (`~/.claude/CLAUDE.md`,
+`~/.codex/AGENTS.md`, `~/.copilot/copilot-instructions.md`) still loads in
+that CLI. Chosen by the maintainer on 2026-11-18.
+

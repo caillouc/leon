@@ -103,6 +103,15 @@ pub struct AgentDefinition {
     pub tools: Option<Vec<leon_domain::Capability>>,
 }
 
+/// Instructions every agent gets, in every CLI (EXT-8): `~/.agents/AGENTS.md`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedInstructions {
+    /// The file.
+    pub file: PathBuf,
+    /// Its text.
+    pub text: String,
+}
+
 /// A folder Leon reads agents and skills from, with what it holds
 /// (SETTINGS-1).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,6 +198,8 @@ pub trait Catalog: Send + Sync + 'static {
     /// The user-level folders Leon reads (the ones it finds, then the ones
     /// the user added), with what each holds.
     fn folders(&self) -> Vec<AgentFolder>;
+    /// `~/.agents/AGENTS.md`, when it has text (EXT-8).
+    fn instructions(&self) -> Option<SharedInstructions>;
     /// Doctor: the source folders and what was found in them.
     fn doctor(&self) -> Vec<DoctorCheck>;
 }
@@ -210,6 +221,8 @@ pub struct SessionSpec {
     pub sources: Vec<Source>,
     /// The generic skills every CLI should see (EXT-5).
     pub skills: Vec<SkillFile>,
+    /// What every agent is told, in every CLI (EXT-8).
+    pub instructions: Option<SharedInstructions>,
 }
 
 /// Something the CLI did, normalized across backends.

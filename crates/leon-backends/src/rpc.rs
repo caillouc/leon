@@ -25,6 +25,8 @@ pub(crate) struct Launch<'a> {
     pub path: Option<&'a OsString>,
     pub program: &'a str,
     pub args: &'a [String],
+    /// Environment variables added for it.
+    pub env: &'a [(String, String)],
     pub cwd: &'a Path,
     /// The CLI's name in messages, e.g. "Codex".
     pub label: &'static str,
@@ -41,8 +43,14 @@ pub(crate) fn start(
     let failed = |cause: &dyn std::fmt::Display| {
         PortError::new("starting a CLI", format!("{label}: {cause}"))
     };
-    let mut child =
-        spawn(launch.path, launch.program, launch.args, launch.cwd).map_err(|e| failed(&e))?;
+    let mut child = spawn(
+        launch.path,
+        launch.program,
+        launch.args,
+        launch.env,
+        launch.cwd,
+    )
+    .map_err(|e| failed(&e))?;
     let (Some(mut stdin), Some(stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {

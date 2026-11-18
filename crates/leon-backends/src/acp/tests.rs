@@ -28,6 +28,7 @@ fn spec(resume: Option<&str>) -> SessionSpec {
         mcp_servers: Vec::new(),
         sources: Vec::new(),
         skills: Vec::new(),
+        instructions: None,
     }
 }
 
@@ -257,6 +258,18 @@ fn copilot_flags() {
         copilot(&s, None)
             .args
             .ends_with(&["--deny-tool=write".to_owned(), "--deny-tool=url".to_owned()])
+    );
+    assert_eq!(copilot(&s, None).env, Vec::<(String, String)>::new());
+    s.instructions = Some(leon_core::ports::SharedInstructions {
+        file: PathBuf::from("/home/u/.agents/AGENTS.md"),
+        text: "Be brief.".into(),
+    });
+    assert_eq!(
+        copilot(&s, None).env,
+        [(
+            "COPILOT_CUSTOM_INSTRUCTIONS_DIRS".to_owned(),
+            "/home/u/.agents".to_owned()
+        )]
     );
     let skills = std::path::Path::new("/data/skills/copilot/ab");
     assert_eq!(

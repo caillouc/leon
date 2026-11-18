@@ -8,6 +8,8 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
     let id = new_conversation(&h, BackendKind::Codex).await;
     let spec = h.backends.started.lock().unwrap()[0].spec.clone();
     assert_eq!(spec.working_dir, PathBuf::from("/code/api"));
+    // `~/.agents/AGENTS.md` goes to every session (EXT-8).
+    assert_eq!(spec.instructions.map(|i| i.text), Some("Be brief.".into()));
     assert_eq!(
         spec.agent.map(|a| a.instructions),
         Some("Plan carefully.".into())
