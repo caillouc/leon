@@ -163,7 +163,7 @@ conversation**: one item in the left pane (D5).
 - **DOCTOR-1** A doctor view, like `flutter doctor`: Leon's version and setup
   (config, data folder, notifications…), and for each CLI and tool it uses
   whether it is installed, which version, whether it is logged in, and what
-  to do when something is missing. Connectors, Settings and Doctor sit side by
+  to do when something is missing. Settings, Doctor and Connectors sit side by
   side at the bottom of the left pane.
 
 ### Usage

@@ -1,4 +1,4 @@
-//! The row at the bottom of the left pane: Connectors, Settings, Doctor,
+//! The row at the bottom of the left pane: Settings, Doctor, Connectors,
 //! side by side, each an icon over its name. The Doctor's icon carries a dot
 //! in the colour of its worst finding.
 
@@ -20,9 +20,9 @@ impl Workspace {
             .p_1()
             .border_t_1()
             .border_color(theme::border())
-            .child(self.nav_item(Screen::Tools, Icon::Connectors, "Connectors", None, cx))
             .child(self.nav_item(Screen::Settings, Icon::Settings, "Settings", None, cx))
             .child(self.nav_item(Screen::Doctor, Icon::Doctor, "Doctor", doctor_dot, cx))
+            .child(self.nav_item(Screen::Tools, Icon::Connectors, "Connectors", None, cx))
             .into_any_element()
     }
 
