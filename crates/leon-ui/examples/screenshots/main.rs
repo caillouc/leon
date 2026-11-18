@@ -327,6 +327,10 @@ fn main() {
             Shot::PickerOpen(ConversationId(1), "session-model"),
         ),
         ("flow".to_owned(), Shot::Flow(ConversationId(1))),
+        (
+            "flow-curved".to_owned(),
+            Shot::FlowArrows(ConversationId(1), leon_domain::ArrowStyle::Curved),
+        ),
         ("new-conversation".to_owned(), Shot::NewConversation),
         (
             "right-branch".to_owned(),

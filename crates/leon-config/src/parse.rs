@@ -124,7 +124,12 @@ fn read_flow(value: &Value, settings: &mut Settings, warnings: &mut Vec<Warning>
             ("arrows", Some(Some(style))) => settings.arrows = style,
             ("arrows", _) => warnings.push(Warning::new(
                 dotted,
-                "must be \"rounded\" or \"square\", ignored",
+                format!(
+                    "must be one of {}, ignored",
+                    ArrowStyle::ALL
+                        .map(|s| format!("\"{}\"", s.id()))
+                        .join(", ")
+                ),
             )),
             _ => warnings.push(Warning::new(dotted, "unknown key, ignored")),
         }
@@ -244,7 +249,7 @@ mod tests {
             ("[sources]\nfolders = [\"\"]", "sources.folders"),
             ("[sources]\npaths = []", "sources.paths"),
             ("[flow]\narrows = \"curly\"", "flow.arrows"),
-            ("[flow]\nlines = \"square\"", "flow.lines"),
+            ("[flow]\nlines = \"curved\"", "flow.lines"),
             ("flow = 1", "flow"),
         ];
         for (text, key) in cases {

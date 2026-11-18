@@ -238,4 +238,6 @@ mod layout;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use layout::{Pt, Rect, Step, bends, bounds, label_at, layout, rect, route};
+pub(crate) use layout::{
+    Pt, Rect, Step, arc, bends, bounds, curve_middle, label_at, layout, rect, route,
+};

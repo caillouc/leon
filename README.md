@@ -107,7 +107,7 @@ Runs formatting, clippy (warnings are errors), tests, the crate layer check and
   folders = ["~/my-agent-kit"]   # agents/, skills/, commands/, .mcp.json
 
   [flow]
-  arrows = "rounded"             # or "square"
+  arrows = "rounded"             # or "curved"
   ```
 
   Settings (bottom left in the app) edits this file for you and keeps your

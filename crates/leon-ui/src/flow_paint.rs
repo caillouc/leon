@@ -48,8 +48,9 @@ pub(crate) struct Arrow {
 }
 
 impl Arrow {
-    /// An orthogonal line through `points` (screen units from `origin`),
-    /// dashed for reports, its bends rounded or square, with its head.
+    /// The arrow along `points` (an orthogonal route, screen units from
+    /// `origin`): straight segments with rounded bends, or one smooth curve;
+    /// dashed for reports; with its head.
     pub(crate) fn paint(&self, window: &mut Window, origin: Point<Pixels>, points: &[Pt]) {
         let Self {
             kind,
@@ -83,15 +84,19 @@ impl Arrow {
             .copied()
             .chain(std::iter::once(tip_base))
             .collect();
-        let radius = match style {
-            ArrowStyle::Rounded => 16. * scale,
-            ArrowStyle::Square => 0.,
-        };
         line.move_to(at(body[0]));
-        for step in bends(&body, radius) {
-            match step {
-                Step::Line(p) => line.line_to(at(p)),
-                Step::Curve { to, ctrl } => line.curve_to(at(to), at(ctrl)),
+        match (style, body.as_slice()) {
+            // Curved: the points are the curve's start, controls and end.
+            (ArrowStyle::Curved, [_, a, b, end]) => {
+                line.cubic_bezier_to(at(*end), at(*a), at(*b));
+            }
+            (ArrowStyle::Rounded | ArrowStyle::Curved, _) => {
+                for step in bends(&body, 16. * scale) {
+                    match step {
+                        Step::Line(p) => line.line_to(at(p)),
+                        Step::Curve { to, ctrl } => line.curve_to(at(to), at(ctrl)),
+                    }
+                }
             }
         }
         let c = color(kind);

@@ -14,24 +14,24 @@ pub struct Settings {
     pub arrows: ArrowStyle,
 }
 
-/// The corners of the flow diagram's arrows.
+/// How the flow diagram's arrows run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ArrowStyle {
-    /// Right angles.
-    Square,
-    /// Rounded bends.
+    /// Straight segments with rounded bends.
     #[default]
     Rounded,
+    /// One smooth curve from box to box.
+    Curved,
 }
 
 impl ArrowStyle {
     /// Both styles, in the order the UI offers them.
-    pub const ALL: [Self; 2] = [Self::Rounded, Self::Square];
+    pub const ALL: [Self; 2] = [Self::Rounded, Self::Curved];
 
     /// The value in the config file.
     pub fn id(self) -> &'static str {
         match self {
-            Self::Square => "square",
+            Self::Curved => "curved",
             Self::Rounded => "rounded",
         }
     }
@@ -44,7 +44,7 @@ impl ArrowStyle {
     /// Its name in the UI.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Square => "Square",
+            Self::Curved => "Curved",
             Self::Rounded => "Rounded",
         }
     }

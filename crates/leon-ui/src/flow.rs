@@ -17,7 +17,8 @@ use leon_core::SessionView;
 use leon_domain::{AgentSessionId, ArrowStyle, ConversationId};
 
 use crate::flow_model::{
-    self, Edge, EdgeKind, Node, Pt, Rect, View, label_at, layout, rect, route, status_text,
+    self, Edge, EdgeKind, Node, Pt, Rect, View, arc, curve_middle, label_at, layout, rect, route,
+    status_text,
 };
 use crate::flow_paint::{Arrow, legend};
 use crate::theme;
@@ -114,6 +115,7 @@ impl Workspace {
             self.flow.views.insert(id, (fitted, false));
             fitted
         };
+        let arrows = self.snapshot.settings.arrows;
         let routes: Vec<(Edge, Vec<Pt>)> = model
             .edges
             .iter()
@@ -126,15 +128,27 @@ impl Workspace {
                     EdgeKind::Report => 18.,
                     EdgeKind::Question => 46.,
                 };
-                let points = route(*a, *b, off)
-                    .into_iter()
-                    .map(|p| view.to_screen(p))
-                    .collect();
+                // Curved: one arc, each kind bowed its own amount; rounded:
+                // an orthogonal route, each kind on its own lane.
+                let world = match arrows {
+                    // Each arrow bows to its own left, so the two directions
+                    // between two boxes bow apart; a question bows further
+                    // than the answers on the same way.
+                    ArrowStyle::Curved => {
+                        let bend = if e.kind == EdgeKind::Question {
+                            0.45
+                        } else {
+                            0.2
+                        };
+                        arc(*a, *b, bend).to_vec()
+                    }
+                    ArrowStyle::Rounded => route(*a, *b, off),
+                };
+                let points = world.into_iter().map(|p| view.to_screen(p)).collect();
                 Some((e.clone(), points))
             })
             .collect();
         let selected = self.flow.selected.filter(|s| s.0 == id);
-        let arrows = self.snapshot.settings.arrows;
         let edges_canvas = {
             let routes = routes.clone();
             let store = Rc::clone(&self.flow.area);
@@ -164,7 +178,11 @@ impl Workspace {
             .iter()
             .enumerate()
             .map(|(ix, (edge, points))| {
-                let at = label_at(points);
+                // On a curve, the label sits halfway along it.
+                let at = match (arrows, points.as_slice()) {
+                    (ArrowStyle::Curved, [a, b, c, d]) => curve_middle([*a, *b, *c, *d]),
+                    _ => label_at(points),
+                };
                 let key = (id, edge.from, edge.to, edge.kind);
                 let on = selected == Some(key);
                 let c = color(edge.kind);

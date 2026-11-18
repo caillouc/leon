@@ -301,6 +301,45 @@ fn toward(from: Pt, to: Pt, d: f32) -> Pt {
     }
 }
 
+/// A curved arrow from box `a` to box `b`: one arc between their borders,
+/// bowed to its left by `bend` times its length, so the two directions
+/// between the same boxes bow apart. Returns start, the two control points
+/// and end of a cubic curve.
+pub(crate) fn arc(a: Rect, b: Rect, bend: f32) -> [Pt; 4] {
+    let centre = |r: Rect| Pt {
+        x: r.x + r.w / 2.,
+        y: r.y + r.h / 2.,
+    };
+    let (ca, cb) = (centre(a), centre(b));
+    // Where the line between the centres leaves a box.
+    let border = |r: Rect, from: Pt, to: Pt| {
+        let (dx, dy) = (to.x - from.x, to.y - from.y);
+        let t = (r.w / 2. / dx.abs().max(f32::EPSILON)).min(r.h / 2. / dy.abs().max(f32::EPSILON));
+        Pt {
+            x: from.x + dx * t.min(1.),
+            y: from.y + dy * t.min(1.),
+        }
+    };
+    let (start, end) = (border(a, ca, cb), border(b, cb, ca));
+    let length = distance(start, end).max(1.);
+    // The left of the direction of travel (screen y points down).
+    let (nx, ny) = ((end.y - start.y) / length, -(end.x - start.x) / length);
+    let push = bend * length;
+    let along = |t: f32| Pt {
+        x: start.x + (end.x - start.x) * t + nx * push,
+        y: start.y + (end.y - start.y) * t + ny * push,
+    };
+    [start, along(0.25), along(0.75), end]
+}
+
+/// The point halfway along a cubic curve.
+pub(crate) fn curve_middle([a, b, c, d]: [Pt; 4]) -> Pt {
+    Pt {
+        x: 0.125 * a.x + 0.375 * b.x + 0.375 * c.x + 0.125 * d.x,
+        y: 0.125 * a.y + 0.375 * b.y + 0.375 * c.y + 0.125 * d.y,
+    }
+}
+
 /// Where an arrow's label sits: the middle of its first long segment.
 pub(crate) fn label_at(points: &[Pt]) -> Pt {
     let (a, b) = match points {

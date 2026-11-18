@@ -28,6 +28,8 @@ pub enum Shot {
     PickerOpen(ConversationId, &'static str),
     /// A conversation's flow tab.
     Flow(ConversationId),
+    /// A conversation's flow tab, its arrows drawn in a given style.
+    FlowArrows(ConversationId, leon_domain::ArrowStyle),
     /// The new-conversation form.
     NewConversation,
     /// A conversation with a right-pane tab open: `changes`, `branch`, `pr`
@@ -82,6 +84,13 @@ impl Workspace {
             Shot::Flow(id) => {
                 self.select(*id, cx);
                 self.tabs.remove(id);
+            }
+            Shot::FlowArrows(id, style) => {
+                self.select(*id, cx);
+                self.tabs.remove(id);
+                let mut snapshot = (*self.snapshot).clone();
+                snapshot.settings.arrows = *style;
+                self.snapshot = std::sync::Arc::new(snapshot);
             }
             Shot::NewConversation => self.show_new_conversation(cx),
             Shot::Drawer(id, path) => {
