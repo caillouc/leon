@@ -122,6 +122,33 @@ async fn an_answer_off_screen_marks_unread_and_notifies() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_answer_while_leon_is_in_the_background_is_unread() {
+    let h = harness();
+    // The conversation stays selected, but the user is in another app.
+    // Sent first: intents reach the core in order, CLI events on their own.
+    h.core.send(Intent::WindowActive(false));
+    new_conversation(&h, BackendKind::Codex).await;
+    emit(&h, 0, BackendEvent::Text("Done.".into()));
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: false,
+            usage: None,
+        },
+    );
+    let s = until(&h.core, "unread", |s| {
+        s.conversations[0].conversation.unread
+    })
+    .await;
+    assert_eq!(s.notifications.len(), 1);
+    // Coming back does not hide it: it stays to review until opened.
+    h.core.send(Intent::WindowActive(true));
+    let s = until(&h.core, "back", |s| s.conversations[0].conversation.unread).await;
+    assert!(s.conversations[0].conversation.unread);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn stop_and_questions_reach_the_cli() {
     let h = harness();
     let id = new_conversation(&h, BackendKind::Codex).await;

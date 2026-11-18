@@ -108,6 +108,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         live: HashMap::new(),
         idle_since: HashMap::new(),
         viewing: None,
+        window_active: true,
         event_tx,
         internal_tx,
         git_in_flight: HashSet::new(),
@@ -160,6 +161,8 @@ pub(crate) struct Core {
     /// When each live CLI finished its last turn.
     pub(crate) idle_since: HashMap<AgentSessionId, i64>,
     viewing: Option<ConversationId>,
+    /// Leon's window is the active one.
+    window_active: bool,
     event_tx: UnboundedSender<SessionEvent>,
     pub(crate) internal_tx: UnboundedSender<Internal>,
     pub(crate) git_in_flight: HashSet<ConversationId>,
@@ -318,6 +321,7 @@ impl Core {
             Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
+            Intent::WindowActive(active) => self.window_active = active,
             Intent::Delete(id) => self.delete(id),
             Intent::RefreshGit(id) => self.refresh_git(id),
             Intent::RefreshGitHub => self.refresh_lists(),
@@ -410,9 +414,14 @@ impl Core {
         Self::report(blocking(|| storage.update_conversation(&saved)));
     }
 
+    /// Whether the user sees conversation `id`: shown, in the active window.
+    fn on_screen(&self, id: ConversationId) -> bool {
+        self.window_active && self.viewing == Some(id)
+    }
+
     fn touch(&mut self, id: ConversationId, mark_unread: bool) {
         let now = self.now();
-        let unread = mark_unread && self.viewing != Some(id);
+        let unread = mark_unread && !self.on_screen(id);
         self.edit(id, |c| {
             c.updated_at = now;
             c.unread |= unread;
@@ -487,6 +496,10 @@ impl Core {
 
     /// Sends the user's message (CONV-1).
     fn send(&mut self, id: AgentSessionId, text: &str) {
+        // Replying means its answer was read.
+        if let Some(conversation) = self.state.sessions.get(&id).map(|s| s.session.conversation) {
+            self.edit(conversation, |c| c.unread = false);
+        }
         self.deliver(
             id,
             Entry::User {
@@ -803,7 +816,7 @@ impl Core {
         failed: bool,
     ) {
         self.touch(conversation, true);
-        if self.viewing == Some(conversation) {
+        if self.on_screen(conversation) {
             return;
         }
         let agent = self

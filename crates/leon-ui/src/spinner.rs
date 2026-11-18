@@ -6,7 +6,9 @@
 use std::f32::consts::TAU;
 use std::time::Duration;
 
-use gpui::{AnyElement, Context, IntoElement, Rgba, Svg, Transformation, radians};
+use gpui::{
+    AnyElement, Context, IntoElement, Rgba, Svg, Transformation, div, prelude::*, px, radians,
+};
 use leon_domain::Status;
 
 use crate::icons::{Icon, icon};
@@ -61,11 +63,20 @@ impl Workspace {
     }
 
     /// An agent session's status mark: the turning loader while it works.
+    /// Always as wide, so names line up.
     pub(crate) fn status_mark(&self, status: Status) -> AnyElement {
-        match status {
+        let mark = match status {
             Status::Running => self.spinner(theme::accent(), 12.).into_any_element(),
             other => status_dot(other).into_any_element(),
-        }
+        };
+        div()
+            .size(px(12.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(mark)
+            .into_any_element()
     }
 }
 

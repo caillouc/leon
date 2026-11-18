@@ -41,4 +41,4 @@ pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
 pub use settings::{SessionDefaults, Settings};
 pub use sprint::{Iteration, current_sprint};
-pub use transcript::{Entry, TimedEntry, Usage};
+pub use transcript::{Entry, RunningTool, TimedEntry, Usage, running_tools};

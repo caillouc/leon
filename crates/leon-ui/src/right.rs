@@ -395,6 +395,7 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_3()
+            .child(self.now_card(&sessions))
             .child(place)
             .children(issue)
             .child(label("Agent sessions").pt_1())

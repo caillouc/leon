@@ -102,9 +102,67 @@ pub struct TimedEntry {
     pub entry: Entry,
 }
 
+/// A tool call still running: what, on what, and since when (Unix ms).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningTool {
+    /// What it does: "Ran", "Edited", a tool name.
+    pub name: String,
+    /// A command, a path.
+    pub detail: String,
+    /// When it started.
+    pub since: i64,
+}
+
+/// The tool calls of a transcript that have no result yet, oldest first.
+/// Only meaningful while its session runs: a stopped turn leaves calls
+/// without a result.
+pub fn running_tools(entries: &[TimedEntry]) -> Vec<RunningTool> {
+    entries
+        .iter()
+        .filter_map(|e| match &e.entry {
+            Entry::Tool {
+                name,
+                detail,
+                output: None,
+                ..
+            } => Some(RunningTool {
+                name: name.clone(),
+                detail: detail.clone(),
+                since: e.at,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Entry, TimedEntry, Usage};
+    use super::{Entry, RunningTool, TimedEntry, Usage, running_tools};
+
+    #[test]
+    fn running_tools_are_the_calls_without_a_result() {
+        let tool = |at, name: &str, output: Option<&str>| TimedEntry {
+            at,
+            entry: Entry::Tool {
+                id: format!("t{at}"),
+                name: name.into(),
+                detail: "cargo test".into(),
+                output: output.map(Into::into),
+                failed: false,
+            },
+        };
+        let entries = [
+            tool(1, "Ran", Some("ok")),
+            tool(2, "Ran", None),
+            tool(3, "Edited", None),
+        ];
+        let names: Vec<(String, i64)> = running_tools(&entries)
+            .into_iter()
+            .map(|RunningTool { name, since, .. }| (name, since))
+            .collect();
+        assert_eq!(names, [("Ran".to_owned(), 2), ("Edited".to_owned(), 3)]);
+        assert_eq!(running_tools(&entries[..1]), Vec::new());
+    }
 
     fn end(input: u64, cost: Option<f64>) -> TimedEntry {
         TimedEntry {

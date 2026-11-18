@@ -44,7 +44,9 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **NAV-3** Pinned conversations sit at the top of the left pane, above the
   projects.
 - **NAV-4** Unread indicator per conversation; the user can also mark one as
-  unread.
+  unread. An answer that arrives while the user is not looking — another
+  conversation shown, or Leon behind another app — is unread until the user
+  opens the conversation or replies in it.
 - **NAV-5** Each conversation's row says what it asks of the user: working
   (a turning loader, also on the agent's tab and Flow box, "Working…"), needs you — an answer or a decision — (amber
   edge, "Needs you"), to review — done and not looked at yet — (green edge,
@@ -125,7 +127,9 @@ conversation**: one item in the left pane (D5).
 
 ### Right pane
 
-- **CTX-1** Information about the current conversation and its issue. A
+- **CTX-1** Information about the current conversation and its issue, and
+  first what each agent is doing now: working on which commands and for how
+  long, how many subagents run, the answer it waits for, or idle. A
   conversation opens the right pane on Info until it works in its own
   worktree, then on Changes; a tab picked by hand is kept per conversation.
 - **GIT-1** Uncommitted files of the conversation's working directory.
@@ -271,8 +275,9 @@ conversation**: one item in the left pane (D5).
 
 - **Status** (NAV-5): idle · running · needs input · error — shown with colour
   and shape, not emoji.
-- **Unread** (NAV-4): set when a conversation not on screen finishes an answer,
-  needs input or fails; cleared when shown.
+- **Unread** (NAV-4): set when a conversation not on screen — not shown, or
+  Leon's window not the active one — finishes an answer, needs input or
+  fails; cleared when the user opens it or replies in it.
 - **PR badge** (NAV-6): draft · open + checks (pending / passing / failing) ·
   merged · closed. The PR is the one whose head is the conversation's branch,
   or one bound explicitly.

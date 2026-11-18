@@ -164,6 +164,11 @@ impl Workspace {
             }),
         ];
         subscriptions.extend(right_subscriptions);
+        // An answer counts as seen only while this window is the active one.
+        subscriptions.push(cx.observe_window_activation(window, |this, window, _| {
+            this.core
+                .send(Intent::WindowActive(window.is_window_active()));
+        }));
         let snapshot = core.snapshot();
         let defaults = snapshot.settings.defaults.clone();
         let gh = crate::github::GhState::new(window, cx);

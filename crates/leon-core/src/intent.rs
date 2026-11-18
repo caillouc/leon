@@ -14,6 +14,9 @@ pub enum Intent {
     /// The conversation shown in the main pane (`None`: none). Marks it read
     /// and loads its transcripts (NAV-4).
     View(Option<ConversationId>),
+    /// Leon's window became active (`true`) or went behind another app: an
+    /// answer counts as seen only in the active window (NAV-4, NOTIF-1).
+    WindowActive(bool),
     /// Start a conversation with an agent and send the first message (CONV-2).
     NewConversation {
         /// Project it belongs to.
