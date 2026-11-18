@@ -8,6 +8,7 @@ use leon_domain::{CheckState, Comment, ConversationId, GhRef, Label, PrState, Pu
 
 use crate::icons::{Icon, icon};
 use crate::left::since;
+use crate::sprints::tinted_chip;
 use crate::theme;
 use crate::widgets::{button, empty, label, primary};
 use crate::workspace::{Workspace, text_of};
@@ -34,22 +35,11 @@ pub(crate) fn check_color(state: CheckState) -> Rgba {
 /// Labels as small pills in GitHub's own colors (GH-4), readable on the
 /// dark theme: tinted background, colored border, light text.
 pub(crate) fn labels(labels: &[Label]) -> Div {
-    div()
-        .flex()
-        .flex_wrap()
-        .gap(px(5.))
-        .children(labels.iter().map(|l| {
-            let color = theme::hex(&l.color).unwrap_or(theme::fg_faint());
-            div()
-                .px_2()
-                .rounded_full()
-                .border_1()
-                .border_color(gpui::Rgba { a: 0.7, ..color })
-                .bg(gpui::Rgba { a: 0.18, ..color })
-                .text_size(px(11.))
-                .text_color(theme::fg())
-                .child(l.name.clone())
-        }))
+    div().flex().flex_wrap().gap(px(5.)).children(
+        labels
+            .iter()
+            .map(|l| tinted_chip(&l.name, theme::hex(&l.color).unwrap_or(theme::fg_faint()))),
+    )
 }
 
 /// Whether Copilot is already among the reviewers. ⚠️ Copilot's reviewer

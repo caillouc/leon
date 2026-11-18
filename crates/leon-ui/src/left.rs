@@ -377,17 +377,21 @@ pub(crate) fn since(at_ms: i64) -> String {
 }
 
 pub(crate) fn ago(at_ms: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis());
-    let now = i64::try_from(now).unwrap_or(i64::MAX);
-    let minutes = (now - at_ms).max(0) / 60_000;
+    let minutes = (now_ms() - at_ms).max(0) / 60_000;
     match minutes {
         0 => "now".to_owned(),
         m if m < 60 => format!("{m}m"),
         m if m < 60 * 24 => format!("{}h", m / 60),
         m => format!("{}d", m / (60 * 24)),
     }
+}
+
+/// Now, in Unix milliseconds.
+pub(crate) fn now_ms() -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    i64::try_from(now).unwrap_or(i64::MAX)
 }
 
 /// Shown under Pinned.

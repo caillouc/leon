@@ -20,8 +20,8 @@ use leon_domain::{
 
 use crate::icons::{Icon, icon};
 use crate::left::since;
-use crate::picker::Choice;
 use crate::pr_view::{check_color, labels, pr_state};
+use crate::sprints::{SprintFilter, board_chips, in_sprint, today};
 use crate::theme;
 use crate::widgets::{button, empty, label, pane_header};
 use crate::workspace::{Screen, Workspace};
@@ -53,8 +53,8 @@ impl GhList {
 pub(crate) struct GhState {
     /// Board columns folded by the user, by name.
     pub folded: HashSet<String>,
-    /// The sprint shown: (iteration field, iteration title); all when `None`.
-    pub sprint: Option<(String, String)>,
+    /// The sprint shown.
+    pub sprint: SprintFilter,
     /// The comment box of the details drawer.
     pub comment: Entity<TextareaState>,
 }
@@ -63,7 +63,7 @@ impl GhState {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Workspace>) -> Self {
         Self {
             folded: HashSet::new(),
-            sprint: None,
+            sprint: SprintFilter::Current,
             comment: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .auto_grow(2, 8)
@@ -72,9 +72,6 @@ impl GhState {
         }
     }
 }
-
-/// The value of the sprint filter's "all" choice.
-const ALL_SPRINTS: &str = "";
 
 impl Workspace {
     /// The GitHub section of the left pane.
@@ -128,11 +125,13 @@ impl Workspace {
 
     /// A GitHub list in the main pane.
     pub(crate) fn render_github_list(&self, list: GhList, cx: &mut Context<Self>) -> AnyElement {
+        let today = today();
+        let shown = self.shown_sprint(today);
         let issues: Vec<Issue> = self
             .snapshot
             .my_issues
             .iter()
-            .filter(|i| self.in_sprint(i))
+            .filter(|i| in_sprint(i, shown.as_ref()))
             .cloned()
             .collect();
         let count = match list {
@@ -156,14 +155,14 @@ impl Workspace {
         let empty_text = match (&self.snapshot.github_error, list) {
             (Some(error), _) => Some(error.clone()),
             (None, _) if count > 0 => None,
-            (None, GhList::Issues) if self.gh.sprint.is_some() => {
+            (None, GhList::Issues) if shown.is_some() => {
                 Some("No open issue of yours in this sprint.".to_owned())
             }
             (None, GhList::Issues) => Some("No open issues assigned to you.".to_owned()),
             (None, GhList::PullRequests) => Some("No open pull requests by you.".to_owned()),
         };
         let filter = (list == GhList::Issues)
-            .then(|| self.sprint_filter(cx))
+            .then(|| self.sprint_filter(shown.as_ref(), today, cx))
             .flatten();
         div()
             .size_full()
@@ -186,79 +185,6 @@ impl Workspace {
                 ),
             )
             .into_any_element()
-    }
-
-    fn in_sprint(&self, issue: &Issue) -> bool {
-        self.gh.sprint.as_ref().is_none_or(|(field, title)| {
-            issue
-                .iterations
-                .iter()
-                .any(|i| &i.field == field && &i.title == title)
-        })
-    }
-
-    /// The sprint picker: every iteration of my issues, latest first; none
-    /// when no issue is in a sprint.
-    fn sprint_filter(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let mut sprints: Vec<_> = self
-            .snapshot
-            .my_issues
-            .iter()
-            .flat_map(|i| i.iterations.iter())
-            .collect();
-        if sprints.is_empty() {
-            return None;
-        }
-        sprints.sort_by(|a, b| b.start.cmp(&a.start).then(a.title.cmp(&b.title)));
-        sprints.dedup_by(|a, b| a.field == b.field && a.title == b.title);
-        let fields: HashSet<&str> = sprints.iter().map(|s| s.field.as_str()).collect();
-        let name = |field: &str, title: &str| {
-            if fields.len() > 1 {
-                format!("{field}: {title}")
-            } else {
-                title.to_owned()
-            }
-        };
-        let choices: Vec<Choice> = std::iter::once((ALL_SPRINTS.to_owned(), "All".to_owned()))
-            .chain(sprints.iter().map(|s| {
-                (
-                    format!("{}\t{}", s.field, s.title),
-                    name(&s.field, &s.title),
-                )
-            }))
-            .collect();
-        let current = self
-            .gh
-            .sprint
-            .as_ref()
-            .map_or_else(|| "All".to_owned(), |(f, t)| name(f, t));
-        let field = if fields.len() == 1 {
-            sprints[0].field.clone()
-        } else {
-            "Iteration".to_owned()
-        };
-        let picker = self.picker("gh-sprint", &current, choices, cx, |this, value, _, cx| {
-            this.gh.sprint = value
-                .split_once('\t')
-                .map(|(f, t)| (f.to_owned(), t.to_owned()));
-            cx.notify();
-        });
-        Some(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .px_2()
-                .py(px(2.))
-                .rounded_md()
-                .border_1()
-                .border_color(theme::border())
-                .text_size(px(12.5))
-                .child(icon(Icon::Filter, theme::fg_muted(), 13.))
-                .child(div().text_color(theme::fg_muted()).child(field))
-                .child(picker)
-                .into_any_element(),
-        )
     }
 
     /// One board column: a foldable header, then its issues.
@@ -332,8 +258,7 @@ impl Workspace {
             .items_center()
             .gap_2()
             .child(repo_text(&issue.repo))
-            .children(issue.priority.as_ref().map(|p| chip(&p.name)))
-            .children(issue.iterations.iter().map(|i| chip(&i.title)))
+            .children(board_chips(issue, today()))
             .child(labels(&issue.labels));
         let item = GhRef::issue(&issue.repo, issue.number);
         // A linked conversation is a link in the details line; otherwise
@@ -604,18 +529,6 @@ fn repo_text(repo: &str) -> Div {
         .font_family(theme::MONO)
         .text_size(px(11.5))
         .child(repo.to_owned())
-}
-
-/// A small outlined value: a priority, a sprint.
-pub(crate) fn chip(text: &str) -> Div {
-    div()
-        .px(px(7.))
-        .rounded_full()
-        .border_1()
-        .border_color(theme::border_strong())
-        .text_size(px(11.))
-        .text_color(theme::fg_muted())
-        .child(text.to_owned())
 }
 
 /// "Open conversation" as a link in a row's details line.

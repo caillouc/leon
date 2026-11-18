@@ -1,5 +1,7 @@
 //! GitHub objects Leon shows (NAV-6, GH-*), independent of the API.
 
+use crate::Iteration;
+
 /// State of a pull request (NAV-6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrState {
@@ -104,18 +106,6 @@ pub struct BoardOption {
     pub order: usize,
     /// GitHub's color name for it (`GRAY`, `BLUE`, `GREEN`…), if any.
     pub color: Option<String>,
-}
-
-/// An iteration (a sprint) an issue is planned in, from an iteration field
-/// of its GitHub Project board.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Iteration {
-    /// The field, e.g. "Sprint".
-    pub field: String,
-    /// The iteration, e.g. "Sprint 12".
-    pub title: String,
-    /// Its first day, `YYYY-MM-DD`.
-    pub start: String,
 }
 
 /// A comment on a pull request or an issue.

@@ -8,9 +8,10 @@ use leon_core::{Detail, Intent};
 use leon_domain::{GhKind, GhRef, Issue};
 
 use crate::drawer::drawer;
-use crate::github::{chip, pr_icon};
+use crate::github::pr_icon;
 use crate::icons::{Icon, icon};
 use crate::pr_view::labels;
+use crate::sprints::{board_chips, today};
 use crate::theme;
 use crate::widgets::{empty, label};
 use crate::workspace::Workspace;
@@ -113,8 +114,7 @@ impl Workspace {
             .items_center()
             .gap_2()
             .children(status)
-            .children(issue.priority.as_ref().map(|p| chip(&p.name)))
-            .children(issue.iterations.iter().map(|i| chip(&i.title)))
+            .children(board_chips(issue, today()))
             .child(labels(&issue.labels));
         let item = GhRef::issue(&issue.repo, issue.number);
         div()

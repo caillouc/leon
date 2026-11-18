@@ -6,6 +6,7 @@
 mod backend;
 mod connectors;
 mod conversation;
+mod date;
 mod diff;
 mod doctor;
 mod github;
@@ -14,6 +15,7 @@ mod plan;
 mod project;
 mod review;
 mod settings;
+mod sprint;
 mod transcript;
 
 pub use backend::BackendKind;
@@ -24,15 +26,17 @@ pub use connectors::{
 pub use conversation::{
     AgentSession, AgentSessionId, Conversation, ConversationId, SessionSettings, Status,
 };
+pub use date::Day;
 pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason};
 pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
 pub use github::{
-    BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Iteration, Label, PrState,
-    PullRequest, ReviewThread, issues_by_status,
+    BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,
+    ReviewThread, issues_by_status,
 };
 pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
 pub use settings::{SessionDefaults, Settings};
+pub use sprint::{Iteration, current_sprint};
 pub use transcript::{Entry, TimedEntry, Usage};

@@ -12,7 +12,7 @@ fragment board on Issue {
       } }
     }
     ... on ProjectV2ItemFieldIterationValue {
-      title startDate
+      title startDate duration
       field { ... on ProjectV2IterationField { name } }
     }
   } } } }

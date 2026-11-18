@@ -208,7 +208,8 @@ fn recorded_issue_on_three_boards() {
         iterations: vec![Iteration {
             field: "Sprint".into(),
             title: "Sprint 40".into(),
-            start: "2026-11-23".into(),
+            start: leon_domain::Day(20_780),
+            days: 14,
         }],
         assignees: vec!["octocat".into()],
         body: "Steps to reproduce:\n\n1. Open the app\n".into(),

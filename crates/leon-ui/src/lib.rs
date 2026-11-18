@@ -38,6 +38,7 @@ mod row_menu;
 mod settings_pickers;
 mod settings_view;
 mod shortcuts;
+mod sprints;
 mod theme;
 mod tools_view;
 mod transcript;

@@ -130,6 +130,22 @@ pub fn status_color(name: &str, order: usize) -> Rgba {
     }
 }
 
+/// A board option's GitHub colour (`BLUE`, `RED`…) in the app's palette.
+/// Red shows as a deeper orange: red means an error.
+pub fn github_color(name: &str) -> Option<Rgba> {
+    Some(match name.to_ascii_uppercase().as_str() {
+        "GRAY" => fg_muted(),
+        "BLUE" => accent(),
+        "GREEN" => ok(),
+        "YELLOW" => warn(),
+        "RED" => rgb(0x00e9_784e),
+        "ORANGE" => rgb(0x00f0_9a4f),
+        "PINK" => rgb(0x00e8_8fc4),
+        "PURPLE" => merged(),
+        _ => return None,
+    })
+}
+
 /// Dims the window behind a drawer.
 pub fn scrim() -> Rgba {
     gpui::rgba(0x0000_0099)
@@ -175,7 +191,7 @@ pub fn install(cx: &mut gpui::App) {
 
 #[cfg(test)]
 mod tests {
-    use super::{accent, err, fg_muted, merged, ok, status_color, warn};
+    use super::{accent, err, fg_muted, github_color, merged, ok, rgb, status_color, warn};
 
     #[test]
     fn board_columns_get_the_colour_their_name_means() {
@@ -193,6 +209,24 @@ mod tests {
         // Unknown names, whatever their place: never red.
         for order in 0..12 {
             assert_ne!(status_color("Blocked by legal", order), err());
+        }
+    }
+
+    #[test]
+    fn github_colours_map_to_the_palette_without_red() {
+        let cases = [
+            ("RED", Some(rgb(0x00e9_784e))),
+            ("orange", Some(rgb(0x00f0_9a4f))),
+            ("YELLOW", Some(warn())),
+            ("BLUE", Some(accent())),
+            ("GREEN", Some(ok())),
+            ("PURPLE", Some(merged())),
+            ("GRAY", Some(fg_muted())),
+            ("TEAL", None),
+        ];
+        for (name, expected) in cases {
+            assert_eq!(github_color(name), expected, "{name}");
+            assert_ne!(github_color(name), Some(err()), "{name}");
         }
     }
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use leon_core::GitView;
 use leon_domain::{
-    BoardOption, Check, CheckState, Comment, ConversationId, DiffLine, FileDiff, FileStatus,
+    BoardOption, Check, CheckState, Comment, ConversationId, Day, DiffLine, FileDiff, FileStatus,
     FoldPattern, Hunk, Issue, Iteration, Label, LineKind, PrState, PullRequest, ReviewThread,
 };
 
@@ -216,18 +216,21 @@ pub fn my_issues() -> Arc<Vec<Issue>> {
             color: None,
         })
     };
-    let priority = |name: &str, order| {
+    let priority = |name: &str, order, color: &str| {
         Some(BoardOption {
             name: name.into(),
             order,
-            color: None,
+            color: Some(color.into()),
         })
     };
-    let sprint = |title: &str, start: &str| {
+    // The current sprint started two days ago; the one before ended then.
+    let today = Day::from_unix_ms(crate::hours_ago(0));
+    let sprint = |title: &str, started_days_ago: i64| {
         vec![Iteration {
             field: "Sprint".into(),
             title: title.into(),
-            start: start.into(),
+            start: today.plus(-started_days_ago),
+            days: 14,
         }]
     };
     let issue = |number, title: &str, labels, status, hours| Issue {
@@ -248,8 +251,8 @@ pub fn my_issues() -> Arc<Vec<Issue>> {
     };
     Arc::new(vec![
         Issue {
-            priority: priority("P1", 1),
-            iterations: sprint("Sprint 12", "2026-11-16"),
+            priority: priority("P1", 1, "ORANGE"),
+            iterations: sprint("Sprint 12", 2),
             ..issue(
                 401,
                 "Webhook retries give up after 30 seconds",
@@ -259,8 +262,8 @@ pub fn my_issues() -> Arc<Vec<Issue>> {
             )
         },
         Issue {
-            priority: priority("P2", 2),
-            iterations: sprint("Sprint 12", "2026-11-16"),
+            priority: priority("P2", 2, "YELLOW"),
+            iterations: sprint("Sprint 12", 2),
             ..issue(
                 405,
                 "Refunds over 10k need a second approval",
@@ -270,8 +273,8 @@ pub fn my_issues() -> Arc<Vec<Issue>> {
             )
         },
         Issue {
-            priority: priority("P0", 0),
-            iterations: sprint("Sprint 12", "2026-11-16"),
+            priority: priority("P0", 0, "RED"),
+            iterations: sprint("Sprint 12", 2),
             ..issue(
                 388,
                 "Invoice PDF misses the VAT number",
@@ -281,7 +284,7 @@ pub fn my_issues() -> Arc<Vec<Issue>> {
             )
         },
         Issue {
-            iterations: sprint("Sprint 11", "2026-11-02"),
+            iterations: sprint("Sprint 11", 16),
             ..issue(
                 392,
                 "Retry dashboard shows UTC times",

@@ -1,7 +1,7 @@
 //! An issue's fields on its GitHub Project boards: the "Status" and
 //! "Priority" single-selects, and its iterations (sprints).
 
-use leon_domain::{BoardOption, Iteration};
+use leon_domain::{BoardOption, Day, Iteration};
 use serde_json::Value;
 
 use crate::parse::{nodes, text};
@@ -86,13 +86,14 @@ fn iteration(value: &Value) -> Option<Iteration> {
     Some(Iteration {
         field: text(&value["field"]["name"])?,
         title: text(&value["title"])?,
-        start: text(&value["startDate"])?,
+        start: Day::parse(value["startDate"].as_str()?)?,
+        days: u32::try_from(value["duration"].as_u64()?).ok()?,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use leon_domain::{BoardOption, Iteration};
+    use leon_domain::{BoardOption, Day, Iteration};
     use serde_json::{Value, json};
 
     use super::{Board, board};
@@ -111,7 +112,7 @@ mod tests {
 
     fn sprint(field: &str, title: &str) -> Value {
         json!({ "__typename": "ProjectV2ItemFieldIterationValue", "title": title,
-            "startDate": "2026-11-23", "field": { "name": field } })
+            "startDate": "2026-11-23", "duration": 14, "field": { "name": field } })
     }
 
     /// One issue on boards, each board a list of field values.
@@ -135,7 +136,8 @@ mod tests {
         Iteration {
             field: field.into(),
             title: title.into(),
-            start: "2026-11-23".into(),
+            start: Day(20_780),
+            days: 14,
         }
     }
 

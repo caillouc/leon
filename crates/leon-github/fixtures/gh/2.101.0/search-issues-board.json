@@ -85,6 +85,7 @@
                         "name": "Sprint"
                       },
                       "startDate": "2026-11-09",
+                      "duration": 12,
                       "title": "Sprint 40"
                     },
                     {
@@ -403,6 +404,7 @@
                         "name": "Sprint"
                       },
                       "startDate": "2026-11-23",
+                      "duration": 14,
                       "title": "Sprint 41"
                     },
                     {
@@ -573,6 +575,7 @@
                         "name": "Sprint"
                       },
                       "startDate": "2026-11-09",
+                      "duration": 12,
                       "title": "Sprint 40"
                     },
                     {
