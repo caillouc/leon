@@ -64,10 +64,11 @@ pub struct Snapshot {
     pub settings_path: Option<std::path::PathBuf>,
     /// Why that list could not be read, if it could not.
     pub shared_tools_error: Option<String>,
-    /// What each CLI has as MCP servers and plugins, and when it was read.
+    /// What each CLI that answered has as MCP servers and plugins, in
+    /// `BackendKind::ALL` order, and when the last answer came.
     pub tools: Option<(i64, Arc<Vec<leon_domain::CliConnectors>>)>,
-    /// The CLIs are being asked.
-    pub tools_running: bool,
+    /// The CLIs still being asked: their columns show that they are loading.
+    pub tools_pending: Vec<leon_domain::BackendKind>,
     /// The GitHub repository (`owner/name`) of each project, from its
     /// `origin`: an issue starts a conversation in its repository's project.
     pub project_repos: Arc<HashMap<ProjectId, String>>,

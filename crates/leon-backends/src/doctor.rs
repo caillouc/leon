@@ -1,7 +1,8 @@
 //! Doctor checks for the coding CLIs: installed, version, logged in. Login
 //! commands checked on 2026-11-17: `claude auth status` prints JSON with
 //! `loggedIn` (2.1.288); `codex login status` prints "Logged in using …"
-//! (0.160.0).
+//! (0.160.0). Copilot CLI has none (1.0.113, checked on 2026-11-18): its MCP
+//! listing tells instead.
 
 use std::ffi::OsString;
 use std::time::Duration;
@@ -9,7 +10,7 @@ use std::time::Duration;
 use leon_domain::{BackendKind, DoctorCheck, DoctorSection, Health, version_check};
 use serde_json::Value;
 
-use crate::process::{RunError, program, run, strings};
+use crate::process::{Output, RunError, program, run, strings};
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -23,10 +24,19 @@ fn checked_with(backend: BackendKind) -> Option<&'static str> {
 }
 
 pub(crate) fn section(path: Option<&OsString>, backend: BackendKind) -> DoctorSection {
+    let program = program(backend);
+    section_with(backend, |args| run(path, program, &strings(args), TIMEOUT))
+}
+
+/// `backend`'s section, each command run by `run`.
+fn section_with(
+    backend: BackendKind,
+    run: impl Fn(&[&str]) -> Result<Output, RunError>,
+) -> DoctorSection {
     let name = backend.display_name();
     let program = program(backend);
     let mut checks = Vec::new();
-    match run(path, program, &strings(&["--version"]), TIMEOUT) {
+    match run(&["--version"]) {
         Err(RunError::NotFound) => {
             checks.push(
                 DoctorCheck::new(
@@ -66,15 +76,15 @@ pub(crate) fn section(path: Option<&OsString>, backend: BackendKind) -> DoctorSe
             });
         }
     }
-    checks.push(login(path, backend));
+    checks.push(login(backend, &run));
     DoctorSection {
         title: name.to_owned(),
         checks,
     }
 }
 
-fn login(path: Option<&OsString>, backend: BackendKind) -> DoctorCheck {
-    type Read = fn(bool, &str) -> Option<bool>;
+fn login(backend: BackendKind, run: impl Fn(&[&str]) -> Result<Output, RunError>) -> DoctorCheck {
+    type Read = fn(&Output) -> Option<bool>;
     let (args, read, fix): (&[&str], Read, &str) = match backend {
         BackendKind::ClaudeCode => (
             &["auth", "status", "--json"],
@@ -86,17 +96,14 @@ fn login(path: Option<&OsString>, backend: BackendKind) -> DoctorCheck {
             codex_logged_in,
             "Run `codex login` in a terminal",
         ),
-        BackendKind::CopilotCli => {
-            return DoctorCheck::new(
-                Health::Warning,
-                "Logged in",
-                "not checked: Copilot CLI has no status command Leon knows",
-            )
-            .fix("Run `copilot` once in a terminal and log in if it asks");
-        }
+        BackendKind::CopilotCli => (
+            &["mcp", "list", "--json"],
+            copilot_logged_in,
+            "Run `copilot login` in a terminal",
+        ),
     };
-    match run(path, program(backend), &strings(args), TIMEOUT) {
-        Ok(out) => match read(out.ok, &format!("{}{}", out.stdout, out.stderr)) {
+    match run(args) {
+        Ok(out) => match read(&out) {
             Some(true) => DoctorCheck::new(Health::Ok, "Logged in", "yes"),
             Some(false) => DoctorCheck::new(Health::Problem, "Logged in", "no").fix(fix),
             None => DoctorCheck::new(
@@ -115,8 +122,8 @@ fn login(path: Option<&OsString>, backend: BackendKind) -> DoctorCheck {
 }
 
 /// `claude auth status --json`: `{"loggedIn": bool, …}`.
-fn claude_logged_in(_ok: bool, out: &str) -> Option<bool> {
-    serde_json::from_str::<Value>(out).ok()?["loggedIn"].as_bool()
+fn claude_logged_in(out: &Output) -> Option<bool> {
+    serde_json::from_str::<Value>(&out.stdout).ok()?["loggedIn"].as_bool()
 }
 
 /// `codex login status`: `Logged in using ChatGPT` (on stderr), or a
@@ -125,26 +132,30 @@ fn claude_logged_in(_ok: bool, out: &str) -> Option<bool> {
     clippy::unnecessary_wraps,
     reason = "same signature as the other login readers"
 )]
-fn codex_logged_in(ok: bool, out: &str) -> Option<bool> {
-    Some(ok && out.trim_start().starts_with("Logged in"))
+fn codex_logged_in(out: &Output) -> Option<bool> {
+    let said = format!("{}{}", out.stdout, out.stderr);
+    Some(out.ok && said.trim_start().starts_with("Logged in"))
+}
+
+/// What Copilot CLI prints on stderr when it could not check its built-in
+/// GitHub server ("timed out checking for …" or "could not check for …").
+const COPILOT_UNCHECKED: &str = "the built-in GitHub MCP server, so it is not shown here";
+
+/// `copilot mcp list --json`: Copilot CLI has no login status command, but it
+/// lists its built-in `github-mcp-server` (`"source": "builtin"`) only once
+/// logged in. Checked on 2026-11-18 with 1.0.113: listed when logged in,
+/// absent from an empty home with no token. A server of the user's under that
+/// name hides the built-in one, so it tells nothing.
+fn copilot_logged_in(out: &Output) -> Option<bool> {
+    if !out.ok || out.stderr.contains(COPILOT_UNCHECKED) {
+        return None;
+    }
+    let list = serde_json::from_str::<Value>(&out.stdout).ok()?;
+    match list["mcpServers"].as_object()?.get("github-mcp-server") {
+        None => Some(false),
+        Some(server) => (server["source"].as_str() == Some("builtin")).then_some(true),
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{claude_logged_in, codex_logged_in};
-
-    #[test]
-    fn login_answers_are_read() {
-        assert_eq!(
-            claude_logged_in(true, r#"{"loggedIn": false, "authMethod": "none"}"#),
-            Some(false)
-        );
-        assert_eq!(claude_logged_in(true, r#"{"loggedIn": true}"#), Some(true));
-        assert_eq!(claude_logged_in(true, "not json"), None);
-        assert_eq!(
-            codex_logged_in(true, "Logged in using ChatGPT\n"),
-            Some(true)
-        );
-        assert_eq!(codex_logged_in(false, "Not logged in\n"), Some(false));
-    }
-}
+mod tests;

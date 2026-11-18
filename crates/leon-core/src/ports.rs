@@ -385,9 +385,9 @@ pub trait Backends: Send + Sync + 'static {
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError>;
     /// Doctor: one section per CLI (installed, version, logged in). Blocks.
     fn doctor(&self) -> Vec<DoctorSection>;
-    /// Connectors view (TOOLS-1): each CLI's plugins, MCP servers and
+    /// Connectors view (TOOLS-1): `backend`'s plugins, MCP servers and
     /// account connectors, with their state. Blocks; can take seconds.
-    fn connectors(&self) -> Vec<leon_domain::CliConnectors>;
+    fn connectors(&self, backend: BackendKind) -> leon_domain::CliConnectors;
 }
 
 /// The `PATH` adapters start programs with: the user's login-shell `PATH`,

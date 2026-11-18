@@ -87,16 +87,28 @@ async fn a_shared_server_reaches_new_sessions_untrusted() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_cli_listing_arrives_in_the_background() {
+async fn each_cli_listing_arrives_on_its_own_in_the_background() {
     let h = harness();
     until(&h.core, "loaded", |s| s.loaded).await;
     h.core.send(Intent::RefreshTools);
-    let s = until(&h.core, "tools", |s| s.tools.is_some()).await;
+    let names = |s: &Snapshot| -> Vec<String> {
+        s.tools.as_ref().map_or_else(Vec::new, |(_, clis)| {
+            clis.iter().map(|c| c.connectors[0].name.clone()).collect()
+        })
+    };
+    // The slow CLI is still being asked while the others are shown.
+    let s = until(&h.core, "two CLIs", |s| names(s).len() == 2).await;
+    assert_eq!(names(&s), ["claude_server", "codex_server"]);
+    assert_eq!(s.tools_pending, [BackendKind::CopilotCli]);
+
+    h.backends
+        .copilot_answers
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let s = until(&h.core, "every CLI", |s| s.tools_pending.is_empty()).await;
     assert_eq!(
-        s.tools.as_ref().unwrap().1[0].connectors[0].name,
-        "node_repl"
+        names(&s),
+        ["claude_server", "codex_server", "copilot_server"]
     );
-    assert!(!s.tools_running);
 }
 
 #[tokio::test(flavor = "multi_thread")]

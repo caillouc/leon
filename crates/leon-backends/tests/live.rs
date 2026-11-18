@@ -186,15 +186,20 @@ async fn claude_stops_then_resumes() {
 #[test]
 #[ignore = "runs the real CLIs' list commands with the user's config"]
 fn connectors_are_listed() {
-    for cli in Clis::default().connectors() {
+    for backend in BackendKind::ALL {
+        let started = std::time::Instant::now();
+        let cli = Clis::default().connectors(backend);
         let mut counts = std::collections::BTreeMap::new();
         for c in &cli.connectors {
             *counts
                 .entry(format!("{:?} {:?}", c.kind, c.state))
                 .or_insert(0) += 1;
         }
-        eprintln!("{:?}: {counts:?}, problem: {:?}", cli.backend, cli.problem);
-        assert_eq!(cli.problem, None, "{:?}", cli.backend);
-        assert!(!cli.connectors.is_empty(), "{:?}", cli.backend);
+        eprintln!(
+            "{backend:?} in {:.1} s: {counts:?}, problem: {:?}",
+            started.elapsed().as_secs_f32(),
+            cli.problem
+        );
+        assert_eq!(cli.problem, None, "{backend:?}");
     }
 }

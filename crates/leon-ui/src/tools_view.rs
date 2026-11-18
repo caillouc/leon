@@ -12,12 +12,12 @@ use gpui_component::input::{Input, InputState};
 use leon_core::Intent;
 use leon_domain::{
     BackendKind, CliConnectors, Connector, ConnectorKind, ConnectorRow, ConnectorState, McpServer,
-    connector_table, split_command,
+    Status, connector_table, split_command,
 };
 
 use crate::left::since;
 use crate::theme;
-use crate::widgets::{button, empty, pane_header, primary};
+use crate::widgets::{button, empty, pane_header, primary, status_dot};
 use crate::workspace::{Workspace, value_of};
 
 /// The add form's inputs and its last error.
@@ -81,8 +81,17 @@ impl Workspace {
     /// The Connectors view: per CLI, what it is connected to; then the
     /// servers Leon gives every CLI.
     pub(crate) fn render_tools(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let running = self.snapshot.tools_running;
+        let pending = &self.snapshot.tools_pending;
+        let running = !pending.is_empty();
         let subtitle = match &self.snapshot.tools {
+            _ if running => format!(
+                "What each coding CLI can reach · asking {}…",
+                pending
+                    .iter()
+                    .map(|b| b.display_name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Some((at, _)) => format!("What each coding CLI can reach · checked {}", since(*at)),
             None => "What each coding CLI can reach".to_owned(),
         };
@@ -94,10 +103,12 @@ impl Workspace {
             )
             .when(running, |b| b.opacity(0.6)),
         );
-        let table = match &self.snapshot.tools {
-            Some((_, clis)) => self.connectors_table(clis, cx),
-            None => empty("Asking each CLI…"),
-        };
+        let clis = self
+            .snapshot
+            .tools
+            .as_ref()
+            .map_or(&[][..], |(_, clis)| clis.as_slice());
+        let table = self.connectors_table(clis, cx);
         let shared = self.render_shared(cx);
         div()
             .size_full()
@@ -124,8 +135,8 @@ impl Workspace {
     }
 
     /// One row per service (Slack, Metabase…) working in at least one CLI,
-    /// one column per CLI: whether it works there, to compare them. A search
-    /// narrows by name.
+    /// one column per CLI: whether it works there, to compare them. A CLI
+    /// still being asked says so in its column. A search narrows by name.
     fn connectors_table(&self, clis: &[CliConnectors], cx: &mut Context<Self>) -> AnyElement {
         let query = value_of(&self.tools_form.search, cx).to_lowercase();
         let rows: Vec<_> = connector_table(clis)
@@ -133,15 +144,19 @@ impl Workspace {
             .filter(ConnectorRow::connected)
             .filter(|r| query.is_empty() || r.name.to_lowercase().contains(&query))
             .collect();
-        let backends: Vec<BackendKind> = clis.iter().map(|c| c.backend).collect();
-        let problems = clis.iter().filter_map(|c| {
-            c.problem.as_ref().map(|p| {
-                div()
-                    .text_size(px(12.))
-                    .text_color(theme::warn())
-                    .child(format!("{}: {p}", c.backend.display_name()))
-            })
-        });
+        let pending = &self.snapshot.tools_pending;
+        let backends = BackendKind::ALL;
+        let problems = clis
+            .iter()
+            .filter(|c| !pending.contains(&c.backend))
+            .filter_map(|c| {
+                c.problem.as_ref().map(|p| {
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme::warn())
+                        .child(format!("{}: {p}", c.backend.display_name()))
+                })
+            });
         let head = div()
             .flex()
             .items_center()
@@ -152,11 +167,18 @@ impl Workspace {
             .text_size(px(12.))
             .text_color(theme::fg_muted())
             .child(div().flex_1().child("Connector"))
-            .children(
-                backends
-                    .iter()
-                    .map(|b| div().w(px(COLUMN)).flex_none().child(b.display_name())),
-            );
+            .children(backends.iter().map(|b| {
+                div()
+                    .w(px(COLUMN))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .when(pending.contains(b), |d| {
+                        d.child(status_dot(Status::Running))
+                    })
+                    .child(b.display_name())
+            }));
         let body = rows.iter().enumerate().map(|(ix, row)| {
             let kinds: Vec<&str> = {
                 let mut k: Vec<&str> = row.entries.iter().map(|(_, c)| kind_name(c.kind)).collect();
@@ -188,13 +210,20 @@ impl Workspace {
                                 .child(kinds.join(" · ")),
                         ),
                 )
-                .children(
-                    backends
-                        .iter()
-                        .map(|b| cell(&row.of(*b).collect::<Vec<_>>())),
-                )
+                .children(backends.iter().map(|b| {
+                    if pending.contains(b) {
+                        checking()
+                    } else {
+                        cell(&row.of(*b).collect::<Vec<_>>())
+                    }
+                }))
         });
         let count = rows.len();
+        let none = if pending.is_empty() {
+            "No working connector matches."
+        } else {
+            "Asking each CLI what it is connected to…"
+        };
         div()
             .flex()
             .flex_col()
@@ -217,9 +246,7 @@ impl Workspace {
                     .text_size(px(13.))
                     .child(head)
                     .children(body)
-                    .when(count == 0, |d| {
-                        d.child(empty("No working connector matches."))
-                    }),
+                    .when(count == 0, |d| d.child(empty(none))),
             )
             .child(hint(
                 "Account connectors (Slack, Gmail…) are connected on the CLI's account, e.g. \
@@ -400,6 +427,16 @@ fn cell(entries: &[&Connector]) -> gpui::Div {
             d.child(div().size(px(8.)).rounded_full().bg(theme::ok()))
         })
         .child(if on { "connected" } else { "—" })
+}
+
+/// A CLI still being asked: its column says so on every row.
+fn checking() -> gpui::Div {
+    div()
+        .w(px(COLUMN))
+        .flex_none()
+        .text_size(px(12.5))
+        .text_color(theme::fg_faint())
+        .child("checking…")
 }
 
 fn hint(text: &str) -> gpui::Div {

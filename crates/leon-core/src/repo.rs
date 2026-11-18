@@ -33,7 +33,7 @@ pub(crate) enum Internal {
     /// The doctor's report.
     Doctor(Vec<leon_domain::DoctorSection>),
     /// What each CLI is connected to (TOOLS-1).
-    Tools(Vec<leon_domain::CliConnectors>),
+    Tools(leon_domain::CliConnectors),
 }
 
 impl Core {
@@ -225,7 +225,7 @@ impl Core {
                 });
             }
             Internal::Doctor(sections) => self.doctor_done(sections),
-            Internal::Tools(sections) => self.tools_done(sections),
+            Internal::Tools(cli) => self.tools_done(cli),
             Internal::Tick => {
                 self.stop_idle_clis();
                 let ids: Vec<ConversationId> = self

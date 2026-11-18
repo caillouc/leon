@@ -1,0 +1,38 @@
+[
+  {
+    "name": "node_repl",
+    "enabled": true,
+    "disabled_reason": null,
+    "transport": {
+      "type": "stdio",
+      "command": "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl",
+      "args": [],
+      "env": {
+        "NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS": "*****",
+        "BROWSER_USE_TINYSKY_ENABLED": "*****",
+        "NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE": "*****",
+        "NODE_REPL_NODE_PATH": "*****",
+        "CODEX_HOME": "*****",
+        "SKY_CUA_SERVICE_PATH": "*****",
+        "NODE_REPL_TRUSTED_SERVICES": "*****",
+        "NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER": "*****",
+        "NODE_REPL_NODE_MODULE_DIRS": "*****",
+        "NODE_REPL_TRUSTED_CODE_PATHS": "*****",
+        "BROWSER_USE_AVAILABLE_BACKENDS": "*****",
+        "NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME": "*****",
+        "BROWSER_USE_CODEX_APP_VERSION": "*****",
+        "CODEX_CLI_PATH": "*****",
+        "BROWSER_USE_CODEX_APP_BUILD_FLAVOR": "*****"
+      },
+      "env_vars": [
+        "BROWSER_USE_ACCESS_EXECUTOR_ID",
+        "BROWSER_USE_ACCESS_PIPE_PATH",
+        "BROWSER_USE_ACCESS_VERIFYING_IDENTITY"
+      ],
+      "cwd": null
+    },
+    "startup_timeout_sec": 120.0,
+    "tool_timeout_sec": null,
+    "auth_status": "unsupported"
+  }
+]

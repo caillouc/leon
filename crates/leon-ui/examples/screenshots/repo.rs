@@ -389,9 +389,14 @@ pub fn doctor() -> (i64, Arc<Vec<leon_domain::DoctorSection>>) {
         },
         S {
             title: "Copilot CLI".into(),
-            checks: vec![C::new(H::Problem, "Installed", "`copilot` not found").fix(
-                "Install Copilot CLI so that `copilot` is on your PATH, then run the doctor again",
-            )],
+            checks: vec![
+                C::new(
+                    H::Warning,
+                    "Version",
+                    "GitHub Copilot CLI 1.0.113. (Leon was not tested with this CLI yet)",
+                ),
+                C::new(H::Ok, "Logged in", "yes"),
+            ],
         },
         S {
             title: "git".into(),
@@ -479,13 +484,12 @@ pub fn tools() -> (i64, Arc<Vec<leon_domain::CliConnectors>>) {
             connectors: vec![
                 c("github@openai-curated", K::Plugin, S::On, "0.3.1"),
                 c("node_repl", K::Server, S::On, "node"),
-                c("codex_app", K::Server, S::Off, "codex-app"),
             ],
             problem: None,
         },
         Cli {
             backend: B::CopilotCli,
-            connectors: vec![c("computer-use", K::Plugin, S::Off, "built-in")],
+            connectors: vec![c("metabase", K::Server, S::On, "npx")],
             problem: None,
         },
     ];

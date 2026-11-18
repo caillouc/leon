@@ -1,6 +1,8 @@
 //! Readers for the CLIs' list commands, on output recorded on 2026-11-18 in
 //! `fixtures/<cli>/<version>/`. Unknown fields and lines are ignored; a JSON
-//! listing without the expected top-level shape gives `None`.
+//! listing without the expected top-level shape gives `None`. What a CLI
+//! ships or turns on by itself is left out: only what the user installed or
+//! connected is listed.
 
 use leon_domain::{Connector, ConnectorKind, ConnectorState};
 use serde_json::Value;
@@ -54,8 +56,9 @@ fn json(out: &str) -> Option<Value> {
     serde_json::from_str(out).ok()
 }
 
-/// `claude plugin list --json`: `[{id, version, enabled, …}]`, `id` being
-/// `name@marketplace`.
+/// `claude plugin list --json`: `[{id, version, enabled, scope, …}]`, `id`
+/// being `name@marketplace`. Only installed plugins are listed: no built-in
+/// one appears (2.1.288, checked on 2026-11-18).
 pub(super) fn claude_plugins(out: &str) -> Option<Vec<Connector>> {
     let list = json(out)?;
     let plugins = list.as_array()?.iter();
@@ -66,16 +69,43 @@ pub(super) fn claude_plugins(out: &str) -> Option<Vec<Connector>> {
     )
 }
 
-/// `codex plugin list --json`: `{installed: [{pluginId, version, enabled,
-/// …}], available: […]}`; only `installed` is read.
+/// Codex's marketplaces of bundled plugins, not picked by the user: names
+/// Codex reserves (its `marketplace_policy.rs`, read on 2026-11-18), kept in
+/// Codex's own folders (`.tmp/bundled-marketplaces`, `codex-runtimes`). A
+/// fresh Codex home has none (0.160.0, checked on 2026-11-18): they come with
+/// the vendor's desktop app (⚠️ not verified which program adds them).
+const CODEX_BUNDLED: [&str; 3] = [
+    "openai-bundled",
+    "openai-bundled-alpha",
+    "openai-primary-runtime",
+];
+
+/// A Codex plugin the user did not install: one installed for every account
+/// (`installPolicy: INSTALLED_BY_DEFAULT`) or one from a bundled marketplace.
+fn codex_default(plugin: &Value) -> bool {
+    text(plugin, "installPolicy") == "INSTALLED_BY_DEFAULT"
+        || CODEX_BUNDLED.contains(&text(plugin, "marketplaceName"))
+}
+
+/// `codex plugin list --json`: `{installed: [{pluginId, marketplaceName,
+/// version, enabled, installPolicy, …}], available: […]}`; only `installed`
+/// is read.
 pub(super) fn codex_plugins(out: &str) -> Option<Vec<Connector>> {
     let list = json(out)?;
     let plugins = list["installed"].as_array()?.iter();
     Some(
         plugins
+            .filter(|p| !codex_default(p))
             .filter_map(|p| Some(plugin(p["pluginId"].as_str()?, p)))
             .collect(),
     )
+}
+
+/// Copilot CLI's own plugins and servers: `"source": "builtin"`; a server the
+/// user added says `user` (1.0.113, recorded on 2026-11-18). `copilot mcp
+/// list` groups servers as User, Workspace, Plugin and Builtin (its code).
+fn copilot_builtin(item: &Value) -> bool {
+    text(item, "source") == "builtin"
 }
 
 /// `copilot plugin list --json`: `[{name, marketplace, version, enabled,
@@ -85,6 +115,7 @@ pub(super) fn copilot_plugins(out: &str) -> Option<Vec<Connector>> {
     let plugins = list.as_array()?.iter();
     Some(
         plugins
+            .filter(|p| !copilot_builtin(p))
             .filter_map(|p| {
                 let name = p["name"].as_str()?;
                 Some(match text(p, "marketplace") {
@@ -96,7 +127,8 @@ pub(super) fn copilot_plugins(out: &str) -> Option<Vec<Connector>> {
     )
 }
 
-/// `codex mcp list --json`: `[{name, enabled, auth_status, transport:
+/// `codex --disable plugins mcp list --json` (the user's own servers, not
+/// the ones plugins bring): `[{name, enabled, auth_status, transport:
 /// {command | url, …}, …}]`.
 pub(super) fn codex_servers(out: &str) -> Option<Vec<Connector>> {
     let list = json(out)?;
@@ -127,6 +159,7 @@ pub(super) fn copilot_servers(out: &str) -> Option<Vec<Connector>> {
     let servers = list["mcpServers"].as_object()?.iter();
     Some(
         servers
+            .filter(|(_, s)| !copilot_builtin(s))
             .map(|(name, s)| connector(name, ConnectorKind::Server, enabled(s), target(s)))
             .collect(),
     )

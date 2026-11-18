@@ -2,8 +2,10 @@
 //! own MCP servers and its account's connectors, read with the CLI's own list
 //! commands, as JSON wherever the CLI offers it. Checked live on 2026-11-18
 //! with Claude Code 2.1.288, Codex 0.160.0 and Copilot CLI 1.0.113.
-//! `claude mcp list` has no JSON output and connects to every server, so it
-//! takes a few seconds.
+//! Timed that day: `claude mcp list` 4.2 s (no JSON output, connects to
+//! every server), `copilot mcp list` 2.1 s, the others under 0.6 s, except a
+//! first `codex plugin list` after a while: 115.7 s, then 0.3 s (⚠️ not
+//! verified why). A CLI's two commands run at the same time.
 
 mod parse;
 
@@ -32,7 +34,11 @@ fn commands(backend: BackendKind) -> [(&'static [&'static str], Parse); 2] {
         ],
         BackendKind::Codex => [
             (&["plugin", "list", "--json"], parse::codex_plugins),
-            (&["mcp", "list", "--json"], parse::codex_servers),
+            // Servers that plugins bring are shown through their plugin.
+            (
+                &["--disable", "plugins", "mcp", "list", "--json"],
+                parse::codex_servers,
+            ),
         ],
         BackendKind::CopilotCli => [
             (&["plugin", "list", "--json"], parse::copilot_plugins),
@@ -53,18 +59,33 @@ enum Failure {
     Problem(String),
 }
 
-/// `backend`'s connectors, each list command run by `run`. A missing CLI
-/// stops at the first command; a failing command is named in the problem and
-/// the other commands' connectors are kept.
+/// `backend`'s connectors, each list command run by `run`, all at once. A
+/// missing CLI gives only that problem; a failing command is named in the
+/// problem and the other commands' connectors are kept.
 fn read_with(
     backend: BackendKind,
-    run: impl Fn(&[&str]) -> Result<Output, RunError>,
+    run: impl Fn(&[&str]) -> Result<Output, RunError> + Sync,
 ) -> CliConnectors {
     let program = program(backend);
+    let commands = commands(backend);
+    let ran: Vec<Result<Output, RunError>> = std::thread::scope(|scope| {
+        let running: Vec<_> = commands
+            .iter()
+            .map(|(args, _)| scope.spawn(|| run(args)))
+            .collect();
+        running
+            .into_iter()
+            .map(|thread| {
+                thread
+                    .join()
+                    .unwrap_or_else(|_| Err(RunError::Other("its thread stopped".to_owned())))
+            })
+            .collect()
+    });
     let mut connectors = Vec::new();
     let mut problems = Vec::new();
-    for (args, parse) in commands(backend) {
-        match listed(program, args, run(args), parse) {
+    for ((args, parse), ran) in commands.into_iter().zip(ran) {
+        match listed(program, args, ran, parse) {
             Ok(found) => connectors.extend(found),
             Err(Failure::NotInstalled) => {
                 return CliConnectors {

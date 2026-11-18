@@ -51,6 +51,8 @@ pub enum Shot {
     RowMenu(ConversationId),
     /// The Tools view.
     Tools,
+    /// The Tools view while these CLIs are still being asked.
+    ToolsAsking(Vec<leon_domain::BackendKind>),
     /// The Settings view.
     Settings,
     /// A conversation's changed file, large in the drawer (path); side by
@@ -171,6 +173,13 @@ impl Workspace {
             }
             Shot::Doctor => self.screen = Screen::Doctor,
             Shot::Tools => self.screen = Screen::Tools,
+            Shot::ToolsAsking(pending) => {
+                self.screen = Screen::Tools;
+                self.snapshot = std::sync::Arc::new(leon_core::Snapshot {
+                    tools_pending: pending.clone(),
+                    ..(*self.snapshot).clone()
+                });
+            }
             Shot::Settings => self.open_screen(Screen::Settings, window, cx),
             Shot::RowMenu(id) => {
                 self.select(*id, cx);

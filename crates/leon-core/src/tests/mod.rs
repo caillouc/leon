@@ -169,6 +169,8 @@ struct FakeBackends {
     started: Mutex<Vec<Started>>,
     /// What `title` answers; `None`: it fails.
     title: Mutex<Option<String>>,
+    /// Copilot CLI's connectors wait for this, to test a slow CLI.
+    copilot_answers: std::sync::atomic::AtomicBool,
 }
 
 impl Backends for FakeBackends {
@@ -192,17 +194,28 @@ impl Backends for FakeBackends {
             .clone()
             .ok_or_else(|| PortError::new("writing a title", "no title in this test"))
     }
-    fn connectors(&self) -> Vec<leon_domain::CliConnectors> {
-        vec![leon_domain::CliConnectors {
-            backend: BackendKind::Codex,
+    fn connectors(&self, backend: BackendKind) -> leon_domain::CliConnectors {
+        if backend == BackendKind::CopilotCli {
+            for _ in 0..400 {
+                if self
+                    .copilot_answers
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        leon_domain::CliConnectors {
+            backend,
             connectors: vec![leon_domain::Connector {
-                name: "node_repl".into(),
+                name: format!("{}_server", backend.id()),
                 kind: leon_domain::ConnectorKind::Server,
                 state: leon_domain::ConnectorState::On,
                 detail: "node".into(),
             }],
             problem: None,
-        }]
+        }
     }
     fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
         vec![leon_domain::DoctorSection {

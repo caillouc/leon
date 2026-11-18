@@ -109,7 +109,8 @@ pub(crate) struct State {
     pub shared_error: Option<String>,
     /// What each CLI has as MCP servers and plugins, and when it was read.
     pub tools: Option<(i64, Arc<Vec<leon_domain::CliConnectors>>)>,
-    pub tools_running: bool,
+    /// The CLIs still being asked for their connectors.
+    pub tools_pending: Vec<leon_domain::BackendKind>,
     /// The GitHub repository of each project, from its `origin`.
     pub project_repos: Arc<HashMap<ProjectId, String>>,
 }
@@ -216,7 +217,7 @@ impl State {
             settings_path: self.settings_path.clone(),
             shared_tools_error: self.shared_error.clone(),
             tools: self.tools.clone(),
-            tools_running: self.tools_running,
+            tools_pending: self.tools_pending.clone(),
             project_repos: Arc::clone(&self.project_repos),
         }
     }

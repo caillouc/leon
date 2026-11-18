@@ -412,6 +412,10 @@ fn main() {
         ("doctor".to_owned(), Shot::Doctor),
         ("row-menu".to_owned(), Shot::RowMenu(ConversationId(1))),
         ("tools".to_owned(), Shot::Tools),
+        (
+            "tools-asking".to_owned(),
+            Shot::ToolsAsking(vec![leon_domain::BackendKind::ClaudeCode]),
+        ),
         // Last: these leave the details drawer open.
         (
             "issue-detail".to_owned(),

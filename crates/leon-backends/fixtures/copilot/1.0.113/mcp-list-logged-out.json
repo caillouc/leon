@@ -1,0 +1,58 @@
+{
+  "mcpServers": {
+    "computer-use": {
+      "tools": [
+        "*"
+      ],
+      "type": "stdio",
+      "command": "/home/user/Library/Caches/copilot/pkg/darwin-arm64/1.0.113/plugins/computer-use/computer-use-mcp",
+      "args": [],
+      "cwd": "${PLUGIN_ROOT}",
+      "sourcePlugin": "computer-use",
+      "sourcePluginVersion": "0.1.97",
+      "source": "builtin",
+      "sourcePluginSpec": true,
+      "env": {
+        "CLAUDE_PLUGIN_ROOT": "*****",
+        "COPILOT_PLUGIN_ROOT": "*****",
+        "PLUGIN_ROOT": "*****",
+        "CLAUDE_PLUGIN_DATA": "*****",
+        "COPILOT_PLUGIN_DATA": "*****",
+        "PLUGIN_DATA": "*****"
+      },
+      "isDefaultServer": true,
+      "events": [
+        "assistant.turn_start",
+        "assistant.turn_end",
+        "agent.turn_start",
+        "agent.turn_end"
+      ],
+      "notifications": [
+        "user.abort"
+      ],
+      "enabled": true
+    },
+    "docs-search": {
+      "tools": [
+        "*"
+      ],
+      "type": "local",
+      "command": "npx",
+      "args": [
+        "-y",
+        "example-docs-mcp"
+      ],
+      "source": "user",
+      "enabled": true
+    },
+    "tracker": {
+      "tools": [
+        "*"
+      ],
+      "type": "http",
+      "url": "https://mcp.example.invalid/mcp",
+      "source": "user",
+      "enabled": true
+    }
+  }
+}

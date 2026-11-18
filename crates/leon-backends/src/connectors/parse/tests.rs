@@ -9,25 +9,30 @@ use super::{
 
 type Parse = fn(&str) -> Option<Vec<Connector>>;
 
-/// (command, reader, recorded output, connectors by kind and state, one of
-/// them in full)
+/// (command, reader, recorded output, connectors kept by kind and state, one
+/// of them in full)
 type Recorded = (
     &'static str,
     Parse,
     &'static str,
     &'static [(ConnectorKind, ConnectorState, usize)],
-    Connector,
+    Option<Connector>,
 );
 
 #[test]
-fn recorded_listings_are_read() {
-    let cases: [Recorded; 6] = [
+fn claude_and_codex_listings_are_read() {
+    let cases: [Recorded; 5] = [
         (
             "claude plugin list --json",
             claude_plugins,
             include_str!("../../../fixtures/claude/2.1.288/plugin-list.json"),
             &[(Plugin, On, 1)],
-            connector("team-kit@team-marketplace", Plugin, On, "547818e96a04"),
+            Some(connector(
+                "team-kit@team-marketplace",
+                Plugin,
+                On,
+                "547818e96a04",
+            )),
         ),
         (
             "claude mcp list",
@@ -38,59 +43,156 @@ fn recorded_listings_are_read() {
                 (Account, NeedsLogin, 20),
                 (Account, Failed, 1),
             ],
-            connector(
+            Some(connector(
                 "Mixpanel",
                 Account,
                 NeedsLogin,
                 "https://mcp.mixpanel.com/mcp",
-            ),
+            )),
         ),
         (
+            // 16 installed: 3 the user picked, 3 installed for every account,
+            // 10 from OpenAI's bundled marketplaces.
             "codex plugin list --json",
             codex_plugins,
             include_str!("../../../fixtures/codex/0.160.0/plugin-list.json"),
-            &[(Plugin, On, 16)],
-            connector("slack@openai-curated-remote", Plugin, On, "0.1.8"),
+            &[(Plugin, On, 3)],
+            Some(connector(
+                "slack@openai-curated-remote",
+                Plugin,
+                On,
+                "0.1.8",
+            )),
         ),
         (
             "codex mcp list --json",
             codex_servers,
             include_str!("../../../fixtures/codex/0.160.0/mcp-list.json"),
             &[(Server, Off, 1), (Server, On, 2)],
-            connector("codex_app", Server, Off, "/opt/tools/codex_app"),
+            Some(connector("codex_app", Server, Off, "/opt/tools/codex_app")),
         ),
         (
+            // Without the bundled plugins' servers (`codex_app`, `cua_repl`).
+            "codex --disable plugins mcp list --json",
+            codex_servers,
+            include_str!("../../../fixtures/codex/0.160.0/mcp-list-no-plugins.json"),
+            &[(Server, On, 1)],
+            Some(connector(
+                "node_repl",
+                Server,
+                On,
+                "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl",
+            )),
+        ),
+    ];
+    check(&cases);
+}
+
+#[test]
+fn copilot_listings_are_read() {
+    let cases: [Recorded; 3] = [
+        (
+            // Only Copilot's own `computer-use` and `browser-use`.
             "copilot plugin list --json",
             copilot_plugins,
             include_str!("../../../fixtures/copilot/1.0.113/plugin-list.json"),
-            &[(Plugin, Off, 2)],
-            connector("computer-use", Plugin, Off, "0.1.97"),
+            &[],
+            None,
         ),
         (
+            // Only Copilot's own `computer-use` and `github-mcp-server`.
             "copilot mcp list --json",
             copilot_servers,
             include_str!("../../../fixtures/copilot/1.0.113/mcp-list.json"),
+            &[],
+            None,
+        ),
+        (
+            // An empty home where two servers were added, next to Copilot's
+            // own `computer-use`.
+            "copilot mcp list --json, logged out",
+            copilot_servers,
+            include_str!("../../../fixtures/copilot/1.0.113/mcp-list-logged-out.json"),
             &[(Server, On, 2)],
-            connector(
-                "github-mcp-server",
+            Some(connector(
+                "tracker",
                 Server,
                 On,
-                "https://api.business.githubcopilot.com/mcp/readonly",
-            ),
+                "https://mcp.example.invalid/mcp",
+            )),
         ),
     ];
+    check(&cases);
+}
+
+fn check(cases: &[Recorded]) {
     for (command, parse, out, counts, sample) in cases {
         let found = parse(out).unwrap_or_else(|| panic!("{command}: not read"));
         let total: usize = counts.iter().map(|(_, _, n)| n).sum();
         assert_eq!(found.len(), total, "{command}: {found:#?}");
-        for &(kind, state, n) in counts {
+        for &(kind, state, n) in *counts {
             let seen = found
                 .iter()
                 .filter(|c| c.kind == kind && c.state == state)
                 .count();
             assert_eq!(seen, n, "{command}: {kind:?} {state:?}");
         }
-        assert!(found.contains(&sample), "{command}: {sample:#?}");
+        if let Some(sample) = sample {
+            assert!(found.contains(sample), "{command}: {sample:#?}");
+        }
+    }
+}
+
+#[test]
+fn what_a_cli_ships_or_turns_on_itself_is_left_out() {
+    // (reader, output, names kept)
+    let cases: [(Parse, &str, &[&str]); 5] = [
+        (
+            codex_plugins,
+            r#"{"installed": [
+                {"pluginId": "kit@team", "marketplaceName": "team", "installPolicy": "AVAILABLE"},
+                {"pluginId": "pets@openai-curated-remote",
+                 "marketplaceName": "openai-curated-remote",
+                 "installPolicy": "INSTALLED_BY_DEFAULT"},
+                {"pluginId": "pdf@openai-primary-runtime",
+                 "marketplaceName": "openai-primary-runtime"},
+                {"pluginId": "browser@openai-bundled", "marketplaceName": "openai-bundled"},
+                {"pluginId": "new@openai-bundled-alpha",
+                 "marketplaceName": "openai-bundled-alpha"}
+            ]}"#,
+            &["kit@team"],
+        ),
+        (
+            codex_plugins,
+            r#"{"installed": [{"pluginId": "github@openai-curated",
+                               "marketplaceName": "openai-curated"}]}"#,
+            &["github@openai-curated"],
+        ),
+        (
+            copilot_plugins,
+            r#"[{"name": "kit", "marketplace": "team", "source": "marketplace"},
+                {"name": "computer-use", "marketplace": "", "source": "builtin"}]"#,
+            &["kit@team"],
+        ),
+        (
+            copilot_servers,
+            r#"{"mcpServers": {"own": {"source": "user"}, "repo": {"source": "workspace"},
+                               "kit": {"source": "plugin"},
+                               "github-mcp-server": {"source": "builtin"}}}"#,
+            &["kit", "own", "repo"],
+        ),
+        (
+            copilot_servers,
+            r#"{"mcpServers": {"no-source": {"command": "x"}}}"#,
+            &["no-source"],
+        ),
+    ];
+    for (parse, out, kept) in cases {
+        let found = parse(out).unwrap_or_default();
+        // Sorted: the order of JSON keys depends on serde_json's features.
+        let mut names: Vec<&str> = found.iter().map(|c| c.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, kept, "{out}");
     }
 }
 

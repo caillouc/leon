@@ -24,7 +24,7 @@ mod title;
 use leon_core::ports::{
     BackendChannel, BackendOptions, Backends, PortError, SearchPath, SessionSpec, inherited_path,
 };
-use leon_domain::{BackendKind, CliConnectors, DoctorSection};
+use leon_domain::{BackendKind, CliConnectors, DoctorCheck, DoctorSection, Health};
 
 /// The real CLIs on this machine.
 #[derive(Debug, Clone)]
@@ -82,17 +82,30 @@ impl Backends for Clis {
         title::title((self.path)(), backend, message)
     }
 
-    fn connectors(&self) -> Vec<CliConnectors> {
-        BackendKind::ALL
-            .into_iter()
-            .map(|b| connectors::read((self.path)(), b))
-            .collect()
+    fn connectors(&self, backend: BackendKind) -> CliConnectors {
+        connectors::read((self.path)(), backend)
     }
 
+    /// The CLIs are checked at the same time.
     fn doctor(&self) -> Vec<DoctorSection> {
-        BackendKind::ALL
-            .into_iter()
-            .map(|b| doctor::section((self.path)(), b))
-            .collect()
+        std::thread::scope(|scope| {
+            let checking: Vec<_> = BackendKind::ALL
+                .into_iter()
+                .map(|b| (b, scope.spawn(move || doctor::section((self.path)(), b))))
+                .collect();
+            checking
+                .into_iter()
+                .map(|(b, thread)| {
+                    thread.join().unwrap_or_else(|_| DoctorSection {
+                        title: b.display_name().to_owned(),
+                        checks: vec![DoctorCheck::new(
+                            Health::Problem,
+                            "Checked",
+                            "the check stopped unexpectedly",
+                        )],
+                    })
+                })
+                .collect()
+        })
     }
 }

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use leon_domain::{CliConnectors, McpServer};
+use leon_domain::{BackendKind, CliConnectors, McpServer};
 
 use crate::app::Core;
 use crate::repo::Internal;
@@ -44,22 +44,35 @@ impl Core {
         self.load_shared();
     }
 
-    /// Asks each CLI for its own servers and plugins, in the background.
+    /// Asks every CLI for its own servers and plugins, all at once in the
+    /// background: each CLI's answer is shown as it arrives.
     pub(crate) fn refresh_tools(&mut self) {
-        if self.state.tools_running {
+        if !self.state.tools_pending.is_empty() {
             return;
         }
-        self.state.tools_running = true;
-        let backends = Arc::clone(&self.ports.backends);
-        let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
-            let _ = tx.send(Internal::Tools(backends.connectors()));
-        });
+        self.state.tools_pending = BackendKind::ALL.to_vec();
+        for backend in BackendKind::ALL {
+            let backends = Arc::clone(&self.ports.backends);
+            let tx = self.internal_tx.clone();
+            tokio::task::spawn_blocking(move || {
+                let _ = tx.send(Internal::Tools(backends.connectors(backend)));
+            });
+        }
     }
 
-    pub(crate) fn tools_done(&mut self, connectors: Vec<CliConnectors>) {
-        self.state.tools_running = false;
-        self.state.tools = Some((self.now_ms(), Arc::new(connectors)));
+    /// One CLI's answer, in place of its previous one; the CLIs stay in
+    /// [`BackendKind::ALL`] order.
+    pub(crate) fn tools_done(&mut self, cli: CliConnectors) {
+        self.state.tools_pending.retain(|b| *b != cli.backend);
+        let mut clis: Vec<CliConnectors> = self
+            .state
+            .tools
+            .as_ref()
+            .map_or_else(Vec::new, |(_, clis)| clis.as_ref().clone());
+        clis.retain(|c| c.backend != cli.backend);
+        clis.push(cli);
+        clis.sort_by_key(|c| BackendKind::ALL.iter().position(|b| *b == c.backend));
+        self.state.tools = Some((self.now_ms(), Arc::new(clis)));
     }
 
     /// The MCP servers a session gets: Leon's own tools, then the shared

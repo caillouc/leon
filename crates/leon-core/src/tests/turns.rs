@@ -224,8 +224,12 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         fn doctor(&self) -> Vec<leon_domain::DoctorSection> {
             Vec::new()
         }
-        fn connectors(&self) -> Vec<leon_domain::CliConnectors> {
-            Vec::new()
+        fn connectors(&self, backend: BackendKind) -> leon_domain::CliConnectors {
+            leon_domain::CliConnectors {
+                backend,
+                connectors: Vec::new(),
+                problem: None,
+            }
         }
     }
     let storage = Arc::new(FakeStorage::default());

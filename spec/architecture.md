@@ -216,8 +216,13 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   not parse is never rewritten. The new file replaces the old in one rename.
 - Connectors (`Backends::connectors`, `crates/leon-backends/src/connectors.rs`):
   per CLI, `plugin list --json` and `mcp list --json` (Claude's `mcp list` is
-  text; its `claude.ai …` lines are the account's connectors). Read in the
-  background each time the view opens.
+  text; its `claude.ai …` lines are the account's connectors; Codex's runs
+  with `--disable plugins`, plugins' servers being shown through their
+  plugin). What a CLI ships or turns on itself is dropped by the readers
+  (`connectors/parse.rs`). Read in the background each time the view opens:
+  one task per CLI, its two commands at once; each answer lands in the
+  snapshot on its own (`Snapshot::tools`), `Snapshot::tools_pending` naming
+  the CLIs still asked.
 
 ## UI shell
 
@@ -236,8 +241,9 @@ Every port that reaches an outside tool has a `doctor` method that checks it
 (installed, version, logged in), each in its adapter; the binary adds Leon's
 own facts (`crates/leon/src/about.rs`). The core runs them all off its
 thread at start and on `Intent::RunDoctor` (`crates/leon-core/src/doctor.rs`)
-and publishes the report in the snapshot. Versions are compared with the ones
-each adapter was checked with; older ones are warnings.
+and publishes the report in the snapshot; the coding CLIs are checked at the
+same time. Versions are compared with the ones each adapter was checked with;
+older ones are warnings.
 
 ## Speed targets (QUAL-1, QUAL-2)
 

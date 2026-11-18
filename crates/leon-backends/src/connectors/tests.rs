@@ -46,8 +46,8 @@ fn problems_name_the_command_and_keep_the_other_lists() {
             BackendKind::Codex,
             Ok(printed(CODEX_PLUGINS)),
             Ok(failed("Error: config is invalid\n\n")),
-            16,
-            Some("`codex mcp list --json` failed: Error: config is invalid"),
+            3,
+            Some("`codex --disable plugins mcp list --json` failed: Error: config is invalid"),
         ),
         (
             BackendKind::ClaudeCode,
