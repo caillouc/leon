@@ -53,17 +53,19 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   edge, "Needs you"), to review — done and not looked at yet — (green edge,
   "To review"), failed (red), or nothing. A folded project shows its most
   pressing colour.
-- **NAV-6** The status of each of the flow's PRs: the PR icon and number in
-  its state's colour, its checks as a dot; a click opens Leon's view of it.
+- **NAV-6** The flow's PRs at the end of the line under its title: the PR
+  icon in the colour of the most active one (open, then draft, merged,
+  closed), how many, and the open ones' checks as a dot. On hover, the list
+  of them — title, state, repository and number, lines added and removed —
+  each opening Leon's view of it.
 - **NAV-7** Selecting a flow opens it in the main pane.
 - **NAV-8** Rename, pin, mark as unread, archive and delete a flow from its
   right-click menu in the left pane; search flows.
 - **NAV-9** Titles are generated automatically, as in Claude Code.
 - **NAV-10** A + next to each project starts a flow in it.
-- **NAV-11** A flow linked to issues or pull requests (CTX-2) lists them on
-  a line of their own under its title (issues, then PRs, a few of each and
-  how many more), so the title stays readable; each opens Leon's view of it
-  (GH-2, GH-3).
+- **NAV-11** A flow's row shows no issue: its issues are in the right
+  pane's Info (CTX-1). Its title stays readable next to "To review" or
+  "Needs you".
 
 ### Main pane
 
@@ -97,8 +99,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   conversation, while Leon runs.
 - **CONV-15** Your messages stand out from the agents'. Once an answer
   follows your last message, a button just above the message box, on its
-  left, scrolls back to it, to read the answer from its start; what the
-  agent is doing shows next to it.
+  right, scrolls back to it, to read the answer from its start; what the
+  agent is doing shows on the left of that line.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the
@@ -122,14 +124,20 @@ flow**: one item in the left pane (D5).
   (plus a "You" box), arrows for the prompts sent and the reports returned, a
   highlighted arrow for a question waiting for you, and live status on each
   box, with "To review" or "Needs you" on the agent whose answer or question
-  waits for you, and the left pane's icon (a green check for "To review")
-  and coloured line along its left side, exactly as the left pane shows them. Click a box to open its
+  waits for you; while an agent works, its colour goes round its box's
+  border, starting from the band at its top. What needs you shows with the
+  left pane's icon (a green check for "To review") and coloured line along
+  the box's left side, exactly as the left pane shows them. Click a box to open its
   conversation; click an arrow to read its prompts or reports. Each agent has
   its own colour, the same in the right pane. Laid out by forces, after the
   "force" mode of CS Academy's graph editor: boxes push each other away, the
   arrows between them pull like springs, a light pull keeps everything near
-  the middle, and boxes never overlap; it starts from columns of who started
-  whom and keeps a pull toward them, so it reads left to right, and the same
+  the middle, and boxes never overlap. So the boxes a conversation talks to
+  spread all around it, every arrow about the same length (measured between
+  the boxes' borders, as boxes are wide). The forces are CS Academy's own: their
+  rules and strengths, scaled to Leon's boxes, no momentum, boxes pushing
+  only the ones near them. It starts with each box's linked boxes spread
+  evenly around it, each agent's conversations side by side, and the same
   flow always gets the same layout. Readability comes first; an arrow may
   cross another. Arrows are straight lines from box to box; those between the
   same two boxes (prompts one way, reports back) run side by side as one
@@ -139,9 +147,9 @@ flow**: one item in the left pane (D5).
 - **FLOW-5** Nothing hardcoded: the flow diagram is built from what the agents
   actually do. A new agent that starts another agent shows up on its own.
 - **FLOW-6** The diagram is a canvas: drag to pan, scroll or pinch to zoom, drag
-  a box: the forces keep acting, live, so a box let go bounces back to its
-  place, or finds a new one when dragged far enough, and the others move
-  around it as in CS Academy's force mode; "Reset view" fits everything,
+  a box: the forces keep acting, live and soft, so a box let go bounces back
+  to its place, or finds a new one when dragged far enough, and the others
+  follow it loosely as in CS Academy's force mode; "Reset view" fits everything,
   "Reset layout" goes back to where the forces first settled it.
 - **FLOW-7** Start a new conversation in an existing flow: "+ New
   conversation" at the top right of the Flow tab opens the form (one of the flow's folders, agent, CLI, model, effort,

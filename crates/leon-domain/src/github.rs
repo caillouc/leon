@@ -26,6 +26,18 @@ pub enum CheckState {
     Pending,
 }
 
+impl CheckState {
+    /// Several states summed up: failing if any fails, pending if any
+    /// runs, passing otherwise; `None` without any.
+    pub fn worst(states: impl IntoIterator<Item = Self>) -> Option<Self> {
+        states.into_iter().max_by_key(|s| match s {
+            Self::Pass => 0,
+            Self::Pending => 1,
+            Self::Fail => 2,
+        })
+    }
+}
+
 /// One CI check of a pull request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Check {
@@ -181,6 +193,8 @@ pub struct PullRequest {
     pub author: String,
     /// The issues it closes when merged, as GitHub links them (CTX-2).
     pub closes: Vec<GhRef>,
+    /// Lines added and removed, when GitHub gave them.
+    pub lines: Option<(u32, u32)>,
 }
 
 /// A review thread on a pull request's code, not resolved yet.
@@ -208,14 +222,7 @@ impl PullRequest {
         if self.checks.is_empty() {
             return self.rollup;
         }
-        let any = |s| self.checks.iter().any(|c| c.state == s);
-        Some(if any(CheckState::Fail) {
-            CheckState::Fail
-        } else if any(CheckState::Pending) {
-            CheckState::Pending
-        } else {
-            CheckState::Pass
-        })
+        CheckState::worst(self.checks.iter().map(|c| c.state))
     }
 }
 
@@ -355,6 +362,7 @@ mod tests {
             threads: vec![],
             author: String::new(),
             closes: vec![],
+            lines: None,
         }
     }
 

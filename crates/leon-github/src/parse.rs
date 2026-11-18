@@ -114,7 +114,13 @@ fn pull_request_node(pr: &Value) -> Option<PullRequest> {
                 ))
             })
             .collect(),
+        lines: count(&pr["additions"]).zip(count(&pr["deletions"])),
     })
+}
+
+/// A count GitHub gives, as far as it fits.
+fn count(value: &Value) -> Option<u32> {
+    value.as_u64().map(|n| u32::try_from(n).unwrap_or(u32::MAX))
 }
 
 /// An issue; assignees, body and comments are empty when the query did not

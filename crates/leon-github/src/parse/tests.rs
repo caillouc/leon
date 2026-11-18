@@ -44,6 +44,7 @@ fn recorded_open_pull_request() {
         threads: vec![],
         author: String::new(),
         closes: vec![],
+        lines: None,
     };
     assert_eq!(pr, expected);
     assert_eq!(pr.checks_state(), Some(CheckState::Pass));
@@ -164,6 +165,28 @@ fn reviewers_and_ghost_comments() {
 }
 
 /// A label as recorded before colors were asked for.
+/// Lines added and removed, when GitHub gives both (GitHub GraphQL
+/// `PullRequest.additions` / `deletions`, schema checked 2026-11-18).
+#[test]
+fn lines_added_and_removed() {
+    let pr = |extra: serde_json::Value| {
+        let mut node = json!({ "number": 1, "title": "t", "url": "u", "state": "OPEN",
+            "isDraft": false, "headRefName": "b", "baseRefName": "main",
+            "repository": { "nameWithOwner": "o/r" } });
+        if let (Some(node), Some(extra)) = (node.as_object_mut(), extra.as_object()) {
+            node.extend(extra.clone());
+        }
+        let json = json!({ "data": { "repository": { "pullRequests": { "nodes": [node] } } } });
+        fixture_pr(&json.to_string(), "b").lines
+    };
+    assert_eq!(
+        pr(json!({ "additions": 439, "deletions": 0 })),
+        Some((439, 0))
+    );
+    assert_eq!(pr(json!({ "additions": 3 })), None);
+    assert_eq!(pr(json!({})), None);
+}
+
 fn label(name: &str) -> Label {
     Label {
         name: name.into(),

@@ -385,6 +385,7 @@ impl Workspace {
         let (model, effort) = self.model_and_effort(settings);
         let model = format!("{model} · effort {effort}");
         let agent = crate::agent_color::agent_color(conversations, conversation);
+        let circles = conversation.status == leon_domain::Status::Running && !cx.reduce_motion();
         shell
             .rounded(px(10. * s))
             .line_height(gpui::relative(1.25))
@@ -396,18 +397,20 @@ impl Workspace {
             .gap(px(3. * s))
             .cursor_pointer()
             // The agent's colour, as a band along the top, its corners
-            // following the box's.
-            .child(
-                div()
-                    .absolute()
-                    .top(px(2.))
-                    .left(px(2.))
-                    .right(px(2.))
-                    .h(px(4. * s))
-                    // The box's inner curve: its radius less its border.
-                    .rounded_t(px((10. * s - 2.).max(0.)))
-                    .bg(agent),
-            )
+            // following the box's; going round the box while it works.
+            .when(!circles, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .top(px(2.))
+                        .left(px(2.))
+                        .right(px(2.))
+                        .h(px(4. * s))
+                        // The box's inner curve: its radius less its border.
+                        .rounded_t(px((10. * s - 2.).max(0.)))
+                        .bg(agent),
+                )
+            })
             // The border, as a layer: GPUI paints a box's own border over
             // its children, which would hide the line below.
             .child(edge(s).border_2().border_color(theme::border_strong()))
@@ -415,6 +418,14 @@ impl Workspace {
             // border's left side and following its curve.
             .when_some(crate::flow_row::attention_edge(attention), |d, color| {
                 d.child(edge(s).border_l(px(3. * s)).border_color(color))
+            })
+            .when(circles, |d| {
+                d.child(crate::flow_paint::circling(
+                    SharedString::from(format!("circling-{}", sid.0)),
+                    agent,
+                    10. * s,
+                    (4. * s).max(2.),
+                ))
             })
             .child(
                 div()

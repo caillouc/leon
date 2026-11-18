@@ -129,23 +129,12 @@ impl Workspace {
         if !s.plan.is_empty() {
             column = column.child(plan_card(&s.plan));
         }
-        // Above the message box, from its left: back to the user's last
-        // message, then what the agent is doing.
-        let status = Self::status_line(&s).map(|line| {
-            div()
-                .min_w_0()
-                .text_size(px(12.))
-                .text_color(theme::fg_muted())
-                .child(line)
-        });
-        if jump.is_some() || status.is_some() {
+        if let Some(line) = Self::status_line(&s) {
             column = column.child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .children(jump)
-                    .children(status),
+                    .text_size(px(12.))
+                    .text_color(theme::fg_muted())
+                    .child(line),
             );
         }
 
@@ -229,6 +218,9 @@ impl Workspace {
                             .child(effort)
                             .child(permission)
                             .child(div().flex_1())
+                            // Back to the user's last message, by the send
+                            // button: it takes no room from the text.
+                            .children(jump)
                             .child(action),
                     ),
             )

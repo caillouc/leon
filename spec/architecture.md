@@ -97,8 +97,9 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    assembled in `crates/leon-backends/src/told.rs`).
 9. The flow diagram (FLOW-4) is built from the conversations' `started_by`,
    their agents and their transcripts only (`crates/leon-ui/src/flow_model.rs`):
-   boxes placed by `flow_model/force.rs` (forces, from the columns of who
-   started whom that `flow_model/layout.rs` gives), arrows drawn by
+   boxes placed by `flow_model/force.rs` (CS Academy's force rules, from
+   the stars `flow_model/start.rs` lays out around each box; sizes and
+   geometry in `flow_model/layout.rs`), arrows drawn by
    `flow_model/arrows.rs` (straight, bundled by pair of boxes, labels in free
    spots).
 

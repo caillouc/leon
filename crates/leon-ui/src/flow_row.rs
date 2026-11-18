@@ -1,15 +1,14 @@
 //! A flow's row in the left pane (NAV-4, NAV-5, NAV-6): what it asks
-//! of the user at a glance — working, needs you, to review, failed — its pull
-//! request, and the issue it works on, which opens in Leon's issue view.
+//! of the user at a glance — working, needs you, to review, failed — and its
+//! pull requests.
 
 use gpui::{AnyElement, Context, Div, IntoElement, Rgba, SharedString, div, prelude::*, px};
 use gpui_component::input::Input;
-use leon_core::{FlowView, Intent};
-use leon_domain::{Attention, GhRef};
+use leon_core::FlowView;
+use leon_domain::Attention;
 
 use crate::icons::{Icon, icon};
 use crate::left::{ago, since};
-use crate::pr_view::pr_badge;
 use crate::row_menu::MenuFor;
 use crate::spinner::spinner;
 use crate::theme;
@@ -68,30 +67,6 @@ pub(crate) fn attention_pill(attention: Attention, scale: f32) -> Option<Div> {
             .text_color(color)
             .child(text),
     )
-}
-
-/// The issue it works on, opening Leon's view of it.
-fn issue_chip(issue: &GhRef, cx: &mut Context<Workspace>) -> AnyElement {
-    let item = issue.clone();
-    div()
-        .id(SharedString::from(format!("conv-issue-{}", issue.text())))
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(3.))
-        .px(px(5.))
-        .rounded(px(4.))
-        .bg(theme::surface_2())
-        .text_color(theme::accent())
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::accent_soft()))
-        .child(icon(Icon::Issue, theme::accent(), 11.))
-        .child(format!("#{}", issue.number))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            cx.stop_propagation();
-            this.core.send(Intent::ShowDetail(Some(item.clone())));
-        }))
-        .into_any_element()
 }
 
 impl Workspace {
@@ -160,7 +135,6 @@ impl Workspace {
                     .children(attention_pill(attention, 1.)),
             )
             .child(self.row_meta(c, attention, show_project))
-            .children(self.row_refs(c, cx))
             .on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
             .on_mouse_down(
                 gpui::MouseButton::Right,
@@ -172,7 +146,8 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// The line under the title: project, agents, what it is doing.
+    /// The line under the title: project, agents, what it is doing, and its
+    /// pull requests at the end.
     fn row_meta(&self, c: &FlowView, attention: Attention, show_project: bool) -> Div {
         let project = if show_project {
             self.snapshot
@@ -214,42 +189,9 @@ impl Workspace {
                     .text_color(color)
                     .child(format!("{project}{agents}{what}")),
             )
-    }
-
-    /// A last line for the issues and pull requests of the flow, when it has
-    /// any (CTX-2): issues first, then pull requests, each opening Leon's
-    /// view of it; past a few, how many more.
-    fn row_refs(&self, c: &FlowView, cx: &mut Context<Self>) -> Option<Div> {
-        const SHOWN: usize = 3;
-        let prs = self.snapshot.prs_of(c);
-        if c.issues.is_empty() && prs.is_empty() {
-            return None;
-        }
-        let more = |n: usize| {
-            (n > SHOWN).then(|| {
-                div()
-                    .flex_none()
-                    .text_color(theme::fg_faint())
-                    .child(format!("+{}", n - SHOWN))
-            })
-        };
-        Some(
-            div()
-                .pl(px(22.))
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap(px(4.))
-                .text_size(px(11.5))
-                .children(c.issues.iter().take(SHOWN).map(|i| issue_chip(i, cx)))
-                .children(more(c.issues.len()))
-                .children(
-                    prs.iter()
-                        .take(SHOWN)
-                        .map(|pr| pr_badge(pr, cx))
-                        .collect::<Vec<_>>(),
-                )
-                .children(more(prs.len())),
-        )
+            .children(crate::flow_prs::flow_prs(
+                c.flow.id,
+                self.snapshot.prs_of(c).into_iter().cloned().collect(),
+            ))
     }
 }

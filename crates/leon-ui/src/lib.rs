@@ -22,6 +22,7 @@ mod flow;
 mod flow_model;
 mod flow_paint;
 mod flow_pane;
+mod flow_prs;
 mod flow_row;
 mod form;
 mod gh_detail;

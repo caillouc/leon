@@ -4,7 +4,7 @@ One native window to run and follow many coding-agent conversations across
 many repositories, on top of the coding CLIs you already use: Claude Code,
 Codex and Copilot CLI.
 
-![A flow in Leon: the Flow tab with a planner, two coders, a reviewer and a tester, the prompts and reports between them, and the folders and pull requests of the flow in the right pane (sample data)](docs/flow.png)
+![A flow in Leon: the Flow tab with a planner, two coders and two reviewers spread around it, the prompts and reports between them, and the right pane's Info: what each agent does now, the flow's folders, issues and pull requests (sample data)](docs/flow.png)
 
 ## Why Leon
 
@@ -15,14 +15,16 @@ window:
 
 - **The Flow tab** — Leon's signature. Each flow is drawn as a live diagram:
   you, every agent, and the prompts, reports and questions flowing
-  between them. Agents that hand work back and forth show up as a loop. Click
-  a box to talk to that agent, an arrow to read what was said.
+  between them, laid out live by the forces of CS Academy's graph editor:
+  drag a box and the others make room. Click a box to talk to that agent,
+  an arrow to read what was said; the one with an answer for you is marked
+  "To review".
 - **Agents that start agents.** Any agent can start or message another
   through Leon's own tools, whichever CLI it runs on: a Claude Code planner
   can hand work to a Codex coder.
 - **Your work around it**: the git changes and branch diff of each flow with
-  line comments sent back as one review, the branch's pull request with its
-  checks, your GitHub issues by board column, priority and sprint (start a
+  line comments sent back as one review, its pull requests with their
+  checks (a failing job one click away), your GitHub issues by board column, priority and sprint (start a
   flow from an issue in one click), and the connectors each CLI can reach.
 - **Your subscriptions, your CLIs.** Leon drives the official CLIs with your
   own logins; it never calls a model API itself and stores everything locally.

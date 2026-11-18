@@ -8,7 +8,6 @@ use leon_domain::{
     TimedEntry,
 };
 
-use super::layout::columns;
 use super::{EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build};
 
 fn conversation(id: i64, started_by: Option<i64>) -> ConversationView {
@@ -132,12 +131,6 @@ fn arrows_come_from_what_the_conversations_did() {
         );
     }
     assert_eq!(model.parent[&coder], planner);
-
-    // You above; both are the CLI's own agent, so one region: the one
-    // started second below the first.
-    let pos = columns(&model);
-    assert!(pos[&Node::You].y < pos[&planner].y && pos[&planner].y < pos[&coder].y);
-    assert!((pos[&planner].x - pos[&coder].x).abs() < 1.);
     assert_eq!(model.agent[&coder], "Codex");
 }
 
@@ -227,51 +220,10 @@ fn model(conversations: &[(i64, &str, Option<i64>)]) -> FlowModel {
     }
 }
 
-/// The planner, two coders and a reviewer: You above the planner, then the
-/// agents it started in the next column, each agent's conversations
-/// together.
-#[test]
-fn columns_follow_who_started_whom_each_agent_in_one_region() {
-    let s = |id| Node::Conversation(ConversationId(id));
-    let m = model(&[
-        (1, "planner", None),
-        (2, "coder", Some(1)),
-        (3, "reviewer", Some(1)),
-        (4, "coder", Some(2)),
-    ]);
-    let pos = columns(&m);
-    // "You" above what it started.
-    assert!(pos[&Node::You].y < pos[&s(1)].y, "{pos:?}");
-    assert!(
-        pos[&Node::You].x > pos[&s(1)].x && pos[&Node::You].x < pos[&s(1)].x + 250.,
-        "{pos:?}"
-    );
-    assert!(pos[&s(1)].x < pos[&s(2)].x, "{pos:?}");
-    assert!((pos[&s(2)].x - pos[&s(3)].x).abs() < 1., "{pos:?}");
-    // The coder the first coder started stays in the coders' region.
-    assert!((pos[&s(2)].x - pos[&s(4)].x).abs() < 1., "{pos:?}");
-    assert!(pos[&s(4)].y > pos[&s(2)].y, "{pos:?}");
-}
-
-/// Two agents each start a helper: the helpers sit in their starters'
-/// order, so the "started" links do not cross.
-#[test]
-fn columns_are_ordered_so_links_do_not_cross() {
-    let s = |id| Node::Conversation(ConversationId(id));
-    // The second helper's starter comes first in its column.
-    let m = model(&[
-        (1, "b", None),
-        (2, "a", None),
-        (3, "helper-a", Some(2)),
-        (4, "helper-b", Some(1)),
-    ]);
-    let pos = columns(&m);
-    let above = |x: i64, y: i64| pos[&s(x)].y < pos[&s(y)].y;
-    assert_eq!(above(1, 2), above(4, 3), "{pos:?}");
-}
-
-/// The forces keep boxes apart and settle the same flow the same way; a box
-/// nudged a little bounces back, held by the user it stays under the mouse.
+/// The forces keep boxes apart and settle the same flow the same way. As in
+/// CS Academy's force mode, a box pulled away along its arrow glides back,
+/// one dragged to the other side of what it talks to stays there, and a box
+/// held by the user stays under the mouse.
 #[test]
 fn boxes_settle_apart_and_bounce_back() {
     let s = |id| Node::Conversation(ConversationId(id));
@@ -288,21 +240,37 @@ fn boxes_settle_apart_and_bounce_back() {
     assert!(!super::force::overlapping(&rects), "{pos:?}");
     assert!(!sim.moving());
     assert_eq!(pos, super::Sim::new(&m).positions());
-    // Nudged 40 units and let go: back near its place.
-    let mut nudged = sim.clone();
-    let home = pos[&s(2)];
-    let near = Pt {
-        x: home.x + 40.,
-        y: home.y + 30.,
+    let (hub, home) = (pos[&s(1)], pos[&s(4)]);
+    let away = |k: f32| Pt {
+        x: hub.x + (home.x - hub.x) * k,
+        y: hub.y + (home.y - hub.y) * k,
     };
-    nudged.tick(Some((s(2), near)));
-    assert_eq!(nudged.positions()[&s(2)], near);
-    nudged.settle();
-    let back = nudged.positions()[&s(2)];
+    // Pulled away along its arrow and let go: back near its place.
+    let mut pulled = sim.clone();
+    pulled.tick(Some((s(4), away(1.4))));
+    assert_eq!(pulled.positions()[&s(4)], away(1.4));
+    pulled.settle();
+    let back = pulled.positions()[&s(4)];
     assert!(
-        (back.x - home.x).abs() < 15. && (back.y - home.y).abs() < 15.,
+        (back.x - home.x).abs() < 30. && (back.y - home.y).abs() < 30.,
         "{home:?} → {back:?}"
     );
+    // Dragged around the planner to its other side: it stays on that side.
+    let mut dragged = sim.clone();
+    for k in 0..=30 {
+        #[allow(clippy::cast_precision_loss, reason = "a test")]
+        let (sin, cos) = (std::f32::consts::PI * k as f32 / 30.).sin_cos();
+        let (dx, dy) = (home.x - hub.x, home.y - hub.y);
+        let at = Pt {
+            x: hub.x + dx * cos - dy * sin,
+            y: hub.y + dx * sin + dy * cos,
+        };
+        dragged.tick(Some((s(4), at)));
+    }
+    dragged.settle();
+    let (now, there) = (dragged.positions()[&s(1)], dragged.positions()[&s(4)]);
+    let side = (there.x - now.x) * (home.x - hub.x) + (there.y - now.y) * (home.y - hub.y);
+    assert!(side < 0., "{hub:?} {home:?} → {now:?} {there:?}");
 }
 
 /// An arrow runs straight between the boxes, from edge to edge.
@@ -329,22 +297,38 @@ fn arrows_run_straight_from_edge_to_edge() {
     assert!((beside[0].y - 33.).abs() < 0.5, "{beside:?}");
 }
 
-/// Four conversations of one agent stack three high, then start a new column.
+/// As in CS Academy's "force" mode, the boxes a conversation talks to spread
+/// all around it, not to one side.
 #[test]
-fn a_busy_agent_stacks_its_conversations() {
+fn a_hub_has_its_boxes_all_around_it() {
     let s = |id| Node::Conversation(ConversationId(id));
     let m = model(&[
-        (1, "coder", None),
-        (2, "coder", None),
-        (3, "coder", None),
-        (4, "coder", None),
+        (1, "planner", None),
+        (2, "coder", Some(1)),
+        (3, "coder", Some(1)),
+        (4, "reviewer", Some(1)),
+        (5, "reviewer", Some(1)),
     ]);
-    let pos = columns(&m);
-    assert!((pos[&s(1)].x - pos[&s(3)].x).abs() < 1., "{pos:?}");
-    assert!(
-        pos[&s(3)].y > pos[&s(2)].y && pos[&s(2)].y > pos[&s(1)].y,
-        "{pos:?}"
-    );
-    assert!(pos[&s(4)].x > pos[&s(1)].x, "{pos:?}");
-    assert!((pos[&s(4)].y - pos[&s(1)].y).abs() < 1., "{pos:?}");
+    let pos = super::Sim::new(&m).positions();
+    let middle = |n: Node| {
+        let r = super::rect(n, pos[&n]);
+        (r.x + r.w / 2., r.y + r.h / 2.)
+    };
+    let hub = middle(s(1));
+    let mut angles: Vec<f32> = [Node::You, s(2), s(3), s(4), s(5)]
+        .into_iter()
+        .map(|n| {
+            let (x, y) = middle(n);
+            (y - hub.1).atan2(x - hub.0).to_degrees()
+        })
+        .collect();
+    angles.sort_by(f32::total_cmp);
+    let widest = angles
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .chain([360. - angles[angles.len() - 1] + angles[0]])
+        .fold(0., f32::max);
+    // No half of the space around it is empty (in columns, everything
+    // stood on its right).
+    assert!(widest < 170., "{angles:?}");
 }

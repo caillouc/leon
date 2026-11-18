@@ -63,13 +63,14 @@ impl Workspace {
                 let state = state.clone();
                 div()
                     .id("jump-to-mine")
-                    .flex_none()
-                    .px_3()
-                    .py(px(5.))
-                    .rounded_full()
-                    .border_1()
-                    .border_color(theme::border_strong())
-                    .bg(theme::surface())
+                    // Shortened before the message box's settings are.
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .px_2()
+                    .py(px(3.))
+                    .rounded_md()
                     .text_size(px(12.))
                     .text_color(theme::fg_muted())
                     .cursor_pointer()
@@ -360,7 +361,7 @@ fn long_text(
     let shown = if expanded {
         text.to_owned()
     } else {
-        text.lines().take(6).collect::<Vec<_>>().join("\n")
+        crate::markdown::first_lines(text, 6)
     };
     let view = view.clone();
     div()

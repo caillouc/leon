@@ -213,12 +213,80 @@ impl Workspace {
     }
 }
 
+/// The first `n` lines of `text`, for a folded message (CONV-12), never
+/// cutting a code block: the cut moves up to just before the block, or,
+/// when the text starts with one, the block is closed after its first lines.
+pub(crate) fn first_lines(text: &str, n: usize) -> String {
+    let mut lines: Vec<&str> = text.lines().take(n).collect();
+    // The code block still open at the cut: where it starts, its fence.
+    let mut open: Option<(usize, &str)> = None;
+    for (ix, line) in lines.iter().enumerate() {
+        let Some(found) = fence(line) else { continue };
+        open = match open {
+            Some((_, start)) if closes(start, line) => None,
+            None => Some((ix, found)),
+            still => still,
+        };
+    }
+    if let Some((start, mark)) = open {
+        if lines[..start].iter().any(|l| !l.trim().is_empty()) {
+            lines.truncate(start);
+        } else {
+            lines.push(mark);
+        }
+    }
+    let end = lines
+        .iter()
+        .rposition(|l| !l.trim().is_empty())
+        .map_or(0, |ix| ix + 1);
+    lines[..end].join("\n")
+}
+
+/// The fence opening or closing a code block on `line`: three or more
+/// backticks or tildes.
+fn fence(line: &str) -> Option<&str> {
+    let t = line.trim_start();
+    let mark = t.chars().next().filter(|c| *c == '`' || *c == '~')?;
+    let run = t.len() - t.trim_start_matches(mark).len();
+    (run >= 3).then(|| &t[..run])
+}
+
+/// Whether `line` closes a block opened by `start`: the same character, at
+/// least as many, and nothing after.
+fn closes(start: &str, line: &str) -> bool {
+    fence(line)
+        .is_some_and(|f| f.starts_with(start) && line.trim_start()[f.len()..].trim().is_empty())
+}
+
 /// Which folded sections are open, by id.
 pub(crate) type OpenDetails = HashSet<SharedString>;
 
 #[cfg(test)]
 mod tests {
-    use super::{Part, parts};
+    use super::{Part, first_lines, parts};
+
+    #[test]
+    fn a_fold_never_cuts_a_code_block() {
+        let cases = [
+            ("a\nb\nc", 2, "a\nb"),
+            // Cut inside a block: before it, without the blank line.
+            ("intro\n\n```diff\n+x\n+y\n```\nend", 4, "intro"),
+            // A message starting with a block: its first lines, closed.
+            (
+                "```rust\nfn a\nfn b\nfn c\n```",
+                3,
+                "```rust\nfn a\nfn b\n```",
+            ),
+            // A block closed before the cut stays.
+            ("a\n```\nx\n```\nb\nc", 5, "a\n```\nx\n```\nb"),
+            // A shorter fence inside does not close a longer one.
+            ("````md\n```\nx", 3, "````md\n```\nx\n````"),
+            ("~~~\nx\ny", 2, "~~~\nx\n~~~"),
+        ];
+        for (text, n, shown) in cases {
+            assert_eq!(first_lines(text, n), shown, "{text:?}");
+        }
+    }
 
     #[test]
     fn details_sections_are_cut_out_folded() {
