@@ -9,10 +9,7 @@ use leon_domain::{
 };
 
 use super::layout::rings;
-use super::{
-    Edge, EdgeKind, FlowModel, Node, Pt, Rect, Step, View, arc, bends, build, curve_middle, layout,
-    route,
-};
+use super::{Edge, EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build, layout, route};
 
 fn session(id: i64, started_by: Option<i64>) -> SessionView {
     SessionView {
@@ -329,27 +326,4 @@ fn a_ring_is_laid_out_as_a_circle() {
     assert!(top.y < first.y && bottom.y > first.y, "{pos:?}");
     assert!((far.y - first.y).abs() < 1. && far.x > top.x, "{pos:?}");
     assert!((top.x - bottom.x).abs() < 1., "{pos:?}");
-}
-
-#[test]
-fn arcs_join_the_borders_and_bow_apart() {
-    let rect = |x, y| Rect {
-        x,
-        y,
-        w: 100.,
-        h: 50.,
-    };
-    let (a, b) = (rect(0., 0.), rect(300., 0.));
-    let [start, out, into, end] = arc(a, b, 0.2);
-    // From a's right edge to b's left edge, a little to the left of travel
-    // (up, going right).
-    assert!((start.x - 100.).abs() < 0.01 && (end.x - 300.).abs() < 0.01);
-    assert!(start.y < 25. && end.y < 25., "{start:?} {end:?}");
-    // The controls bow further that way.
-    assert!(out.y < start.y && into.y < end.y, "{out:?} {into:?}");
-    // The way back leaves and arrives on the other side: no shared end.
-    let [back_start, back_out, _, back_end] = arc(b, a, 0.2);
-    assert!(back_start.y > 25. && back_end.y > 25. && back_out.y > 25.);
-    let middle = curve_middle([start, out, into, end]);
-    assert!((middle.x - 200.).abs() < 0.01 && middle.y < start.y);
 }

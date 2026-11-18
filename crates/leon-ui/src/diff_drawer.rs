@@ -9,6 +9,7 @@ use crate::diff_rows::counts;
 use crate::diff_view::DiffSource;
 use crate::drawer::drawer;
 use crate::theme;
+use crate::widgets::{OnClick, segmented};
 use crate::workspace::{Screen, Workspace};
 
 /// The open drawer.
@@ -30,6 +31,29 @@ impl Workspace {
             scroll_to: Some(path),
         });
         cx.notify();
+    }
+
+    /// Unified or side by side, for the drawer's diffs.
+    fn diff_layout_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
+        let split = self.right.split;
+        segmented(
+            "diff-layout",
+            [(false, "Unified"), (true, "Side by side")]
+                .into_iter()
+                .map(|(value, text)| {
+                    let view = cx.entity().downgrade();
+                    let click: OnClick = Box::new(move |_, _, cx| {
+                        view.update(cx, |this, cx| {
+                            this.right.split = value;
+                            cx.notify();
+                        })
+                        .ok();
+                    });
+                    (text.into(), split == value, click)
+                })
+                .collect(),
+        )
+        .into_any_element()
     }
 
     pub(crate) fn close_drawer(&mut self, cx: &mut Context<Self>) {
@@ -76,7 +100,9 @@ impl Workspace {
                         DiffSource::Branch => "Branch diff",
                     }),
             )
-            .children(summary);
+            .children(summary)
+            .child(div().flex_1())
+            .child(self.diff_layout_toggle(cx));
         let body = self.diff_rows(id, source, scroll_to.as_deref(), cx);
         let review = self.render_review_bar(id, window, cx);
         Some(drawer(

@@ -14,15 +14,14 @@ use gpui::{
 };
 use gpui_component::text::TextView;
 use leon_core::SessionView;
-use leon_domain::{AgentSessionId, ArrowStyle, ConversationId};
+use leon_domain::{AgentSessionId, ConversationId};
 
 use crate::flow_model::{
-    self, Edge, EdgeKind, Node, Pt, Rect, View, arc, curve_middle, label_at, layout, rect, route,
-    status_text,
+    self, Edge, EdgeKind, Node, Pt, Rect, View, label_at, layout, rect, route, status_text,
 };
 use crate::flow_paint::{Arrow, legend};
 use crate::theme;
-use crate::widgets::{OnClick, button, segmented, status_dot};
+use crate::widgets::{button, status_dot};
 use crate::workspace::{Tab, Workspace};
 
 /// What the flow tab remembers per conversation.
@@ -115,7 +114,6 @@ impl Workspace {
             self.flow.views.insert(id, (fitted, false));
             fitted
         };
-        let arrows = self.snapshot.settings.arrows;
         let routes: Vec<(Edge, Vec<Pt>)> = model
             .edges
             .iter()
@@ -128,22 +126,7 @@ impl Workspace {
                     EdgeKind::Report => 18.,
                     EdgeKind::Question => 46.,
                 };
-                // Curved: one arc, each kind bowed its own amount; rounded:
-                // an orthogonal route, each kind on its own lane.
-                let world = match arrows {
-                    // Each arrow bows to its own left, so the two directions
-                    // between two boxes bow apart; a question bows further
-                    // than the answers on the same way.
-                    ArrowStyle::Curved => {
-                        let bend = if e.kind == EdgeKind::Question {
-                            0.45
-                        } else {
-                            0.2
-                        };
-                        arc(*a, *b, bend).to_vec()
-                    }
-                    ArrowStyle::Rounded => route(*a, *b, off),
-                };
+                let world = route(*a, *b, off);
                 let points = world.into_iter().map(|p| view.to_screen(p)).collect();
                 Some((e.clone(), points))
             })
@@ -165,7 +148,6 @@ impl Workspace {
                             kind: edge.kind,
                             wide,
                             scale: view.scale,
-                            style: arrows,
                         };
                         arrow.paint(window, bounds.origin, points);
                     }
@@ -178,11 +160,7 @@ impl Workspace {
             .iter()
             .enumerate()
             .map(|(ix, (edge, points))| {
-                // On a curve, the label sits halfway along it.
-                let at = match (arrows, points.as_slice()) {
-                    (ArrowStyle::Curved, [a, b, c, d]) => curve_middle([*a, *b, *c, *d]),
-                    _ => label_at(points),
-                };
+                let at = label_at(points);
                 let key = (id, edge.from, edge.to, edge.kind);
                 let on = selected == Some(key);
                 let c = color(edge.kind);
@@ -273,7 +251,7 @@ impl Workspace {
             .children(boxes)
             .children(labels)
             .child(self.flow_controls(id, view, cx))
-            .child(legend(self.arrow_toggle()))
+            .child(legend())
             .children(inspector)
             .into_any_element()
     }
@@ -414,13 +392,16 @@ impl Workspace {
                     .child(
                         div()
                             .flex_1()
+                            .min_w_0()
                             .overflow_hidden()
                             .whitespace_nowrap()
+                            .text_ellipsis()
                             .text_color(agent)
                             .child(self.session_name(session)),
                     )
                     .child(
                         div()
+                            .flex_none()
                             .px(px(5. * s))
                             .rounded(px(4.))
                             .bg(theme::surface_2())
@@ -548,30 +529,6 @@ impl Workspace {
         let zoomed = view.zoom_at(at.x - origin.x, at.y - origin.y, factor);
         self.flow.views.insert(id, (zoomed, true));
         cx.notify();
-    }
-
-    /// Rounded or square arrows, saved in the settings; in the Flow view
-    /// and in Settings.
-    pub(crate) fn arrow_toggle(&self) -> AnyElement {
-        let current = self.snapshot.settings.arrows;
-        segmented(
-            "flow-arrows",
-            ArrowStyle::ALL
-                .into_iter()
-                .map(|style| {
-                    let core = self.core.clone();
-                    let settings = self.snapshot.settings.clone();
-                    let click: OnClick = Box::new(move |_, _, _| {
-                        core.send(leon_core::Intent::SaveSettings(leon_domain::Settings {
-                            arrows: style,
-                            ..settings.clone()
-                        }));
-                    });
-                    (style.label().into(), style == current, click)
-                })
-                .collect(),
-        )
-        .into_any_element()
     }
 
     fn flow_controls(&self, id: ConversationId, view: View, cx: &mut Context<Self>) -> AnyElement {

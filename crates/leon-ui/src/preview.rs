@@ -28,8 +28,6 @@ pub enum Shot {
     PickerOpen(ConversationId, &'static str),
     /// A conversation's flow tab.
     Flow(ConversationId),
-    /// A conversation's flow tab, its arrows drawn in a given style.
-    FlowArrows(ConversationId, leon_domain::ArrowStyle),
     /// The new-conversation form.
     NewConversation,
     /// A conversation with a right-pane tab open: `changes`, `branch`, `pr`
@@ -49,8 +47,9 @@ pub enum Shot {
     Tools,
     /// The Settings view.
     Settings,
-    /// A conversation's changed file, large in the drawer (path).
-    Drawer(ConversationId, &'static str),
+    /// A conversation's changed file, large in the drawer (path); side by
+    /// side when `true`.
+    Drawer(ConversationId, &'static str, bool),
     /// An issue's or a pull request's details in the drawer.
     Detail(Box<leon_core::Detail>),
 }
@@ -72,6 +71,14 @@ impl Workspace {
         self.right.draft = None;
         self.right.review.clear();
         self.right.tab = RightTab::Changes;
+        self.right.drawer = None;
+        // A details drawer from an earlier shot does not stay open.
+        if self.snapshot.detail.is_some() {
+            self.snapshot = std::sync::Arc::new(leon_core::Snapshot {
+                detail: None,
+                ..(*self.snapshot).clone()
+            });
+        }
         match shot {
             Shot::Empty => self.screen = Screen::Nothing,
             Shot::Conversation(id) => {
@@ -87,17 +94,11 @@ impl Workspace {
                 self.select(*id, cx);
                 self.tabs.remove(id);
             }
-            Shot::FlowArrows(id, style) => {
-                self.select(*id, cx);
-                self.tabs.remove(id);
-                let mut snapshot = (*self.snapshot).clone();
-                snapshot.settings.arrows = *style;
-                self.snapshot = std::sync::Arc::new(snapshot);
-            }
             Shot::NewConversation => self.show_new_conversation(cx),
-            Shot::Drawer(id, path) => {
+            Shot::Drawer(id, path, split) => {
                 self.select(*id, cx);
                 self.open_first_session(*id);
+                self.right.split = *split;
                 self.open_drawer(DiffSource::Changes, (*path).to_owned(), cx);
             }
             Shot::Right(id, tab) => {

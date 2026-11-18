@@ -110,7 +110,6 @@ async fn saved_settings_are_used_at_once_or_the_failure_is_said() {
     );
     let mut wanted = s.settings.clone();
     wanted.diff_fold = vec!["glob:**/*.lock".into()];
-    wanted.arrows = leon_domain::ArrowStyle::Rounded;
     h.core.send(Intent::SaveSettings(wanted.clone()));
     let s = until(&h.core, "saved", |s| s.settings == wanted).await;
     assert_eq!(s.fold.len(), 1);

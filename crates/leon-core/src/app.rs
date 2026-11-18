@@ -325,6 +325,7 @@ impl Core {
             Intent::SaveSettings(settings) => self.save_settings(settings),
             Intent::RequestCopilotReview(item) => self.request_review(item),
             Intent::Comment(item, body) => self.comment(item, body),
+            Intent::SetDraft(item, draft) => self.set_draft(item, draft),
             Intent::ShowDetail(item) => self.show_detail(item),
         }
     }

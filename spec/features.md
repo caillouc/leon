@@ -104,8 +104,7 @@ conversation**: one item in the left pane (D5).
   prompts or reports. Each agent has its own colour. Agents that message each
   other in a loop (planner → coder → reviewer → planner) are placed on a
   circle, not on a long line. Arrows run as straight segments with
-  rounded bends (default) or as one smooth curve (a toggle in the diagram and
-  in Settings).
+  rounded bends.
 - **FLOW-5** Nothing hardcoded: the flow is built from what the agents actually
   do. A new agent that starts another agent shows up on its own.
 - **FLOW-6** The diagram is a canvas: drag to pan, scroll or pinch to zoom, drag
@@ -118,7 +117,8 @@ conversation**: one item in the left pane (D5).
 - **GIT-1** Uncommitted files of the conversation's working directory.
 - **GIT-2** Diff of each uncommitted file. Changes and Branch list the files
   (with lines added and removed on the tab); clicking one opens a large drawer
-  over the middle of the window with every file's diff, at the one clicked.
+  over the middle of the window with every file's diff, at the one clicked,
+  unified or side by side.
 - **GIT-3** Whole diff of the worktree against its starting branch/commit, as a
   PR shows it.
 - **GIT-4** Auto-fold files whose path matches configured patterns (glob or
@@ -139,11 +139,15 @@ conversation**: one item in the left pane (D5).
   conversation remembers the issue, and the issue then offers "Open
   conversation".
 - **GH-3** My open PRs, with their state icon and checks. Clicking one opens
-  its details in a drawer (checks, reviewers, comments, Copilot review,
-  comment); one with a conversation has "Open conversation".
+  its details in a drawer: the checks summed up with the failing ones named,
+  its description (GitHub's folded sections stay folded), the review threads
+  still open, and its actions; one with a conversation has "Open
+  conversation".
 - **GH-4** Labels of issues and PRs.
 - **GH-5** Request a Copilot review on a PR.
 - **GH-6** Post a comment.
+- **GH-7** Mark a pull request ready for review, or convert it back to a
+  draft.
 
 ### Notifications
 
@@ -152,15 +156,15 @@ conversation**: one item in the left pane (D5).
 ### Connectors
 
 - **TOOLS-1** A Connectors view: one table, read-only, with a row per
-  service (Slack, Gmail, Metabase…) and a column per CLI saying whether it
-  works there (as a plugin, an MCP server or an account connector); working
-  ones only by default, a search by name. Then Leon's shared MCP list, which
+  service (Slack, Gmail, Metabase…) working in at least one CLI and a column
+  per CLI saying whether it works there (as a plugin, an MCP server or an
+  account connector), to compare the CLIs; a search by name. Then Leon's shared MCP list, which
   every CLI's sessions get (add and remove servers there, I14).
 
 ### Settings
 
 - **SETTINGS-1** A Settings view edits the config file: new-conversation
-  defaults, diff auto-fold patterns, source folders, flow arrows. Saved at
+  defaults, diff auto-fold patterns, source folders. Saved at
   once into `config.toml`, keeping the rest of the file.
 
 ### Doctor

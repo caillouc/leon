@@ -1,5 +1,9 @@
 fragment prDetails on PullRequest {
+  body
   comments(last: 30) { nodes { author { login } body createdAt } }
+  reviewThreads(first: 50) { nodes { isResolved path line
+    comments(first: 30) { nodes { author { login } body createdAt } }
+  } }
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
     __typename
     ... on CheckRun { name status conclusion }

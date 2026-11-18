@@ -3,10 +3,10 @@
 //! reading, no type guessing); `-F` only takes the `{owner}`/`{repo}`
 //! placeholders and numbers (sent as GraphQL `Int`).
 
-/// The pull requests of one head branch, with comments and checks; `gh`
+/// The pull requests of one head branch, with their details; `gh`
 /// fills `{owner}` and `{repo}` from the folder it runs in.
 const PULL_REQUEST: &str = include_str!("graphql/pull_request.graphql");
-/// One pull request by number, with comments and checks.
+/// One pull request by number, with its details.
 const PULL_REQUEST_NUMBER: &str = include_str!("graphql/pull_request_number.graphql");
 /// One issue by number, with assignees, body and comments.
 const ISSUE: &str = include_str!("graphql/issue.graphql");
@@ -14,7 +14,8 @@ const ISSUE: &str = include_str!("graphql/issue.graphql");
 const SEARCH: &str = include_str!("graphql/search.graphql");
 /// The pull request fields every query reads.
 const PR_FIELDS: &str = include_str!("graphql/pr_fields.graphql");
-/// The checks and comments of a pull request read alone.
+/// The details of a pull request read alone: body, comments, review
+/// threads, checks.
 const PR_DETAILS: &str = include_str!("graphql/pr_details.graphql");
 /// The issue fields every query reads; `__BOARD__` marks where the board
 /// fields go.
@@ -127,6 +128,18 @@ pub(crate) fn copilot_review(repo: &str, number: u64) -> Vec<String> {
     ])
 }
 
+/// `gh pr ready` marking pull request `number` of `repo` ready for review,
+/// or with `--undo` converting it to a draft (`gh pr ready --help`, 2.101.0,
+/// 2026-11-18).
+pub(crate) fn set_draft(repo: &str, number: u64, draft: bool) -> Vec<String> {
+    let mut args = owned(["pr", "ready", &number.to_string()]);
+    if draft {
+        args.push("--undo".to_owned());
+    }
+    args.extend(owned(["--repo", repo]));
+    args
+}
+
 /// `gh api` posting `body` as a comment on issue or pull request `number`
 /// of `repo` (both are issues to the REST API).
 pub(crate) fn comment(repo: &str, number: u64, body: &str) -> Vec<String> {
@@ -144,7 +157,7 @@ pub(crate) fn comment(repo: &str, number: u64, body: &str) -> Vec<String> {
 mod tests {
     use super::{
         PR_DETAILS, PR_FIELDS, PULL_REQUEST, comment, copilot_review, issue, owner_and_name,
-        pull_request, pull_request_by_number, search,
+        pull_request, pull_request_by_number, search, set_draft,
     };
 
     #[test]
@@ -283,6 +296,18 @@ mod tests {
                 "@copilot"
             ]
         );
+    }
+
+    /// Never run for real: no test changes a pull request.
+    #[test]
+    fn set_draft_args() {
+        let cases = [
+            (true, &["pr", "ready", "12", "--undo", "--repo", "o/r"][..]),
+            (false, &["pr", "ready", "12", "--repo", "o/r"][..]),
+        ];
+        for (draft, expected) in cases {
+            assert_eq!(set_draft("o/r", 12, draft), expected, "draft: {draft}");
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::Path;
 
-use leon_domain::{ArrowStyle, BackendKind, SessionDefaults, Settings};
+use leon_domain::{BackendKind, SessionDefaults, Settings};
 use toml::{Table, Value};
 
 /// Config format version this build reads.
@@ -83,7 +83,6 @@ pub fn parse(text: &str) -> Loaded {
                         .ok_or_else(|| format!("\"{p}\" is not a valid glob or regex, ignored"))
                 });
             }
-            "flow" => read_flow(value, &mut out.settings, &mut out.warnings),
             "sources" => {
                 out.settings.sources =
                     read_list(value, "sources", "folders", &mut out.warnings, |f| {
@@ -110,29 +109,6 @@ fn check_version(value: &Value, warnings: &mut Vec<Warning>) {
             format!("this Leon reads version {CURRENT_VERSION}, the file says {other}; reading it anyway"),
         )),
         None => warnings.push(Warning::new("version", "must be a number")),
-    }
-}
-
-fn read_flow(value: &Value, settings: &mut Settings, warnings: &mut Vec<Warning>) {
-    let Some(table) = value.as_table() else {
-        warnings.push(Warning::new("flow", "must be a table, ignored"));
-        return;
-    };
-    for (key, value) in table {
-        let dotted = format!("flow.{key}");
-        match (key.as_str(), value.as_str().map(ArrowStyle::from_id)) {
-            ("arrows", Some(Some(style))) => settings.arrows = style,
-            ("arrows", _) => warnings.push(Warning::new(
-                dotted,
-                format!(
-                    "must be one of {}, ignored",
-                    ArrowStyle::ALL
-                        .map(|s| format!("\"{}\"", s.id()))
-                        .join(", ")
-                ),
-            )),
-            _ => warnings.push(Warning::new(dotted, "unknown key, ignored")),
-        }
     }
 }
 
@@ -227,7 +203,6 @@ mod tests {
         assert_eq!(d.effort.as_deref(), Some("high"));
         assert_eq!(d.permission, "on-request");
         assert_eq!(loaded.settings.sources, ["~/agent-kit"]);
-        assert_eq!(loaded.settings.arrows, leon_domain::ArrowStyle::Rounded);
         assert_eq!(
             loaded.settings.diff_fold,
             ["glob:**/*.lock", "re:^generated/"]
@@ -248,9 +223,6 @@ mod tests {
             ("[sources]\nfolders = \"~/kit\"", "sources.folders"),
             ("[sources]\nfolders = [\"\"]", "sources.folders"),
             ("[sources]\npaths = []", "sources.paths"),
-            ("[flow]\narrows = \"curly\"", "flow.arrows"),
-            ("[flow]\nlines = \"curved\"", "flow.lines"),
-            ("flow = 1", "flow"),
         ];
         for (text, key) in cases {
             let loaded = parse(text);

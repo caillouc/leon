@@ -1,14 +1,16 @@
 //! Talks to GitHub with the user's own `gh` login (P7): the pull request of
 //! a branch, the user's open issues and pull requests, one pull request or
-//! issue by number, a Copilot review request, a comment.
+//! issue by number, a Copilot review request, a comment, a pull request
+//! marked draft or ready for review.
 //!
 //! Every call runs the GitHub CLI (`gh`, checked on 2.101.0, 2026-11-17;
-//! by-number reads and board fields on 2026-11-18) with an argument list,
-//! never through a shell; reads are one `gh api graphql` query each. Calls
-//! block: the core runs them off its async workers.
+//! by-number reads, board fields and review threads on 2026-11-18) with an
+//! argument list, never through a shell; reads are one `gh api graphql`
+//! query each. Calls block: the core runs them off its async workers.
 //!
 //! Must not: read, store or log a token (authentication stays inside `gh`);
-//! change anything on GitHub beyond the port's review request and comment;
+//! change anything on GitHub beyond the port's review request, comment and
+//! draft state;
 //! depend on another adapter or on the UI.
 
 mod board;
@@ -16,6 +18,7 @@ mod checks;
 mod parse;
 mod query;
 mod run;
+mod threads;
 mod time;
 
 use std::fmt::Display;
@@ -36,6 +39,20 @@ impl GhCli {
     /// Runs `gh` with the `PATH` that `path` gives.
     pub fn new(path: SearchPath) -> Self {
         Self { path }
+    }
+
+    /// Runs `gh args…`, which changes pull request or issue `number` of
+    /// `repo`; an error says `context` and which one.
+    fn change(
+        &self,
+        context: &'static str,
+        repo: &str,
+        number: u64,
+        args: &[String],
+    ) -> Result<(), PortError> {
+        gh((self.path)(), args, None)
+            .map(drop)
+            .map_err(|e| numbered(context, repo, number)(&e))
     }
 
     /// Runs a query with the issues' board fields. Those need the token's
@@ -159,14 +176,22 @@ impl GitHub for GhCli {
     }
 
     fn request_copilot_review(&self, repo: &str, number: u64) -> Result<(), PortError> {
-        gh((self.path)(), &query::copilot_review(repo, number), None)
-            .map(drop)
-            .map_err(|e| numbered("requesting a Copilot review", repo, number)(&e))
+        let args = query::copilot_review(repo, number);
+        self.change("requesting a Copilot review", repo, number, &args)
     }
 
     fn comment(&self, repo: &str, number: u64, body: &str) -> Result<(), PortError> {
-        gh((self.path)(), &query::comment(repo, number, body), None)
-            .map(drop)
-            .map_err(|e| numbered("posting a comment", repo, number)(&e))
+        let args = query::comment(repo, number, body);
+        self.change("posting a comment", repo, number, &args)
+    }
+
+    fn set_draft(&self, repo: &str, number: u64, draft: bool) -> Result<(), PortError> {
+        let context = if draft {
+            "converting the pull request to a draft"
+        } else {
+            "marking the pull request ready for review"
+        };
+        let args = query::set_draft(repo, number, draft);
+        self.change(context, repo, number, &args)
     }
 }

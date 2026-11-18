@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::board::{Board, board};
 use crate::checks::checks;
+use crate::threads::threads;
 use crate::time::unix_ms;
 
 /// Login GitHub shows for a deleted account.
@@ -60,7 +61,8 @@ pub(crate) fn search_issues(json: &str) -> Result<Vec<Issue>, serde_json::Error>
     search(json, "Issue", issue_node)
 }
 
-/// Pull requests found by a search, without checks or comments.
+/// Pull requests found by a search, without body, checks, comments or
+/// review threads.
 pub(crate) fn search_pull_requests(json: &str) -> Result<Vec<PullRequest>, serde_json::Error> {
     search(json, "PullRequest", pull_request_node)
 }
@@ -101,6 +103,8 @@ fn pull_request_node(pr: &Value) -> Option<PullRequest> {
         rollup: rollup(pr),
         reviewers: reviewers(pr),
         comments: comments(pr),
+        body: text(&pr["body"]).unwrap_or_default(),
+        threads: threads(pr),
     })
 }
 
@@ -181,9 +185,9 @@ fn reviewers(pr: &Value) -> Vec<String> {
     logins
 }
 
-/// Comments of a pull request or an issue, oldest first; empty when the
-/// query did not ask for them.
-fn comments(item: &Value) -> Vec<Comment> {
+/// Comments of a pull request, an issue or a review thread, oldest first;
+/// empty when the query did not ask for them.
+pub(crate) fn comments(item: &Value) -> Vec<Comment> {
     nodes(&item["comments"])
         .map(|c| Comment {
             author: c["author"]["login"].as_str().unwrap_or(GHOST).to_owned(),

@@ -10,44 +10,6 @@ pub struct Settings {
     /// `sources.folders`: the user's agents, skills and MCP servers in the
     /// plugin layout (P3, EXT-2), as written (`~/` allowed).
     pub sources: Vec<String>,
-    /// `flow.arrows`: how the flow diagram draws its arrows (FLOW-4).
-    pub arrows: ArrowStyle,
-}
-
-/// How the flow diagram's arrows run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ArrowStyle {
-    /// Straight segments with rounded bends.
-    #[default]
-    Rounded,
-    /// One smooth curve from box to box.
-    Curved,
-}
-
-impl ArrowStyle {
-    /// Both styles, in the order the UI offers them.
-    pub const ALL: [Self; 2] = [Self::Rounded, Self::Curved];
-
-    /// The value in the config file.
-    pub fn id(self) -> &'static str {
-        match self {
-            Self::Curved => "curved",
-            Self::Rounded => "rounded",
-        }
-    }
-
-    /// The style a config value names.
-    pub fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|s| s.id() == id)
-    }
-
-    /// Its name in the UI.
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Curved => "Curved",
-            Self::Rounded => "Rounded",
-        }
-    }
 }
 
 /// Choices prefilled when the user starts a conversation (CONV-3, CONV-4).

@@ -83,6 +83,8 @@ pub struct Workspace {
     pub(crate) right: RightState,
     pub(crate) flow: FlowState,
     pub(crate) panes: crate::panes::Panes,
+    /// GitHub's folded sections the user opened.
+    pub(crate) open_details: crate::markdown::OpenDetails,
     pub(crate) gh: crate::github::GhState,
     pub(crate) tools_form: crate::tools_view::ToolsForm,
     pub(crate) settings_form: crate::settings_view::SettingsForm,
@@ -193,6 +195,7 @@ impl Workspace {
             right,
             flow: FlowState::default(),
             panes: crate::panes::Panes::default(),
+            open_details: crate::markdown::OpenDetails::default(),
             gh,
             tools_form,
             settings_form,

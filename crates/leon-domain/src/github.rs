@@ -157,6 +157,22 @@ pub struct PullRequest {
     pub reviewers: Vec<String>,
     /// Comments, oldest first.
     pub comments: Vec<Comment>,
+    /// Markdown description. Read with the pull request alone (details).
+    pub body: String,
+    /// Review threads not resolved yet, oldest first. Read with the pull
+    /// request alone (details).
+    pub threads: Vec<ReviewThread>,
+}
+
+/// A review thread on a pull request's code, not resolved yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewThread {
+    /// File it is on.
+    pub path: String,
+    /// Line it is on, when GitHub still knows it.
+    pub line: Option<u32>,
+    /// Its comments, oldest first.
+    pub comments: Vec<Comment>,
 }
 
 impl PullRequest {
@@ -250,6 +266,8 @@ mod tests {
                 .collect(),
             reviewers: vec![],
             comments: vec![],
+            body: String::new(),
+            threads: vec![],
         }
     }
 

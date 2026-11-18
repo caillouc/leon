@@ -49,6 +49,8 @@ pub(crate) struct RightState {
     pub draft: Option<DraftAt>,
     /// Lines being chosen by dragging a line's +, before the comment box.
     pub selecting: Option<crate::diff_rows::Selecting>,
+    /// The drawer shows diffs side by side instead of unified.
+    pub split: bool,
     pub comment: Entity<TextareaState>,
     pub pr_comment: Entity<TextareaState>,
     pub lists: HashMap<(ConversationId, DiffSource), DiffList>,
@@ -88,6 +90,7 @@ impl RightState {
             review_to: HashMap::new(),
             draft: None,
             selecting: None,
+            split: false,
             comment,
             pr_comment,
             lists: HashMap::new(),

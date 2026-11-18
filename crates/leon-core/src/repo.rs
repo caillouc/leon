@@ -126,6 +126,20 @@ impl Core {
         });
     }
 
+    /// Marks a pull request as a draft or ready for review (GH-7).
+    pub(crate) fn set_draft(&mut self, item: GhRef, draft: bool) {
+        let github = Arc::clone(&self.ports.github);
+        let tx = self.internal_tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let message = match (github.set_draft(&item.repo, item.number, draft), draft) {
+                (Ok(()), true) => format!("#{} is a draft again", item.number),
+                (Ok(()), false) => format!("#{} is ready for review", item.number),
+                (Err(error), _) => format!("Could not change #{}: {error}", item.number),
+            };
+            let _ = tx.send(Internal::Done(item, message));
+        });
+    }
+
     /// Shows an item's details, read in the background; `None` closes them.
     pub(crate) fn show_detail(&mut self, item: Option<GhRef>) {
         let Some(item) = item else {

@@ -3,8 +3,7 @@
 //! with what can be done from Leon — start or open the conversation, request
 //! a Copilot review, comment — and a link to GitHub.
 
-use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, SharedString, div, prelude::*, px};
-use gpui_component::text::TextView;
+use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, div, prelude::*, px};
 use leon_core::{Detail, Intent};
 use leon_domain::{GhKind, GhRef, Issue};
 
@@ -26,7 +25,7 @@ impl Workspace {
             Detail::Loading(_) => empty("Reading from GitHub…"),
             Detail::Failed(_, error) => empty(format!("Could not read it: {error}")),
             Detail::Issue(issue) => self.issue_body(issue, cx).into_any_element(),
-            Detail::PullRequest(pr) => Self::pr_body(pr, &input, cx).into_any_element(),
+            Detail::PullRequest(pr) => self.pr_body(pr, &input, cx).into_any_element(),
         };
         // What Leon can do with it sits in the header, next to GitHub.
         let action = match &detail {
@@ -157,13 +156,14 @@ impl Workspace {
                     .border_color(theme::border())
                     .bg(theme::panel())
                     .text_size(px(13.))
-                    .child(TextView::markdown(
-                        SharedString::from(format!("issue-body-{}", item.text())),
-                        SharedString::from(issue.body.clone()),
+                    .child(self.rich_markdown(
+                        &format!("issue-body-{}", item.text()),
+                        &issue.body,
+                        cx,
                     ))
                     .into_any_element()
             })
-            .child(Self::comments(&issue.comments, item, &self.gh.comment, cx))
+            .child(self.comments(&issue.comments, item, &self.gh.comment, cx))
     }
 }
 

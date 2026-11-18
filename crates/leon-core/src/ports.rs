@@ -364,6 +364,8 @@ pub trait GitHub: Send + Sync + 'static {
     fn request_copilot_review(&self, repo: &str, number: u64) -> Result<(), PortError>;
     /// Posts a comment on a pull request or an issue (GH-6).
     fn comment(&self, repo: &str, number: u64, body: &str) -> Result<(), PortError>;
+    /// Marks a pull request as a draft (`true`) or ready for review (GH-7).
+    fn set_draft(&self, repo: &str, number: u64, draft: bool) -> Result<(), PortError>;
     /// Doctor: `gh` installed, its version, logged in. Blocks.
     fn doctor(&self) -> DoctorSection;
 }

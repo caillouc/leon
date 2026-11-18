@@ -11,21 +11,19 @@ use gpui::{
 use gpui_component::input::{Input, InputState};
 use leon_core::Intent;
 use leon_domain::{
-    BackendKind, CliConnectors, Connector, ConnectorKind, ConnectorState, McpServer,
+    BackendKind, CliConnectors, Connector, ConnectorKind, ConnectorRow, ConnectorState, McpServer,
     connector_table, split_command,
 };
 
 use crate::left::since;
 use crate::theme;
-use crate::widgets::{OnClick, button, empty, pane_header, primary, segmented};
+use crate::widgets::{button, empty, pane_header, primary};
 use crate::workspace::{Workspace, value_of};
 
 /// The add form's inputs and its last error.
 pub(crate) struct ToolsForm {
     /// Filters the connectors table by name.
     search: Entity<InputState>,
-    /// The table shows every connector, not only the working ones.
-    all: bool,
     name: Entity<InputState>,
     command: Entity<InputState>,
     env: Entity<InputState>,
@@ -40,7 +38,6 @@ impl ToolsForm {
         };
         Self {
             search: input("Find a connector: Slack, Metabase…", window, cx),
-            all: false,
             name: input("Name, e.g. metabase", window, cx),
             command: input("Command, e.g. npx -y @org/metabase-mcp", window, cx),
             env: input(
@@ -126,35 +123,17 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// One row per service (Slack, Metabase…), one column per CLI: whether
-    /// it works there. Working ones only unless "All" is chosen; a search
+    /// One row per service (Slack, Metabase…) working in at least one CLI,
+    /// one column per CLI: whether it works there, to compare them. A search
     /// narrows by name.
     fn connectors_table(&self, clis: &[CliConnectors], cx: &mut Context<Self>) -> AnyElement {
         let query = value_of(&self.tools_form.search, cx).to_lowercase();
-        let all = self.tools_form.all;
         let rows: Vec<_> = connector_table(clis)
             .into_iter()
-            .filter(|r| all || r.connected())
+            .filter(ConnectorRow::connected)
             .filter(|r| query.is_empty() || r.name.to_lowercase().contains(&query))
             .collect();
         let backends: Vec<BackendKind> = clis.iter().map(|c| c.backend).collect();
-        let filter = segmented(
-            "connectors-filter",
-            [(false, "Working"), (true, "All")]
-                .into_iter()
-                .map(|(value, text)| {
-                    let view = cx.entity().downgrade();
-                    let click: OnClick = Box::new(move |_, _, cx| {
-                        view.update(cx, |this, cx| {
-                            this.tools_form.all = value;
-                            cx.notify();
-                        })
-                        .ok();
-                    });
-                    (text.into(), all == value, click)
-                })
-                .collect(),
-        );
         let problems = clis.iter().filter_map(|c| {
             c.problem.as_ref().map(|p| {
                 div()
@@ -225,8 +204,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .child(div().flex_1().child(Input::new(&self.tools_form.search)))
-                    .child(filter),
+                    .child(div().flex_1().child(Input::new(&self.tools_form.search))),
             )
             .children(problems)
             .child(
@@ -240,11 +218,7 @@ impl Workspace {
                     .child(head)
                     .children(body)
                     .when(count == 0, |d| {
-                        d.child(empty(if all {
-                            "No connector matches."
-                        } else {
-                            "No working connector matches. Choose All to see the others."
-                        }))
+                        d.child(empty("No working connector matches."))
                     }),
             )
             .child(hint(
@@ -407,23 +381,9 @@ fn kind_name(kind: ConnectorKind) -> &'static str {
     }
 }
 
-/// What one CLI has for a service: the best state among its entries, as a
-/// dot and a word, or a dash when it has nothing.
+/// Whether one CLI has a service working: a green dot, or a dash.
 fn cell(entries: &[&Connector]) -> gpui::Div {
-    let rank = |s: ConnectorState| match s {
-        ConnectorState::On => 0,
-        ConnectorState::Failed => 1,
-        ConnectorState::NeedsLogin => 2,
-        ConnectorState::Off => 3,
-    };
-    let best = entries.iter().map(|c| c.state).min_by_key(|s| rank(*s));
-    let (color, text) = match best {
-        Some(ConnectorState::On) => (theme::ok(), "connected"),
-        Some(ConnectorState::Failed) => (theme::err(), "failing"),
-        Some(ConnectorState::NeedsLogin) => (theme::warn(), "log in"),
-        Some(ConnectorState::Off) => (theme::fg_faint(), "off"),
-        None => (theme::border_strong(), "—"),
-    };
+    let on = entries.iter().any(|c| c.state == ConnectorState::On);
     div()
         .w(px(COLUMN))
         .flex_none()
@@ -431,15 +391,15 @@ fn cell(entries: &[&Connector]) -> gpui::Div {
         .items_center()
         .gap(px(6.))
         .text_size(px(12.5))
-        .text_color(if best.is_some() {
+        .text_color(if on {
             theme::fg_muted()
         } else {
             theme::fg_faint()
         })
-        .when(best.is_some(), |d| {
-            d.child(div().size(px(8.)).rounded_full().bg(color))
+        .when(on, |d| {
+            d.child(div().size(px(8.)).rounded_full().bg(theme::ok()))
         })
-        .child(text)
+        .child(if on { "connected" } else { "—" })
 }
 
 fn hint(text: &str) -> gpui::Div {

@@ -28,11 +28,11 @@ pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold
 pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
 pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Iteration, Label, PrState,
-    PullRequest, issues_by_status,
+    PullRequest, ReviewThread, issues_by_status,
 };
 pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
-pub use settings::{ArrowStyle, SessionDefaults, Settings};
+pub use settings::{SessionDefaults, Settings};
 pub use transcript::{Entry, TimedEntry, Usage};

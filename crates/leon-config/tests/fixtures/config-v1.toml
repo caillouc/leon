@@ -12,6 +12,3 @@ fold = ["glob:**/*.lock", "re:^generated/"]
 
 [sources]
 folders = ["~/agent-kit"]
-
-[flow]
-arrows = "rounded"

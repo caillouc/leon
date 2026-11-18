@@ -39,6 +39,8 @@ fn recorded_open_pull_request() {
         reviewers: vec!["reviewer-a".into(), "copilot-pull-request-reviewer".into()],
         comments: vec![],
         rollup: None,
+        body: String::new(),
+        threads: vec![],
     };
     assert_eq!(pr, expected);
     assert_eq!(pr.checks_state(), Some(CheckState::Pass));
@@ -357,10 +359,10 @@ fn recorded_search_pull_requests() {
         ]
     );
     assert_eq!(prs[2].branch, "feature/multi-account");
-    assert!(
-        prs.iter()
-            .all(|p| p.checks.is_empty() && p.comments.is_empty())
-    );
+    assert!(prs.iter().all(|p| p.checks.is_empty()
+        && p.comments.is_empty()
+        && p.body.is_empty()
+        && p.threads.is_empty()));
     assert_eq!(
         prs[0].reviewers,
         ["reviewer-a", "copilot-pull-request-reviewer"]

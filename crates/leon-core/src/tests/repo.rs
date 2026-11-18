@@ -73,6 +73,8 @@ impl GitHub for FakeGitHub {
             rollup: None,
             reviewers: vec![],
             comments: vec![],
+            body: String::new(),
+            threads: vec![],
         }))
     }
     fn my_issues(&self) -> Result<Vec<Issue>, PortError> {
@@ -107,6 +109,10 @@ impl GitHub for FakeGitHub {
         Ok(())
     }
     fn comment(&self, _repo: &str, _number: u64, _body: &str) -> Result<(), PortError> {
+        Ok(())
+    }
+    fn set_draft(&self, _repo: &str, number: u64, _draft: bool) -> Result<(), PortError> {
+        self.reviews.lock().unwrap().push(number);
         Ok(())
     }
 }
@@ -206,4 +212,17 @@ async fn details_load_in_the_background_and_close() {
     );
     h.core.send(Intent::ShowDetail(None));
     until(&h.core, "closed", |s| s.detail.is_none()).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pull_request_goes_ready_or_back_to_draft() {
+    let h = harness();
+    until(&h.core, "loaded", |s| s.loaded).await;
+    h.core
+        .send(Intent::SetDraft(GhRef::pull_request("acme/api", 7), false));
+    let s = until(&h.core, "flash", |s| s.flash.is_some()).await;
+    assert_eq!(
+        s.flash.as_ref().map(|f| f.1.as_str()),
+        Some("#7 is ready for review")
+    );
 }

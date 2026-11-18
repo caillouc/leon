@@ -1,12 +1,8 @@
 //! The conversation's pull request (GH-1, GH-4..6): state, checks,
 //! reviewers, comments; request a Copilot review, post a comment.
 
-use gpui::{
-    AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, SharedString, div, prelude::*,
-    px,
-};
+use gpui::{AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, div, prelude::*, px};
 use gpui_component::input::{Textarea, TextareaState};
-use gpui_component::text::TextView;
 use leon_core::Intent;
 use leon_domain::{CheckState, Comment, ConversationId, GhRef, Label, PrState, PullRequest};
 
@@ -84,14 +80,16 @@ impl Workspace {
             .flex_1()
             .overflow_y_scroll()
             .pb_4()
-            .child(Self::pr_body(&pr, &input, cx))
+            .child(self.pr_body(&pr, &input, cx))
             .into_any_element()
     }
 
-    /// A pull request: state, title, branch, labels, checks, reviewers,
-    /// comments, and the actions on it (GH-1, GH-4..6). `input` is the
-    /// comment box to use.
+    /// A pull request, what matters to act on it: its state and branch, its
+    /// checks summed up with only the failing ones listed, what can be done
+    /// (ready or draft, Copilot review), its description, the review threads
+    /// still open, and a box to comment (GH-1, GH-4..7).
     pub(crate) fn pr_body(
+        &self,
         pr: &PullRequest,
         input: &Entity<TextareaState>,
         cx: &mut Context<Self>,
@@ -99,48 +97,114 @@ impl Workspace {
         let item = GhRef::pull_request(&pr.repo, pr.number);
         let (color, word) = pr_state(pr.state);
         let live = matches!(pr.state, PrState::Open | PrState::Draft);
-        let passing = pr
-            .checks
-            .iter()
-            .filter(|c| c.state == CheckState::Pass)
-            .count();
         let asked = copilot_asked(pr);
-        let checks = div()
-            .mx_3()
-            .flex()
-            .flex_col()
-            .rounded_lg()
-            .border_1()
-            .border_color(theme::border())
-            .bg(theme::window())
-            .children(pr.checks.iter().enumerate().map(|(ix, check)| {
-                let glyph = match check.state {
-                    CheckState::Pass => Icon::Passed,
-                    CheckState::Fail => Icon::Failed,
-                    CheckState::Pending => Icon::Pending,
-                };
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py(px(7.))
-                    .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
-                    .text_size(px(12.5))
-                    .child(icon(glyph, check_color(check.state), 14.))
-                    .child(check.name.clone())
-            }));
-        let request = {
-            let item = item.clone();
-            cx.listener(move |this, _, _, _| {
-                if !asked {
-                    this.core.send(Intent::RequestCopilotReview(item.clone()));
-                }
-            })
+        let id = item.text();
+        let actions = live.then(|| {
+            let draft = pr.state == PrState::Draft;
+            let (toggle, ready) = (item.clone(), item.clone());
+            div()
+                .px_3()
+                .flex()
+                .flex_wrap()
+                .gap_2()
+                .child(if draft {
+                    primary(
+                        "pr-ready",
+                        "Ready for review",
+                        cx.listener(move |this, _, _, _| {
+                            this.core.send(Intent::SetDraft(ready.clone(), false));
+                        }),
+                    )
+                } else {
+                    button(
+                        "pr-draft",
+                        "Convert to draft",
+                        cx.listener(move |this, _, _, _| {
+                            this.core.send(Intent::SetDraft(toggle.clone(), true));
+                        }),
+                    )
+                })
+                .child({
+                    let item = item.clone();
+                    button(
+                        "copilot-review",
+                        if asked {
+                            "Copilot review requested"
+                        } else {
+                            "Request Copilot review"
+                        },
+                        cx.listener(move |this, _, _, _| {
+                            if !asked {
+                                this.core.send(Intent::RequestCopilotReview(item.clone()));
+                            }
+                        }),
+                    )
+                    .when(asked, |b| b.opacity(0.6))
+                })
+        });
+        let description = if pr.body.trim().is_empty() {
+            empty("No description.")
+        } else {
+            div()
+                .mx_3()
+                .px_3()
+                .py_2()
+                .rounded_lg()
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::window())
+                .text_size(px(13.))
+                .child(self.rich_markdown(&format!("{id}-body"), &pr.body, cx))
+                .into_any_element()
         };
+        let threads = pr.threads.iter().enumerate().map(|(t, thread)| {
+            let place = match thread.line {
+                Some(at) => format!("{}:{at}", thread.path),
+                None => thread.path.clone(),
+            };
+            div()
+                .mx_3()
+                .rounded_lg()
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::window())
+                .overflow_hidden()
+                .child(
+                    div()
+                        .px_3()
+                        .py(px(6.))
+                        .border_b_1()
+                        .border_color(theme::border())
+                        .bg(theme::panel())
+                        .font_family(theme::MONO)
+                        .text_size(px(11.5))
+                        .text_color(theme::fg_muted())
+                        .child(place),
+                )
+                .children(thread.comments.iter().enumerate().map(|(c, comment)| {
+                    div()
+                        .px_3()
+                        .py_2()
+                        .when(c > 0, |d| d.border_t_1().border_color(theme::border()))
+                        .text_size(px(12.5))
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .text_color(theme::fg_faint())
+                                .child(format!("{} · {}", comment.author, since(comment.at))),
+                        )
+                        .child(self.rich_markdown(
+                            &format!("{id}-thread-{t}-{c}"),
+                            &comment.body,
+                            cx,
+                        ))
+                }))
+        });
+        let open_threads = pr.threads.len();
         div()
             .flex()
             .flex_col()
+            .gap_1()
             .child(
                 div()
                     .px_3()
@@ -150,21 +214,23 @@ impl Workspace {
                     .gap_2()
                     .child(
                         div()
-                            .px_2()
-                            .py(px(1.))
-                            .rounded_full()
-                            .bg(theme::surface_2())
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(color)
-                            .self_start()
-                            .child(word),
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(crate::github::pr_icon(pr.state, 15.))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(color)
+                                    .child(word),
+                            ),
                     )
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(15.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(format!("{} #{}", pr.title, pr.number)),
+                            .child(pr.title.clone()),
                     )
                     .child(
                         div()
@@ -175,45 +241,24 @@ impl Workspace {
                     )
                     .child(labels(&pr.labels)),
             )
-            .child(label(format!(
-                "Checks {passing}/{} passing",
-                pr.checks.len()
-            )))
-            .child(if pr.checks.is_empty() {
-                empty("No checks")
+            .child(label("Checks"))
+            .child(checks_summary(pr))
+            .children(actions.map(gpui::Styled::pt_2))
+            .child(label("Description"))
+            .child(description)
+            .child(label(if open_threads == 0 {
+                "Review threads".to_owned()
             } else {
-                checks.into_any_element()
-            })
-            .child(label("Reviewers"))
-            .children(
-                pr.reviewers
-                    .iter()
-                    .map(|r| div().px_3().text_size(px(12.5)).child(r.clone())),
-            )
-            .when(pr.reviewers.is_empty(), |d| {
-                d.child(empty("No reviewers yet"))
-            })
-            .when(live, |d| {
-                d.child(
-                    div().px_3().pt_2().flex().child(
-                        button(
-                            "copilot-review",
-                            if asked {
-                                "Copilot review requested"
-                            } else {
-                                "Request Copilot review"
-                            },
-                            request,
-                        )
-                        .when(asked, |b| b.opacity(0.6)),
-                    ),
-                )
-            })
-            .child(Self::comments(&pr.comments, item, input, cx))
+                format!("Review threads · {open_threads} open")
+            }))
+            .when(open_threads == 0, |d| d.child(empty("No open thread.")))
+            .child(div().flex().flex_col().gap_2().children(threads))
+            .child(Self::comment_box(item, input, cx))
     }
 
     /// Comments, oldest first, then a box to post one on `item` (GH-6).
     pub(crate) fn comments(
+        &self,
         comments: &[Comment],
         item: GhRef,
         input: &Entity<TextareaState>,
@@ -236,39 +281,40 @@ impl Workspace {
                         .text_color(theme::fg_faint())
                         .child(format!("{} · {}", c.author, since(c.at))),
                 )
-                .child(TextView::markdown(
-                    SharedString::from(format!("comment-{ix}")),
-                    SharedString::from(c.body.clone()),
-                ))
+                .child(self.rich_markdown(&format!("{}-comment-{ix}", item.text()), &c.body, cx))
         });
-        let input = input.clone();
         div()
             .flex()
             .flex_col()
             .child(label("Comments"))
             .when(comments.is_empty(), |d| d.child(empty("No comments")))
             .children(list)
-            .child(
-                div()
-                    .px_3()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(Textarea::new(&input))
-                    .child(div().flex().child(primary(
-                        "post-comment",
-                        "Post comment",
-                        cx.listener(move |this, _, window, cx| {
-                            let text = text_of(&input, cx);
-                            if text.trim().is_empty() {
-                                return;
-                            }
-                            this.core
-                                .send(Intent::Comment(item.clone(), text.trim().to_owned()));
-                            input.update(cx, |state, cx| state.set_value("", window, cx));
-                        }),
-                    ))),
-            )
+            .child(Self::comment_box(item, input, cx))
+    }
+
+    /// A box to post a comment on `item` (GH-6).
+    fn comment_box(item: GhRef, input: &Entity<TextareaState>, cx: &mut Context<Self>) -> Div {
+        let input = input.clone();
+        div()
+            .pt_3()
+            .px_3()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(Textarea::new(&input))
+            .child(div().flex().child(primary(
+                "post-comment",
+                "Post comment",
+                cx.listener(move |this, _, window, cx| {
+                    let text = text_of(&input, cx);
+                    if text.trim().is_empty() {
+                        return;
+                    }
+                    this.core
+                        .send(Intent::Comment(item.clone(), text.trim().to_owned()));
+                    input.update(cx, |state, cx| state.set_value("", window, cx));
+                }),
+            )))
     }
 }
 
@@ -295,5 +341,60 @@ pub(crate) fn pr_badge(pr: &PullRequest) -> AnyElement {
                 .filter(|_| live)
                 .map(|s| div().size(px(6.)).rounded_full().bg(check_color(s))),
         )
+        .into_any_element()
+}
+
+/// The checks summed up — "All 12 passing", "2 of 12 failing" — then each
+/// failing one, by name.
+fn checks_summary(pr: &PullRequest) -> AnyElement {
+    let total = pr.checks.len();
+    let failing: Vec<&leon_domain::Check> = pr
+        .checks
+        .iter()
+        .filter(|c| c.state == CheckState::Fail)
+        .collect();
+    let running = pr
+        .checks
+        .iter()
+        .filter(|c| c.state == CheckState::Pending)
+        .count();
+    let (state, text) = match (total, failing.len(), running) {
+        (0, _, _) => match pr.checks_state() {
+            Some(state) => (state, "Checks summed up by GitHub".to_owned()),
+            None => return empty("No checks."),
+        },
+        (_, 0, 0) => (CheckState::Pass, format!("All {total} passing")),
+        (_, 0, r) => (CheckState::Pending, format!("{r} of {total} running")),
+        (_, f, _) => (CheckState::Fail, format!("{f} of {total} failing")),
+    };
+    let glyph = |s: CheckState| match s {
+        CheckState::Pass => Icon::Passed,
+        CheckState::Fail => Icon::Failed,
+        CheckState::Pending => Icon::Pending,
+    };
+    div()
+        .mx_3()
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .text_size(px(12.5))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(icon(glyph(state), check_color(state), 14.))
+                .child(text),
+        )
+        .children(failing.into_iter().map(|check| {
+            div()
+                .pl_6()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_color(theme::fg_muted())
+                .child(icon(Icon::Failed, theme::err(), 12.))
+                .child(check.name.clone())
+        }))
         .into_any_element()
 }

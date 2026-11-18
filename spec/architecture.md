@@ -181,9 +181,12 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   under "No status". A project's GitHub repository is read from its `origin`
   remote (`Git::github_repo`) to pick the project for an issue.
 - Details (the drawer): one query for the issue (body, assignees, comments)
-  or the PR (checks, reviewers, comments), by repository and number, read in
+  or the PR (checks, reviewers, comments, description, unresolved review
+  threads), by repository and number, read in
   the background (`Intent::ShowDetail`). A conversation started from an issue
   keeps it (`conversations.issue`, store migration 5).
+- Ready / draft: `gh pr ready <n> [--undo] --repo <owner/name>` (flags from
+  `gh pr ready --help`, gh 2.101.0, 2026-11-18; never run for real).
 - Copilot review: `gh pr edit <n> --add-reviewer @copilot` (documented in
   `gh pr edit --help`, gh 2.101.0, 2026-11-17; never run for real).
 

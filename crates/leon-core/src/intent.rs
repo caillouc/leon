@@ -89,6 +89,8 @@ pub enum Intent {
     RequestCopilotReview(leon_domain::GhRef),
     /// Comment on a pull request or an issue (GH-6).
     Comment(leon_domain::GhRef, String),
+    /// Mark a pull request as a draft (`true`) or ready for review (GH-7).
+    SetDraft(leon_domain::GhRef, bool),
     /// Show an issue's or a pull request's details (`None`: close them);
     /// they are read from GitHub in the background.
     ShowDetail(Option<leon_domain::GhRef>),

@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui::{AnyElement, Context, ElementId, IntoElement, SharedString, div, list, prelude::*, px};
-use gpui_component::text::TextView;
 use leon_core::TranscriptView;
 use leon_domain::{AgentSessionId, Entry, TimedEntry};
 
-use crate::icons::{Icon, chevron, icon};
+use crate::icons::chevron;
+use crate::markdown::markdown;
 use crate::theme;
 use crate::widgets::empty;
 use crate::workspace::Workspace;
@@ -67,40 +67,6 @@ impl Workspace {
         .py_3()
         .into_any_element()
     }
-}
-
-fn markdown(id: ElementId, text: &str) -> AnyElement {
-    TextView::markdown(id, SharedString::from(text.to_owned()))
-        .selectable(true)
-        // A small corner (language, copy) instead of the library's label,
-        // which pushes the code down by a whole line.
-        .code_block_actions(|code, _, _| code_corner(code.lang(), code.code()))
-        .into_any_element()
-}
-
-/// The top-right corner of a code block: its language and a copy button.
-fn code_corner(lang: Option<SharedString>, code: SharedString) -> AnyElement {
-    div()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_1()
-        .text_size(px(11.))
-        .text_color(theme::fg_faint())
-        .children(lang)
-        .child(
-            div()
-                .id("copy")
-                .p(px(3.))
-                .rounded(px(4.))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::surface_2()))
-                .child(icon(Icon::Copy, theme::fg_muted(), 13.))
-                .on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(code.to_string()));
-                }),
-        )
-        .into_any_element()
 }
 
 fn partial_view(session: AgentSessionId, t: &Arc<TranscriptView>) -> AnyElement {

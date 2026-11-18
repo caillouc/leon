@@ -6,7 +6,7 @@ use std::sync::Arc;
 use leon_core::GitView;
 use leon_domain::{
     BoardOption, Check, CheckState, Comment, ConversationId, DiffLine, FileDiff, FileStatus,
-    FoldPattern, Hunk, Issue, Iteration, Label, LineKind, PrState, PullRequest,
+    FoldPattern, Hunk, Issue, Iteration, Label, LineKind, PrState, PullRequest, ReviewThread,
 };
 
 fn line(kind: LineKind, old: Option<u32>, new: Option<u32>, text: &str) -> DiffLine {
@@ -131,7 +131,7 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
             },
             Check {
                 name: "test (macos)".into(),
-                state: CheckState::Pending,
+                state: CheckState::Fail,
             },
         ],
         reviewers: vec!["copilot-pull-request-reviewer".into()],
@@ -139,6 +139,20 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
             author: "copilot-pull-request-reviewer".into(),
             body: "The new `MAX_DELAY` cap looks right. Consider a test for attempt 0.".into(),
             at: crate::hours_ago(1),
+        }],
+        body: "Webhook deliveries now retry for 15 minutes, each delay capped at 2 minutes.\n\n\
+               <details><summary>Test results: 42 passed</summary>\n\n\
+               - retry::caps_the_delay ok\n- retry::gives_up_after_15_minutes ok\n\
+               </details>"
+            .into(),
+        threads: vec![ReviewThread {
+            path: "src/webhooks/retry.rs".into(),
+            line: Some(14),
+            comments: vec![Comment {
+                author: "reviewer-a".into(),
+                body: "Should `MAX_DELAY` come from the config?".into(),
+                at: crate::hours_ago(2),
+            }],
         }],
     }
 }

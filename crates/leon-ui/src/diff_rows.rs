@@ -8,7 +8,7 @@ use std::sync::Arc;
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, IntoElement, ListAlignment, ListOffset,
     ListState, MouseButton, MouseMoveEvent, SharedString, Styled, WeakEntity, div, list,
-    prelude::*, px,
+    prelude::*, px, relative,
 };
 use gpui_component::input::{Textarea, TextareaState};
 use leon_domain::{ConversationId, DiffLine, FileDiff, FileStatus, LineKind, fold_reason};
@@ -26,6 +26,8 @@ enum Row {
     File(usize),
     Hunk(usize, usize),
     Line(usize, usize, usize),
+    /// Side by side: the old line on the left, the new on the right.
+    Pair(usize, usize, Option<usize>, Option<usize>),
     /// A pending comment, by index in the conversation's review.
     Comment(usize),
     Draft,
@@ -142,7 +144,8 @@ impl Workspace {
             .draft
             .clone()
             .filter(|d| d.conversation == id && d.source == source);
-        let rows = build_rows(&files, &opened, source, &review, draft.as_ref());
+        let split = self.right.split;
+        let rows = build_rows(&files, &opened, source, &review, draft.as_ref(), split);
         let (state, rows) = self.diff_list((id, source), rows);
         let target = scroll_to.and_then(|path| {
             let f = files.iter().position(|file| file.path == path)?;
@@ -246,6 +249,7 @@ fn build_rows(
     source: DiffSource,
     review: &[Pending],
     draft: Option<&DraftAt>,
+    split: bool,
 ) -> Vec<Row> {
     let mut rows = Vec::new();
     for (f, file) in files.iter().enumerate() {
@@ -255,13 +259,13 @@ fn build_rows(
         }
         for (h, hunk) in file.hunks.iter().enumerate() {
             rows.push(Row::Hunk(f, h));
-            for (l, line) in hunk.lines.iter().enumerate() {
-                rows.push(Row::Line(f, h, l));
+            // A comment shows under the last line it is about.
+            let comments_after = |l: usize, rows: &mut Vec<Row>| {
+                let line = &hunk.lines[l];
                 let at = line_number(line);
                 let on_line = |path: &str, n: u32, kind: LineKind| {
                     path == file.path && n == at && kind == line.kind
                 };
-                // A comment shows under the last line it is about.
                 rows.extend(review.iter().enumerate().filter_map(|(ix, p)| {
                     (p.source == source && on_line(&p.comment.path, p.comment.end, p.comment.kind))
                         .then_some(Row::Comment(ix))
@@ -269,10 +273,49 @@ fn build_rows(
                 if draft.is_some_and(|d| on_line(&d.path, d.end, d.kind)) {
                     rows.push(Row::Draft);
                 }
+            };
+            if split {
+                for (left, right) in pair_lines(&hunk.lines) {
+                    rows.push(Row::Pair(f, h, left, right));
+                    for l in left.into_iter().chain(right.filter(|r| Some(*r) != left)) {
+                        comments_after(l, &mut rows);
+                    }
+                }
+            } else {
+                for l in 0..hunk.lines.len() {
+                    rows.push(Row::Line(f, h, l));
+                    comments_after(l, &mut rows);
+                }
             }
         }
     }
     rows
+}
+
+/// A hunk's lines side by side: a context line on both sides, then each run
+/// of removed lines next to the added lines that follow it.
+fn pair_lines(lines: &[DiffLine]) -> Vec<(Option<usize>, Option<usize>)> {
+    let mut pairs = Vec::new();
+    let mut l = 0;
+    while l < lines.len() {
+        if lines[l].kind == LineKind::Context {
+            pairs.push((Some(l), Some(l)));
+            l += 1;
+            continue;
+        }
+        let removed: Vec<usize> = (l..lines.len())
+            .take_while(|i| lines[*i].kind == LineKind::Removed)
+            .collect();
+        let after = l + removed.len();
+        let added: Vec<usize> = (after..lines.len())
+            .take_while(|i| lines[*i].kind == LineKind::Added)
+            .collect();
+        for k in 0..removed.len().max(added.len()) {
+            pairs.push((removed.get(k).copied(), added.get(k).copied()));
+        }
+        l = after + added.len();
+    }
+    pairs
 }
 
 /// The number a comment refers to: the old file's for a removed line, the
@@ -300,7 +343,24 @@ fn render_row(data: &Rc<Data>, row: Row, cx: &mut App) -> AnyElement {
             .child(header)
             .into_any_element()
         }
-        Row::Line(f, h, l) => line_row(data, f, h, l),
+        Row::Line(f, h, l) => line_row(data, f, h, l, Numbers::Both),
+        Row::Pair(f, h, left, right) => {
+            let half = |l: Option<usize>, numbers| match l {
+                Some(l) => line_row(data, f, h, l, numbers),
+                None => mono(div().size_full().bg(theme::panel())).into_any_element(),
+            };
+            div()
+                .flex()
+                .child(
+                    div()
+                        .w(relative(0.5))
+                        .border_r_1()
+                        .border_color(theme::border())
+                        .child(half(left, Numbers::Old)),
+                )
+                .child(div().w(relative(0.5)).child(half(right, Numbers::New)))
+                .into_any_element()
+        }
         Row::Comment(ix) => pending_comment(data, ix),
         Row::Draft => draft_box(data, cx),
     }
@@ -402,7 +462,15 @@ fn file_header(data: &Rc<Data>, f: usize) -> AnyElement {
         .into_any_element()
 }
 
-fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize) -> AnyElement {
+/// Which line numbers a line shows: both (unified), or one side's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Numbers {
+    Both,
+    Old,
+    New,
+}
+
+fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> AnyElement {
     let line = &data.files[f].hunks[h].lines[l];
     let path = data.files[f].path.clone();
     let chosen = data
@@ -458,8 +526,8 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize) -> AnyElement {
                 })
                 .ok();
         })
-        .child(number(line.old))
-        .child(number(line.new))
+        .when(numbers != Numbers::New, |d| d.child(number(line.old)))
+        .when(numbers != Numbers::Old, |d| d.child(number(line.new)))
         .child(
             div()
                 .id(SharedString::from(format!(
@@ -599,7 +667,7 @@ fn draft_box(data: &Rc<Data>, _cx: &mut App) -> AnyElement {
 mod tests {
     use leon_domain::{DiffLine, FileDiff, FileStatus, Hunk, LineKind, ReviewComment};
 
-    use super::{Row, build_rows};
+    use super::{Row, build_rows, pair_lines};
     use crate::diff_view::{DiffSource, DraftAt};
     use crate::right::Pending;
 
@@ -676,7 +744,7 @@ mod tests {
         ];
         for (opened, draft, expected) in cases {
             assert_eq!(
-                build_rows(&files, &opened, DiffSource::Changes, &review, draft),
+                build_rows(&files, &opened, DiffSource::Changes, &review, draft, false),
                 expected
             );
         }
@@ -696,6 +764,35 @@ mod tests {
         assert_eq!(
             (at.line, at.end, at.kind, at.code.as_str()),
             (1, 2, LineKind::Added, "x\nx\nx")
+        );
+    }
+
+    #[test]
+    fn side_by_side_pairs_removed_with_added_lines() {
+        use LineKind::{Added, Context, Removed};
+        let line = |kind| DiffLine {
+            kind,
+            old: None,
+            new: None,
+            text: String::new(),
+        };
+        let lines = [
+            line(Context),
+            line(Removed),
+            line(Removed),
+            line(Added),
+            line(Context),
+            line(Added),
+        ];
+        assert_eq!(
+            pair_lines(&lines),
+            [
+                (Some(0), Some(0)),
+                (Some(1), Some(3)),
+                (Some(2), None),
+                (Some(4), Some(4)),
+                (None, Some(5)),
+            ]
         );
     }
 }

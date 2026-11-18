@@ -20,7 +20,7 @@ pub(crate) struct Rect {
     pub h: f32,
 }
 
-const NODE: Pt = Pt { x: 200., y: 96. };
+const NODE: Pt = Pt { x: 250., y: 96. };
 const YOU: Pt = Pt { x: 140., y: 56. };
 const COL_GAP: f32 = 150.;
 const ROW_GAP: f32 = 64.;
@@ -28,8 +28,6 @@ const ROW_GAP: f32 = 64.;
 const RING_GAP: f32 = 270.;
 /// Smallest ring radius.
 const RING_MIN: f32 = 180.;
-/// How far apart, sideways, the two directions of a curved arrow leave a box.
-const ARC_SPREAD: f32 = 12.;
 
 fn size_of(node: Node) -> Pt {
     match node {
@@ -300,65 +298,6 @@ fn toward(from: Pt, to: Pt, d: f32) -> Pt {
     Pt {
         x: from.x + (to.x - from.x) * d / len,
         y: from.y + (to.y - from.y) * d / len,
-    }
-}
-
-/// A curved arrow from box `a` to box `b`: one arc between their borders,
-/// bowed to its left by `bend` times its length, so the two directions
-/// between the same boxes bow apart. Returns start, the two control points
-/// and end of a cubic curve.
-pub(crate) fn arc(a: Rect, b: Rect, bend: f32) -> [Pt; 4] {
-    let centre = |r: Rect| Pt {
-        x: r.x + r.w / 2.,
-        y: r.y + r.h / 2.,
-    };
-    let (ca, cb) = (centre(a), centre(b));
-    let span = distance(ca, cb).max(1.);
-    // The left of the direction of travel (screen y points down).
-    let (nx, ny) = ((cb.y - ca.y) / span, -(cb.x - ca.x) / span);
-    // Each direction leaves and arrives on its own side of the line between
-    // the centres, so the way there and the way back never share an end.
-    let side = ARC_SPREAD * bend / 0.2;
-    let shift = |p: Pt| Pt {
-        x: p.x + nx * side,
-        y: p.y + ny * side,
-    };
-    let (start, end) = (exit(a, shift(ca), shift(cb)), exit(b, shift(cb), shift(ca)));
-    let length = distance(start, end).max(1.);
-    let push = bend * length;
-    let along = |t: f32| Pt {
-        x: start.x + (end.x - start.x) * t + nx * push,
-        y: start.y + (end.y - start.y) * t + ny * push,
-    };
-    [start, along(0.25), along(0.75), end]
-}
-
-/// Where the ray from `from` (inside `r`) towards `to` leaves `r`.
-fn exit(r: Rect, from: Pt, to: Pt) -> Pt {
-    let (dx, dy) = (to.x - from.x, to.y - from.y);
-    let reach = |d: f32, from: f32, low: f32, high: f32| {
-        if d > f32::EPSILON {
-            (high - from) / d
-        } else if d < -f32::EPSILON {
-            (low - from) / d
-        } else {
-            f32::INFINITY
-        }
-    };
-    let t = reach(dx, from.x, r.x, r.x + r.w)
-        .min(reach(dy, from.y, r.y, r.y + r.h))
-        .clamp(0., 1.);
-    Pt {
-        x: from.x + dx * t,
-        y: from.y + dy * t,
-    }
-}
-
-/// The point halfway along a cubic curve.
-pub(crate) fn curve_middle([a, b, c, d]: [Pt; 4]) -> Pt {
-    Pt {
-        x: 0.125 * a.x + 0.375 * b.x + 0.375 * c.x + 0.125 * d.x,
-        y: 0.125 * a.y + 0.375 * b.y + 0.375 * c.y + 0.125 * d.y,
     }
 }
 

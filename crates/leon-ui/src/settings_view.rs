@@ -95,8 +95,6 @@ impl Workspace {
             )
         };
         let [cli, model, effort, permission] = pickers;
-        // Its own width, not the row's.
-        let arrows = div().flex().child(self.arrow_toggle()).into_any_element();
         let path = self
             .snapshot
             .settings_path
@@ -144,11 +142,6 @@ impl Workspace {
                     .child(field("Model", model))
                     .child(field("Effort", effort))
                     .child(field("Permission", permission)),
-            ))
-            .child(section(
-                "Flow diagram",
-                "How arrows bend between the boxes.",
-                field("Arrows", arrows),
             ))
             .child(section(
                 "Diffs",

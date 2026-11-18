@@ -1,15 +1,13 @@
 //! Drawing the flow diagram's arrows, and its legend (FLOW-4).
 
 use gpui::{AnyElement, PathBuilder, Pixels, Point, Window, div, point, prelude::*, px};
-use leon_domain::ArrowStyle;
 
 use crate::flow::color;
 use crate::flow_model::{EdgeKind, Pt, Step, bends};
 use crate::theme;
 
-/// The legend, bottom left, with `arrows` (the arrow style toggle) after
-/// it.
-pub(crate) fn legend(arrows: AnyElement) -> AnyElement {
+/// The legend, bottom left.
+pub(crate) fn legend() -> AnyElement {
     let key = |text: &'static str, kind: EdgeKind| {
         div()
             .flex()
@@ -36,8 +34,6 @@ pub(crate) fn legend(arrows: AnyElement) -> AnyElement {
         .child(key("prompt", EdgeKind::Prompt))
         .child(key("report", EdgeKind::Report))
         .child(key("question", EdgeKind::Question))
-        .child(div().w(px(1.)).h(px(16.)).bg(theme::border()))
-        .child(arrows)
         // Clicks here do not start dragging the diagram.
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .into_any_element()
@@ -49,7 +45,6 @@ pub(crate) struct Arrow {
     /// Its messages are open in the inspector.
     pub wide: bool,
     pub scale: f32,
-    pub style: ArrowStyle,
 }
 
 impl Arrow {
@@ -57,12 +52,7 @@ impl Arrow {
     /// `origin`): straight segments with rounded bends, or one smooth curve;
     /// dashed for reports; with its head.
     pub(crate) fn paint(&self, window: &mut Window, origin: Point<Pixels>, points: &[Pt]) {
-        let Self {
-            kind,
-            wide,
-            scale,
-            style,
-        } = *self;
+        let Self { kind, wide, scale } = *self;
         let at = |p: Pt| point(origin.x + px(p.x), origin.y + px(p.y));
         let (Some(last), Some(before)) = (
             points.last(),
@@ -90,18 +80,10 @@ impl Arrow {
             .chain(std::iter::once(tip_base))
             .collect();
         line.move_to(at(body[0]));
-        match (style, body.as_slice()) {
-            // Curved: the points are the curve's start, controls and end.
-            (ArrowStyle::Curved, [_, a, b, end]) => {
-                line.cubic_bezier_to(at(*end), at(*a), at(*b));
-            }
-            (ArrowStyle::Rounded | ArrowStyle::Curved, _) => {
-                for step in bends(&body, 16. * scale) {
-                    match step {
-                        Step::Line(p) => line.line_to(at(p)),
-                        Step::Curve { to, ctrl } => line.curve_to(at(to), at(ctrl)),
-                    }
-                }
+        for step in bends(&body, 16. * scale) {
+            match step {
+                Step::Line(p) => line.line_to(at(p)),
+                Step::Curve { to, ctrl } => line.curve_to(at(to), at(ctrl)),
             }
         }
         let c = color(kind);

@@ -28,6 +28,29 @@ fn reads_by_number() {
     assert!(gh.issue("cli", 1).is_err());
 }
 
+/// cli/cli#15081 had unresolved threads on lines, cli/cli#15007 only
+/// outdated ones without a line (2026-11-18).
+#[test]
+#[ignore = "reads GitHub with the user's gh login"]
+fn reads_review_threads() {
+    let gh = GhCli::default();
+    for number in [15081, 15007] {
+        let pr = gh.pull_request_by_number("cli/cli", number).unwrap();
+        assert!(
+            pr.threads
+                .iter()
+                .all(|t| !t.path.is_empty() && !t.comments.is_empty())
+        );
+        eprintln!(
+            "cli/cli#{number}: body {} chars, {} unresolved threads ({} without a line), {} comments in them",
+            pr.body.len(),
+            pr.threads.len(),
+            pr.threads.iter().filter(|t| t.line.is_none()).count(),
+            pr.threads.iter().map(|t| t.comments.len()).sum::<usize>(),
+        );
+    }
+}
+
 #[test]
 #[ignore = "reads the user's own issues with their gh login"]
 fn my_issues_with_their_board_fields() {

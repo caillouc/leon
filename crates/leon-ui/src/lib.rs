@@ -25,6 +25,7 @@ mod gh_detail;
 mod github;
 mod icons;
 mod left;
+mod markdown;
 mod message_input;
 mod nav;
 mod panes;

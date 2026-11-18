@@ -1,0 +1,293 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "baseRefName": "feature/event-listen-deleted-sub",
+        "body": "Adds check suite events.\n\n- Suggests them from `gh run view` and `gh run watch`.\n- Covers them with tests.\n",
+        "comments": {
+          "nodes": []
+        },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "contexts": {
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "CodeQL-Build (go, manual, ./.github/codeql/codeql-config.yml)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "lint",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "label-external / label_issues",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "build (ubuntu-latest)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "CodeQL-Build (actions, none, security-and-quality)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "build (windows-latest)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "build (macos-latest)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SKIPPED",
+                        "name": "close-from-default-branch / close-from-default-branch",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "govulncheck",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "integration-tests (ubuntu-latest)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "integration-tests (windows-latest)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "integration-tests (macos-latest)",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SKIPPED",
+                        "name": "check-requirements / check-requirements",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SKIPPED",
+                        "name": "check-requirements / close-unmet-requirements",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SKIPPED",
+                        "name": "close-unmet-requirements",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SKIPPED",
+                        "name": "close-no-help-wanted",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SKIPPED",
+                        "name": "ready-for-review",
+                        "status": "COMPLETED"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "conclusion": "SUCCESS",
+                        "name": "CodeQL",
+                        "status": "COMPLETED"
+                      }
+                    ]
+                  },
+                  "state": "SUCCESS"
+                }
+              }
+            }
+          ]
+        },
+        "headRefName": "feature/event-check-suite",
+        "isDraft": false,
+        "labels": {
+          "nodes": []
+        },
+        "latestReviews": {
+          "nodes": [
+            {
+              "author": {
+                "login": "copilot-pull-request-reviewer"
+              }
+            },
+            {
+              "author": {
+                "login": "octocat"
+              }
+            }
+          ]
+        },
+        "number": 15081,
+        "repository": {
+          "nameWithOwner": "cli/cli"
+        },
+        "reviewRequests": {
+          "nodes": []
+        },
+        "reviewThreads": {
+          "nodes": [
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "copilot-pull-request-reviewer"
+                    },
+                    "body": "This hint is printed even when the list is empty.",
+                    "createdAt": "2026-11-17T17:25:16Z"
+                  }
+                ]
+              },
+              "isResolved": false,
+              "line": 35,
+              "path": "pkg/cmd/event/shared/hint.go"
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "copilot-pull-request-reviewer"
+                    },
+                    "body": "The flag name in this message does not match the command.",
+                    "createdAt": "2026-11-17T17:25:16Z"
+                  }
+                ]
+              },
+              "isResolved": false,
+              "line": 15,
+              "path": "pkg/cmd/run/view/hint.go"
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "copilot-pull-request-reviewer"
+                    },
+                    "body": "This test does not check the error message.",
+                    "createdAt": "2026-11-17T17:25:17Z"
+                  },
+                  {
+                    "author": {
+                      "login": "hubot"
+                    },
+                    "body": "Fixed.",
+                    "createdAt": "2026-11-17T17:45:28Z"
+                  }
+                ]
+              },
+              "isResolved": true,
+              "line": 37,
+              "path": "pkg/cmd/event/shared/completion_test.go"
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "copilot-pull-request-reviewer"
+                    },
+                    "body": "This branch is never reached.",
+                    "createdAt": "2026-11-17T17:25:17Z"
+                  },
+                  {
+                    "author": {
+                      "login": "hubot"
+                    },
+                    "body": "Fixed.",
+                    "createdAt": "2026-11-17T17:45:36Z"
+                  }
+                ]
+              },
+              "isResolved": true,
+              "line": 299,
+              "path": "pkg/cmd/run/view/view.go"
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "copilot-pull-request-reviewer"
+                    },
+                    "body": "The timeout is not reset between runs.",
+                    "createdAt": "2026-11-17T17:25:18Z"
+                  },
+                  {
+                    "author": {
+                      "login": "hubot"
+                    },
+                    "body": "Fixed.",
+                    "createdAt": "2026-11-17T17:45:33Z"
+                  }
+                ]
+              },
+              "isResolved": true,
+              "line": 165,
+              "path": "pkg/cmd/run/watch/watch.go"
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "copilot-pull-request-reviewer"
+                    },
+                    "body": "This case is missing a deleted suite.",
+                    "createdAt": "2026-11-17T17:25:18Z"
+                  },
+                  {
+                    "author": {
+                      "login": "hubot"
+                    },
+                    "body": "Fixed.",
+                    "createdAt": "2026-11-17T17:45:31Z"
+                  }
+                ]
+              },
+              "isResolved": true,
+              "line": 477,
+              "path": "pkg/cmd/run/watch/watch_test.go"
+            }
+          ]
+        },
+        "state": "MERGED",
+        "title": "Event streaming (11/11): Support check suite events and suggest them from `gh run view` and `gh run watch`",
+        "url": "https://github.com/cli/cli/pull/15081"
+      }
+    }
+  }
+}
