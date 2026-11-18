@@ -92,7 +92,7 @@ impl Workspace {
     /// button, its text and its comments.
     fn issue_body(&self, issue: &Issue, cx: &mut Context<Self>) -> Div {
         let status = issue.status.as_ref().map(|s| {
-            let color = theme::status_color(s.order);
+            let color = theme::status_color(&s.name, s.order);
             div()
                 .flex()
                 .items_center()

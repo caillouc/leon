@@ -97,21 +97,37 @@ pub fn hex(digits: &str) -> Option<Rgba> {
     (digits.trim_start_matches('#').len() == 6).then(|| rgb(value))
 }
 
-/// A board column's colour, by its place on the board: each column its own
-/// colour, in an order that suits the usual Backlog → Todo → In progress →
-/// In review → Done.
-pub fn status_color(order: usize) -> Rgba {
-    let palette = [
-        fg_muted(),
-        accent(),
-        warn(),
-        merged(),
-        ok(),
-        rgb(0x0073_c6d9),
-        rgb(0x00e8_9a5e),
-        err(),
-    ];
-    palette[order % palette.len()]
+/// A board column's colour, as its name means it and in the colours pull
+/// requests use: backlog grey (like a draft), to do blue, in progress amber,
+/// in review green (like a ready pull request), done purple (like merged).
+/// Other names take the next colour by their place on the board. Never red:
+/// red means an error.
+pub fn status_color(name: &str, order: usize) -> Rgba {
+    let name = name.to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
+    if has(&["review"]) {
+        ok()
+    } else if has(&["progress", "doing", "wip", "working"]) {
+        warn()
+    } else if has(&[
+        "done", "closed", "merged", "shipped", "complete", "released",
+    ]) {
+        merged()
+    } else if has(&["backlog", "icebox", "triage", "later", "someday"]) {
+        fg_muted()
+    } else if has(&["todo", "to do", "ready", "next", "planned", "selected"]) {
+        accent()
+    } else {
+        let palette = [
+            fg_muted(),
+            accent(),
+            warn(),
+            ok(),
+            merged(),
+            rgb(0x0073_c6d9),
+        ];
+        palette[order % palette.len()]
+    }
 }
 
 /// Dims the window behind a drawer.
@@ -155,4 +171,28 @@ pub fn install(cx: &mut gpui::App) {
         a: 0.35,
         ..accent()
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{accent, err, fg_muted, merged, ok, status_color, warn};
+
+    #[test]
+    fn board_columns_get_the_colour_their_name_means() {
+        let cases = [
+            ("Backlog", fg_muted()),
+            ("Todo", accent()),
+            ("Ready", accent()),
+            ("In progress", warn()),
+            ("In review", ok()),
+            ("Done", merged()),
+        ];
+        for (name, colour) in cases {
+            assert_eq!(status_color(name, 9), colour, "{name}");
+        }
+        // Unknown names, whatever their place: never red.
+        for order in 0..12 {
+            assert_ne!(status_color("Blocked by legal", order), err());
+        }
+    }
 }

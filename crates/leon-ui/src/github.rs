@@ -268,7 +268,7 @@ impl Workspace {
         issues: &[&Issue],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let color = status.map_or(theme::fg_faint(), |s| theme::status_color(s.order));
+        let color = status.map_or(theme::fg_faint(), |s| theme::status_color(&s.name, s.order));
         let name = status.map_or("No status", |s| s.name.as_str()).to_owned();
         let folded = self.gh.folded.contains(&name);
         let key = name.clone();
@@ -336,15 +336,17 @@ impl Workspace {
             .children(issue.iterations.iter().map(|i| chip(&i.title)))
             .child(labels(&issue.labels));
         let item = GhRef::issue(&issue.repo, issue.number);
+        // A linked conversation is a link in the details line; otherwise
+        // "Start conversation" floats over the row's end on hover.
+        let linked = self.conversation_for_issue(&item);
+        let meta = meta.children(linked.map(|c| conversation_link(&item, c, cx)));
         Row {
-            // "Start conversation" shows on hover; "Open conversation" always.
-            quiet: self.conversation_for_issue(&item).is_none(),
+            hover: linked.is_none().then(|| self.issue_action(issue, cx)),
             item,
             icon: icon(Icon::Issue, color, 16.).into_any_element(),
             title: issue.title.clone(),
             age: since(issue.updated_at),
             meta,
-            action: self.issue_action(issue, cx),
         }
         .render(cx)
     }
@@ -395,14 +397,18 @@ impl Workspace {
             )
             .children(pr.checks_state().map(checks))
             .child(labels(&pr.labels));
+        let item = GhRef::pull_request(&pr.repo, pr.number);
+        let meta = meta.children(
+            self.conversation_for_pr(pr)
+                .map(|c| conversation_link(&item, c, cx)),
+        );
         Row {
-            quiet: false,
-            item: GhRef::pull_request(&pr.repo, pr.number),
+            hover: None,
+            item,
             icon: pr_icon(pr.state, 16.).into_any_element(),
             title: pr.title.clone(),
             age: pr_state(pr.state).1.to_owned(),
             meta,
-            action: self.pr_action(pr, cx),
         }
         .render(cx)
     }
@@ -506,35 +512,34 @@ fn header(
         ))
 }
 
-/// A list row: icon, title, age; under it the details; the action on the
-/// right. Clicking anywhere else opens the item's details.
+/// A list row: icon, title, age; under it the details. Clicking it opens
+/// the item's details. `hover` floats over the row's right end while the
+/// mouse is on the row, so it takes no room otherwise.
 struct Row {
     item: GhRef,
-    /// The action shows only while the row is hovered.
-    quiet: bool,
+    hover: Option<AnyElement>,
     icon: AnyElement,
     title: String,
     age: String,
     meta: Div,
-    action: AnyElement,
 }
 
 impl Row {
     fn render(self, cx: &mut Context<Workspace>) -> AnyElement {
         let Self {
             item,
-            quiet,
+            hover,
             icon,
             title,
             age,
             meta,
-            action,
         } = self;
         let number = item.number;
         let group = SharedString::from(format!("gh-row-{}", item.text()));
         div()
             .id(group.clone())
             .group(group.clone())
+            .relative()
             .px_3()
             .py(px(10.))
             .rounded_lg()
@@ -578,17 +583,18 @@ impl Row {
                     )
                     .child(meta.text_size(px(12.)).text_color(theme::fg_muted())),
             )
-            .child(
+            .children(hover.map(|action| {
                 div()
-                    .w(px(150.))
-                    .flex_none()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .right_3()
                     .flex()
-                    .justify_end()
-                    .when(quiet, |d| {
-                        d.opacity(0.).group_hover(group, |s| s.opacity(1.))
-                    })
-                    .child(action),
-            )
+                    .items_center()
+                    .opacity(0.)
+                    .group_hover(group, |s| s.opacity(1.))
+                    .child(div().pl_4().bg(theme::surface()).child(action))
+            }))
             .into_any_element()
     }
 }
@@ -610,4 +616,27 @@ pub(crate) fn chip(text: &str) -> Div {
         .text_size(px(11.))
         .text_color(theme::fg_muted())
         .child(text.to_owned())
+}
+
+/// "Open conversation" as a link in a row's details line.
+fn conversation_link(
+    item: &GhRef,
+    conversation: ConversationId,
+    cx: &mut Context<Workspace>,
+) -> AnyElement {
+    div()
+        .id(SharedString::from(format!("gh-link-{}", item.text())))
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .text_color(theme::accent())
+        .cursor_pointer()
+        .hover(|s| s.opacity(0.8))
+        .child(icon(Icon::Conversation, theme::accent(), 12.))
+        .child("Open conversation")
+        .on_click(cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.select(conversation, cx);
+        }))
+        .into_any_element()
 }
