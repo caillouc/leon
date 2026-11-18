@@ -174,9 +174,14 @@ impl Workspace {
             .then(|| s.suggestions.first().cloned())
             .flatten();
         self.show_suggestion(suggestion.as_deref(), window, cx);
+        // Tab: the first `/` command while the list shows, else the
+        // suggestion in an empty box, else a tab.
         let input_box = Self::paste_aware(div(), cx).capture_action(cx.listener(
             move |this, _: &IndentInline, window, cx| {
-                if let Some(text) = &suggestion {
+                let composer = this.composer.clone();
+                if this.complete_slash(&composer, project, window, cx) {
+                    cx.stop_propagation();
+                } else if let Some(text) = &suggestion {
                     this.accept_suggestion(text, window, cx);
                 }
             },

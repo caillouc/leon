@@ -7,6 +7,7 @@ use gpui::{
     div, prelude::*, px,
 };
 use gpui_component::input::{Paste, TextareaState};
+use leon_core::ports::SlashCommand;
 use leon_domain::ProjectId;
 
 use crate::theme;
@@ -109,23 +110,13 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let typed = text_of(input, cx);
-        let prefix = typed.strip_prefix('/')?;
-        if prefix.contains(char::is_whitespace) {
-            return None;
-        }
-        let prefix = prefix.to_lowercase();
         let commands = self.snapshot.commands.get(&project?)?;
-        let matches: Vec<_> = commands
-            .iter()
-            .filter(|c| c.name.to_lowercase().contains(&prefix))
-            .take(SLASH_LIMIT)
-            .collect();
-        if matches.is_empty() {
-            return None;
-        }
+        let matches = slash_matches(&typed, commands)?;
         let rows = matches.into_iter().enumerate().map(|(ix, c)| {
             let input = input.clone();
             let name = c.name.clone();
+            // The first one is what Tab writes in.
+            let first = ix == 0;
             div()
                 .id(("slash", ix))
                 .px_2()
@@ -134,6 +125,7 @@ impl Workspace {
                 .flex()
                 .gap_2()
                 .cursor_pointer()
+                .when(first, |d| d.bg(theme::surface_2()))
                 .hover(|s| s.bg(theme::surface_2()))
                 .child(
                     div()
@@ -152,6 +144,15 @@ impl Workspace {
                         .text_color(theme::fg_muted())
                         .child(c.description.clone()),
                 )
+                .when(first, |d| {
+                    d.child(
+                        div()
+                            .flex_none()
+                            .text_size(px(11.))
+                            .text_color(theme::fg_faint())
+                            .child("⇥ Tab"),
+                    )
+                })
                 .on_click(move |_, window, cx: &mut App| {
                     let text = SharedString::from(format!("/{name} "));
                     input.update(cx, |state, cx| state.set_value(text, window, cx));
@@ -171,7 +172,53 @@ impl Workspace {
     }
 }
 
+/// The commands a message box starting with `/` matches, at most
+/// `SLASH_LIMIT`; `None` when it does not start a command or nothing
+/// matches.
+pub(crate) fn slash_matches<'a>(
+    typed: &str,
+    commands: &'a [SlashCommand],
+) -> Option<Vec<&'a SlashCommand>> {
+    let prefix = typed.strip_prefix('/')?;
+    if prefix.contains(char::is_whitespace) {
+        return None;
+    }
+    let prefix = prefix.to_lowercase();
+    let matches: Vec<_> = commands
+        .iter()
+        .filter(|c| c.name.to_lowercase().contains(&prefix))
+        .take(SLASH_LIMIT)
+        .collect();
+    (!matches.is_empty()).then_some(matches)
+}
+
+/// What Tab writes in the box: the first matching command and a space.
+pub(crate) fn slash_completion(typed: &str, commands: &[SlashCommand]) -> Option<String> {
+    let first = slash_matches(typed, commands)?.into_iter().next()?;
+    Some(format!("/{} ", first.name))
+}
+
 impl Workspace {
+    /// Tab while the `/` list shows: writes its first command in `input`.
+    /// Whether it did.
+    pub(crate) fn complete_slash(
+        &self,
+        input: &Entity<TextareaState>,
+        project: Option<ProjectId>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let typed = text_of(input, cx);
+        let completion = project
+            .and_then(|p| self.snapshot.commands.get(&p))
+            .and_then(|commands| slash_completion(&typed, commands));
+        let Some(text) = completion else {
+            return false;
+        };
+        input.update(cx, |state, cx| state.set_value(text, window, cx));
+        true
+    }
+
     /// The agent's suggested next message (CONV-10) shows as the message
     /// box's placeholder while the box is empty; Tab writes it in.
     pub(crate) fn show_suggestion(
@@ -216,7 +263,9 @@ pub(crate) const PLACEHOLDER: &str = "Message the agent";
 
 #[cfg(test)]
 mod tests {
-    use super::{folds, message};
+    use leon_core::ports::SlashCommand;
+
+    use super::{folds, message, slash_completion, slash_matches};
 
     #[test]
     fn long_pastes_fold_and_join_the_message() {
@@ -230,5 +279,28 @@ mod tests {
         );
         assert_eq!(message("  ", &pasted), "log line 1\nlog line 2");
         assert_eq!(message("hi", &[]), "hi");
+    }
+
+    #[test]
+    fn tab_completes_the_first_matching_command() {
+        let command = |name: &str| SlashCommand {
+            name: name.into(),
+            description: String::new(),
+        };
+        let commands = [command("review"), command("release"), command("deploy")];
+        let names = |typed: &str| {
+            slash_matches(typed, &commands)
+                .map(|m| m.iter().map(|c| c.name.as_str()).collect::<Vec<_>>())
+        };
+        assert_eq!(names("/re"), Some(vec!["review", "release"]));
+        assert_eq!(names("/"), Some(vec!["review", "release", "deploy"]));
+        assert_eq!(names("/re now"), None);
+        assert_eq!(names("re"), None);
+        assert_eq!(names("/zzz"), None);
+        assert_eq!(
+            slash_completion("/rel", &commands).as_deref(),
+            Some("/release ")
+        );
+        assert_eq!(slash_completion("/release now", &commands), None);
     }
 }

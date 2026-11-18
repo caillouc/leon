@@ -2,7 +2,7 @@
 //! settings, and write the first message.
 
 use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*, px};
-use gpui_component::input::Textarea;
+use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
 
 use crate::icons::{Icon, icon};
@@ -44,7 +44,15 @@ impl Workspace {
         };
         let slash = self.slash_list(&self.form_text.clone(), Some(project.id), cx);
         let chips = self.pasted_chips(cx);
-        let input_box = Self::paste_aware(div(), cx);
+        // Tab writes in the first `/` command while the list shows.
+        let input_box = Self::paste_aware(div(), cx).capture_action(cx.listener(
+            |this, _: &IndentInline, window, cx| {
+                let input = this.form_text.clone();
+                if this.complete_slash(&input, this.form.project, window, cx) {
+                    cx.stop_propagation();
+                }
+            },
+        ));
         let projects: Vec<Choice> = self
             .snapshot
             .projects
