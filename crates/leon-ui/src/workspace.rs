@@ -93,7 +93,7 @@ pub struct Workspace {
     /// Open the next new conversation when it shows up.
     pub(crate) pending_open: bool,
     /// The conversation last said to be read (an agent's tab on screen).
-    pub(crate) reading: Option<ConversationId>,
+    pub(crate) reading: Option<AgentSessionId>,
     shown_notifications: u64,
     started: Option<Instant>,
     _updates: Task<()>,
@@ -407,12 +407,8 @@ impl Render for Workspace {
                 tracing::info!(startup_ms = started.elapsed().as_millis(), "first frame");
             });
         }
-        // An answer is read on an agent's tab, not on the Flow (NAV-4).
-        let shown = match self.screen {
-            Screen::Conversation(id) => Some(id),
-            _ => None,
-        };
-        let reading = self.current_session().and(shown);
+        // An answer is read on its agent's tab, not on the Flow (NAV-4).
+        let reading = self.current_session();
         if reading != self.reading {
             self.reading = reading;
             self.core.send(Intent::Read(reading));

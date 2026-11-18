@@ -11,6 +11,7 @@ mod agents;
 mod app;
 mod doctor;
 mod events;
+mod folders;
 mod idle;
 mod intent;
 mod model_pick;

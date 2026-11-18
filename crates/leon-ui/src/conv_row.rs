@@ -39,8 +39,9 @@ fn attention_icon(attention: Attention) -> gpui::Svg {
     icon(glyph, color, 14.)
 }
 
-/// A filled pill at the row's end for what needs the user.
-fn attention_pill(attention: Attention) -> Option<Div> {
+/// A filled pill for what needs the user — "Needs you", "To review" — at
+/// a row's end and on the Flow's boxes; `scale` follows the Flow's zoom.
+pub(crate) fn attention_pill(attention: Attention, scale: f32) -> Option<Div> {
     let text = match attention {
         Attention::NeedsYou => "Needs you",
         Attention::Review => "To review",
@@ -50,10 +51,10 @@ fn attention_pill(attention: Attention) -> Option<Div> {
     Some(
         div()
             .flex_none()
-            .px(px(6.))
+            .px(px(6. * scale))
             .rounded_full()
             .bg(Rgba { a: 0.18, ..color })
-            .text_size(px(10.5))
+            .text_size(px(10.5 * scale))
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .text_color(color)
             .child(text),
@@ -152,8 +153,8 @@ impl Workspace {
                         attention_icon(attention).into_any_element()
                     })
                     .child(title)
-                    .children(attention_pill(attention))
-                    .children(self.snapshot.prs.get(&id).map(pr_badge)),
+                    .children(attention_pill(attention, 1.))
+                    .children(self.snapshot.prs_of(c).into_iter().map(pr_badge)),
             )
             .child(self.row_meta(c, attention, show_project, cx))
             .on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
@@ -216,11 +217,14 @@ impl Workspace {
                     .text_color(color)
                     .child(format!("{project}{agents}{what}")),
             )
-            .children(
-                c.conversation
-                    .issue
-                    .as_ref()
-                    .map(|issue| issue_chip(issue, cx)),
-            )
+            .children(c.issues.first().map(|issue| issue_chip(issue, cx)))
+            .when(c.issues.len() > 1, |d| {
+                d.child(
+                    div()
+                        .flex_none()
+                        .text_color(theme::fg_faint())
+                        .child(format!("+{}", c.issues.len() - 1)),
+                )
+            })
     }
 }

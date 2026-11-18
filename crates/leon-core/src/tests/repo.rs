@@ -21,8 +21,23 @@ impl Git for FakeGit {
             checks: vec![],
         }
     }
-    fn branch(&self, _dir: &Path) -> Option<String> {
-        Some("fix-retry".into())
+    fn branch(&self, dir: &Path) -> Option<String> {
+        Some(
+            if dir.starts_with("/code/web") {
+                "web-fix"
+            } else {
+                "fix-retry"
+            }
+            .into(),
+        )
+    }
+    /// `/code/api` and `/code/web` are repositories, `/code/api/.worktrees/fix`
+    /// a worktree of the first.
+    fn working_tree(&self, path: &Path) -> Option<PathBuf> {
+        ["/code/api/.worktrees/fix", "/code/api", "/code/web"]
+            .into_iter()
+            .find(|root| path.starts_with(root))
+            .map(PathBuf::from)
     }
     fn default_base(&self, _dir: &Path) -> Option<String> {
         Some("origin/main".into())
@@ -60,9 +75,14 @@ impl GitHub for FakeGitHub {
         }
     }
     fn pull_request(&self, _dir: &Path, branch: &str) -> Result<Option<PullRequest>, PortError> {
-        Ok((branch == "fix-retry").then(|| PullRequest {
-            repo: "acme/api".into(),
-            number: 7,
+        let (repo, number, closes) = match branch {
+            "fix-retry" => ("acme/api", 7, GhRef::issue("acme/api", 12)),
+            "web-fix" => ("acme/web", 3, GhRef::issue("acme/web", 5)),
+            _ => return Ok(None),
+        };
+        Ok(Some(PullRequest {
+            repo: repo.into(),
+            number,
             title: "Fix retry".into(),
             url: String::new(),
             state: PrState::Open,
@@ -76,6 +96,7 @@ impl GitHub for FakeGitHub {
             body: String::new(),
             threads: vec![],
             author: String::new(),
+            closes: vec![closes],
         }))
     }
     fn my_issues(&self) -> Result<Vec<Issue>, PortError> {
@@ -116,6 +137,15 @@ impl GitHub for FakeGitHub {
         self.reviews.lock().unwrap().push(number);
         Ok(())
     }
+    fn reply_to_thread(&self, thread: &str, _body: &str) -> Result<(), PortError> {
+        Err(PortError::new(
+            "answering a review thread",
+            format!("{thread} is gone"),
+        ))
+    }
+    fn resolve_thread(&self, _thread: &str) -> Result<(), PortError> {
+        Ok(())
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -128,12 +158,13 @@ async fn a_conversation_shows_its_branch_changes_and_pull_request() {
         .conversation
         .id;
     h.core.send(Intent::View(Some(id)));
-    let s = until(&h.core, "pull request", |s| s.prs.contains_key(&id)).await;
-    let git = &s.git[&id];
+    let api = Path::new("/code/api");
+    let s = until(&h.core, "pull request", |s| s.prs.contains_key(api)).await;
+    let git = &s.git[api];
     assert_eq!(git.branch.as_deref(), Some("fix-retry"));
     assert_eq!(git.changes.len(), 1);
     assert_eq!(git.branch_diff.len(), 2);
-    assert_eq!(s.prs[&id].number, 7);
+    assert_eq!(s.prs[api].number, 7);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -157,16 +188,40 @@ async fn requesting_a_copilot_review_says_so() {
         .conversation
         .id;
     h.core.send(Intent::View(Some(id)));
-    until(&h.core, "pull request", |s| s.prs.contains_key(&id)).await;
-    h.core
-        .send(Intent::RequestCopilotReview(GhRef::pull_request(
-            "acme/api", 7,
-        )));
-    let s = until(&h.core, "flash", |s| s.flash.is_some()).await;
-    assert_eq!(
-        s.flash.as_ref().map(|f| f.1.as_str()),
-        Some("Copilot review requested on #7")
-    );
+    until(&h.core, "pull request", |s| {
+        s.prs.contains_key(Path::new("/code/api"))
+    })
+    .await;
+    let pr = GhRef::pull_request("acme/api", 7);
+    // Each action says how it went, failures included (GH-5, GH-8).
+    let cases = [
+        (
+            Intent::RequestCopilotReview(pr.clone()),
+            "Copilot review requested on #7",
+        ),
+        (
+            Intent::ResolveThread {
+                pr: pr.clone(),
+                thread: "PRRT_1".into(),
+            },
+            "Thread resolved",
+        ),
+        (
+            Intent::ReplyToThread {
+                pr: pr.clone(),
+                thread: "PRRT_2".into(),
+                body: "Done.".into(),
+            },
+            "Could not answer the thread: answering a review thread: PRRT_2 is gone",
+        ),
+    ];
+    for (intent, said) in cases {
+        h.core.send(intent);
+        until(&h.core, said, |s| {
+            s.flash.as_ref().is_some_and(|f| f.1 == said)
+        })
+        .await;
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

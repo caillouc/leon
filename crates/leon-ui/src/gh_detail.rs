@@ -67,7 +67,13 @@ impl Workspace {
             .min_h_0()
             .overflow_y_scroll()
             .pb_6()
-            .child(div().max_w(px(860.)).w_full().mx_auto().child(body));
+            .child(
+                div()
+                    .max_w(px(theme::COLUMN))
+                    .w_full()
+                    .mx_auto()
+                    .child(body),
+            );
         Some(drawer(
             header,
             scroll,

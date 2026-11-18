@@ -428,6 +428,9 @@ impl Workspace {
             )
             .child(
                 div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6. * s))
                     .text_size(px(12. * s))
                     .text_color(match session.status {
                         leon_domain::Status::Running => theme::accent(),
@@ -435,9 +438,20 @@ impl Workspace {
                         leon_domain::Status::Error => theme::err(),
                         leon_domain::Status::Idle => theme::fg_muted(),
                     })
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .child(status_text(session, waiting_for.as_deref())),
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .child(status_text(session, waiting_for.as_deref())),
+                    )
+                    // Which agent has an answer or a question for the user,
+                    // as the left pane says it of the conversation (NAV-5).
+                    .children(crate::conv_row::attention_pill(
+                        leon_domain::Attention::of(session.status, session.session.unread),
+                        s,
+                    )),
             )
             .child(
                 div()

@@ -156,6 +156,7 @@ impl Workspace {
                     *id,
                     vec![Pending {
                         source: first.source,
+                        folder: self.folder(*id),
                         comment: ReviewComment {
                             path: first.path,
                             line: first.line,

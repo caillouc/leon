@@ -3,21 +3,32 @@
 //! Every git or gh call runs on the blocking pool; its result comes back to
 //! the core actor as an [`Internal`] message, so the actor never waits.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_domain::{ConversationId, GhKind, GhRef, Issue, PullRequest};
 
 use crate::app::Core;
+use crate::ports::{GitHub, PortError};
 use crate::snapshot::{Detail, GitView};
 
 /// Results of background work, applied by the core actor.
 #[derive(Debug)]
 pub(crate) enum Internal {
-    /// Fresh git state of a conversation's working directory.
-    Git(ConversationId, GitView),
-    /// The pull request of a conversation's branch, or none.
-    Pr(ConversationId, Option<Box<PullRequest>>),
+    /// Fresh git state of a folder.
+    Git(PathBuf, GitView),
+    /// The pull request of a folder's branch, or none.
+    Pr(PathBuf, Option<Box<PullRequest>>),
+    /// The working tree holding a folder of a conversation, `None` outside a
+    /// repository (CTX-2). `keep`: the folder joins the conversation even
+    /// then (an agent said it works there).
+    WorkingTree {
+        conversation: ConversationId,
+        dir: PathBuf,
+        root: Option<PathBuf>,
+        keep: bool,
+    },
     /// My issues and pull requests (GH-2, GH-3), or why they failed.
     Lists(Result<(Vec<Issue>, Vec<PullRequest>), String>),
     /// A GitHub action on an item finished: say so, and read the item again
@@ -37,16 +48,19 @@ pub(crate) enum Internal {
 }
 
 impl Core {
-    /// Re-reads git state; coalesces calls while one is running.
+    /// Re-reads the git state of every folder of a conversation.
     pub(crate) fn refresh_git(&mut self, id: ConversationId) {
-        if !self.git_in_flight.insert(id) {
-            self.git_dirty.insert(id);
+        for dir in self.state.folders_of(id) {
+            self.refresh_folder(dir);
+        }
+    }
+
+    /// Re-reads a folder's git state; coalesces calls while one is running.
+    pub(crate) fn refresh_folder(&mut self, dir: PathBuf) {
+        if !self.git_in_flight.insert(dir.clone()) {
+            self.git_dirty.insert(dir);
             return;
         }
-        let Some(dir) = self.conversation_dir(id) else {
-            self.git_in_flight.remove(&id);
-            return;
-        };
         let git = Arc::clone(&self.ports.git);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || {
@@ -59,29 +73,34 @@ impl Core {
                 .transpose();
             let error = changes.as_ref().err().map(ToString::to_string);
             let view = GitView {
+                repo: git.github_repo(&dir),
                 branch,
                 base,
                 changes: Arc::new(changes.unwrap_or_default()),
                 branch_diff: Arc::new(branch_diff.ok().flatten().unwrap_or_default()),
                 error,
             };
-            let _ = tx.send(Internal::Git(id, view));
+            let _ = tx.send(Internal::Git(dir, view));
         });
     }
 
-    /// Re-reads the pull request of a conversation's branch.
+    /// Re-reads the pull request of each folder's branch of a conversation.
     pub(crate) fn refresh_pr(&mut self, id: ConversationId) {
-        let (Some(dir), Some(branch)) = (
-            self.conversation_dir(id),
-            self.state.git.get(&id).and_then(|g| g.branch.clone()),
-        ) else {
+        for dir in self.state.folders_of(id) {
+            self.refresh_folder_pr(dir);
+        }
+    }
+
+    /// Re-reads the pull request of a folder's branch.
+    fn refresh_folder_pr(&self, dir: PathBuf) {
+        let Some(branch) = self.state.git.get(&dir).and_then(|g| g.branch.clone()) else {
             return;
         };
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || match github.pull_request(&dir, &branch) {
             Ok(pr) => {
-                let _ = tx.send(Internal::Pr(id, pr.map(Box::new)));
+                let _ = tx.send(Internal::Pr(dir, pr.map(Box::new)));
             }
             Err(error) => tracing::debug!(%error, "pull request refresh"),
         });
@@ -102,40 +121,76 @@ impl Core {
 
     /// Asks Copilot to review a pull request (GH-5).
     pub(crate) fn request_review(&mut self, item: GhRef) {
-        let github = Arc::clone(&self.ports.github);
-        let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
-            let message = match github.request_copilot_review(&item.repo, item.number) {
-                Ok(()) => format!("Copilot review requested on #{}", item.number),
-                Err(error) => format!("Could not request a Copilot review: {error}"),
-            };
-            let _ = tx.send(Internal::Done(item, message));
-        });
+        self.act(
+            item,
+            "Could not request a Copilot review",
+            |github, item| {
+                github
+                    .request_copilot_review(&item.repo, item.number)
+                    .map(|()| format!("Copilot review requested on #{}", item.number))
+            },
+        );
     }
 
     /// Posts a comment on a pull request or an issue (GH-6).
     pub(crate) fn comment(&mut self, item: GhRef, body: String) {
-        let github = Arc::clone(&self.ports.github);
-        let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
-            let message = match github.comment(&item.repo, item.number, &body) {
-                Ok(()) => format!("Comment posted on #{}", item.number),
-                Err(error) => format!("Could not post the comment: {error}"),
-            };
-            let _ = tx.send(Internal::Done(item, message));
+        self.act(item, "Could not post the comment", move |github, item| {
+            github
+                .comment(&item.repo, item.number, &body)
+                .map(|()| format!("Comment posted on #{}", item.number))
         });
     }
 
     /// Marks a pull request as a draft or ready for review (GH-7).
     pub(crate) fn set_draft(&mut self, item: GhRef, draft: bool) {
+        self.act(
+            item,
+            "Could not change the pull request",
+            move |github, item| {
+                github.set_draft(&item.repo, item.number, draft).map(|()| {
+                    let now = if draft {
+                        "a draft again"
+                    } else {
+                        "ready for review"
+                    };
+                    format!("#{} is {now}", item.number)
+                })
+            },
+        );
+    }
+
+    /// Answers a review thread of pull request `pr` (GH-8).
+    pub(crate) fn reply_to_thread(&mut self, pr: GhRef, thread: String, body: String) {
+        self.act(pr, "Could not answer the thread", move |github, _| {
+            github
+                .reply_to_thread(&thread, &body)
+                .map(|()| "Answer posted".to_owned())
+        });
+    }
+
+    /// Resolves a review thread of pull request `pr` (GH-8).
+    pub(crate) fn resolve_thread(&mut self, pr: GhRef, thread: String) {
+        self.act(pr, "Could not resolve the thread", move |github, _| {
+            github
+                .resolve_thread(&thread)
+                .map(|()| "Thread resolved".to_owned())
+        });
+    }
+
+    /// Runs a GitHub action on `item` in the background, then says how it
+    /// went (`run`'s message, or `failed` and why) and reads the item again
+    /// where it shows.
+    fn act(
+        &self,
+        item: GhRef,
+        failed: &'static str,
+        run: impl FnOnce(&dyn GitHub, &GhRef) -> Result<String, PortError> + Send + 'static,
+    ) {
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || {
-            let message = match (github.set_draft(&item.repo, item.number, draft), draft) {
-                (Ok(()), true) => format!("#{} is a draft again", item.number),
-                (Ok(()), false) => format!("#{} is ready for review", item.number),
-                (Err(error), _) => format!("Could not change #{}: {error}", item.number),
-            };
+            let message =
+                run(github.as_ref(), &item).unwrap_or_else(|error| format!("{failed}: {error}"));
             let _ = tx.send(Internal::Done(item, message));
         });
     }
@@ -169,25 +224,31 @@ impl Core {
 
     pub(crate) fn on_internal(&mut self, message: Internal) {
         match message {
-            Internal::Git(id, view) => {
-                self.git_in_flight.remove(&id);
+            Internal::Git(dir, view) => {
+                self.git_in_flight.remove(&dir);
                 let branch_changed =
-                    self.state.git.get(&id).map(|g| &g.branch) != Some(&view.branch);
-                Arc::make_mut(&mut self.state.git).insert(id, view);
-                if self.git_dirty.remove(&id) {
-                    self.refresh_git(id);
+                    self.state.git.get(&dir).map(|g| &g.branch) != Some(&view.branch);
+                Arc::make_mut(&mut self.state.git).insert(dir.clone(), view);
+                if self.git_dirty.remove(&dir) {
+                    self.refresh_folder(dir.clone());
                 }
                 if branch_changed {
-                    self.refresh_pr(id);
+                    self.refresh_folder_pr(dir);
                 }
             }
-            Internal::Pr(id, pr) => {
+            Internal::Pr(dir, pr) => {
                 let prs = Arc::make_mut(&mut self.state.prs);
                 match pr {
-                    Some(pr) => prs.insert(id, *pr),
-                    None => prs.remove(&id),
+                    Some(pr) => prs.insert(dir, *pr),
+                    None => prs.remove(&dir),
                 };
             }
+            Internal::WorkingTree {
+                conversation,
+                dir,
+                root,
+                keep,
+            } => self.working_tree_found(conversation, dir, root, keep),
             Internal::Lists(Ok((issues, prs))) => {
                 self.state.my_issues = Arc::new(issues);
                 self.state.my_prs = Arc::new(prs);
@@ -196,15 +257,15 @@ impl Core {
             Internal::Lists(Err(error)) => self.state.github_error = Some(error),
             Internal::Done(item, message) => {
                 self.flash(message);
-                let shown: Vec<ConversationId> = self
+                let shown: Vec<PathBuf> = self
                     .state
                     .prs
                     .iter()
                     .filter(|(_, pr)| pr.repo == item.repo && pr.number == item.number)
-                    .map(|(id, _)| *id)
+                    .map(|(dir, _)| dir.clone())
                     .collect();
-                for id in shown {
-                    self.refresh_pr(id);
+                for dir in shown {
+                    self.refresh_folder_pr(dir);
                 }
                 if self.state.detail.as_ref().map(Detail::item) == Some(item.clone()) {
                     self.load_detail(item);
@@ -228,34 +289,32 @@ impl Core {
             Internal::Tools(cli) => self.tools_done(cli),
             Internal::Tick => {
                 self.stop_idle_clis();
-                let ids: Vec<ConversationId> = self
-                    .state
-                    .conversations
-                    .iter()
-                    .filter(|c| !c.archived)
-                    .map(|c| c.id)
-                    .collect();
-                for id in ids {
-                    self.refresh_pr(id);
+                for dir in self.open_folders() {
+                    self.refresh_folder_pr(dir);
                 }
             }
         }
     }
 
-    /// Reads git state of every open conversation (startup).
+    /// Reads git state of every open conversation's folders (startup).
     pub(crate) fn refresh_all_git(&mut self) {
-        let ids: Vec<ConversationId> = self
-            .state
+        for dir in self.open_folders() {
+            self.refresh_folder(dir);
+        }
+    }
+
+    /// The folders of every conversation not archived, each once.
+    fn open_folders(&self) -> Vec<PathBuf> {
+        let mut seen = HashSet::new();
+        self.state
             .conversations
             .iter()
             .filter(|c| !c.archived)
-            .map(|c| c.id)
-            .collect();
-        for id in ids {
-            self.refresh_git(id);
-        }
+            .flat_map(|c| self.state.folders_of(c.id))
+            .filter(|dir| seen.insert(dir.clone()))
+            .collect()
     }
 }
 
-/// Git state kept per conversation.
-pub(crate) type GitMap = Arc<HashMap<ConversationId, GitView>>;
+/// Git state kept per folder.
+pub(crate) type GitMap = Arc<HashMap<PathBuf, GitView>>;

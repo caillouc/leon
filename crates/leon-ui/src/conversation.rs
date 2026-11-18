@@ -68,7 +68,7 @@ impl Workspace {
             .first()
             .and_then(|s| self.snapshot.sessions.get(s))
             .map(|s| s.session.working_dir.clone());
-        let branch = self.snapshot.git.get(&id).and_then(|g| g.branch.clone());
+        let branch = self.folder_git(id).and_then(|g| g.branch.clone());
         let chip_text: SharedString = branch
             .clone()
             .or_else(|| {

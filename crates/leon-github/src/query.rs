@@ -140,6 +140,40 @@ pub(crate) fn set_draft(repo: &str, number: u64, draft: bool) -> Vec<String> {
     args
 }
 
+/// Answers a review thread (mutation and input from GitHub's GraphQL schema,
+/// read 2026-11-18).
+const REPLY: &str = "mutation($thread: ID!, $body: String!) { \
+    addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $thread, body: $body}) \
+    { clientMutationId } }";
+/// Resolves a review thread (same source).
+const RESOLVE: &str = "mutation($thread: ID!) { resolveReviewThread(input: {threadId: $thread}) { clientMutationId } }";
+
+/// `gh api graphql` answering review thread `thread` with `body` (GH-8).
+pub(crate) fn reply_to_thread(thread: &str, body: &str) -> Vec<String> {
+    owned([
+        "api",
+        "graphql",
+        "-f",
+        &format!("thread={thread}"),
+        "-f",
+        &format!("body={body}"),
+        "-f",
+        &format!("query={REPLY}"),
+    ])
+}
+
+/// `gh api graphql` resolving review thread `thread` (GH-8).
+pub(crate) fn resolve_thread(thread: &str) -> Vec<String> {
+    owned([
+        "api",
+        "graphql",
+        "-f",
+        &format!("thread={thread}"),
+        "-f",
+        &format!("query={RESOLVE}"),
+    ])
+}
+
 /// `gh api` posting `body` as a comment on issue or pull request `number`
 /// of `repo` (both are issues to the REST API).
 pub(crate) fn comment(repo: &str, number: u64, body: &str) -> Vec<String> {
@@ -157,8 +191,29 @@ pub(crate) fn comment(repo: &str, number: u64, body: &str) -> Vec<String> {
 mod tests {
     use super::{
         PR_DETAILS, PR_FIELDS, PULL_REQUEST, comment, copilot_review, issue, owner_and_name,
-        pull_request, pull_request_by_number, search, set_draft,
+        pull_request, pull_request_by_number, reply_to_thread, resolve_thread, search, set_draft,
     };
+
+    /// The thread id and the text go raw: an `@` or a `=` stays text.
+    #[test]
+    fn thread_args() {
+        let reply = reply_to_thread("PRRT_1", "@me = done");
+        assert_eq!(
+            reply[..6],
+            [
+                "api",
+                "graphql",
+                "-f",
+                "thread=PRRT_1",
+                "-f",
+                "body=@me = done"
+            ]
+        );
+        assert!(reply[7].contains("addPullRequestReviewThreadReply"));
+        let resolve = resolve_thread("PRRT_1");
+        assert_eq!(resolve[..4], ["api", "graphql", "-f", "thread=PRRT_1"]);
+        assert!(resolve[5].contains("resolveReviewThread"));
+    }
 
     #[test]
     fn pull_request_passes_the_branch_raw() {

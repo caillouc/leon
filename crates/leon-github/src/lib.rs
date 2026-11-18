@@ -185,6 +185,18 @@ impl GitHub for GhCli {
         self.change("posting a comment", repo, number, &args)
     }
 
+    fn reply_to_thread(&self, thread: &str, body: &str) -> Result<(), PortError> {
+        gh((self.path)(), &query::reply_to_thread(thread, body), None)
+            .map(drop)
+            .map_err(|e| PortError::new("answering a review thread", e))
+    }
+
+    fn resolve_thread(&self, thread: &str) -> Result<(), PortError> {
+        gh((self.path)(), &query::resolve_thread(thread), None)
+            .map(drop)
+            .map_err(|e| PortError::new("resolving a review thread", e))
+    }
+
     fn set_draft(&self, repo: &str, number: u64, draft: bool) -> Result<(), PortError> {
         let context = if draft {
             "converting the pull request to a draft"

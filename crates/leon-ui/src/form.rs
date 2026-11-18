@@ -9,7 +9,7 @@ use crate::icons::{Icon, icon};
 use crate::picker::{Choice, Look};
 use crate::theme;
 use crate::widgets::{button, empty, primary};
-use crate::workspace::{Screen, Workspace, text_of};
+use crate::workspace::{Screen, Workspace};
 
 impl Workspace {
     pub(crate) fn render_new_conversation(
@@ -45,9 +45,8 @@ impl Workspace {
         let project_id = project.id;
         let slash = self.slash_list(&self.form_text, Some(project_id), cx);
         let ghost = self.argument_ghost(&self.form_text, Some(project_id), cx);
-        let chips = self.pasted_chips(cx);
         // Tab writes in the first `/` command while the list shows.
-        let input_box = Self::paste_aware(div(), cx).capture_action(cx.listener(
+        let input_box = Self::paste_aware(div(), &self.form_text, cx).capture_action(cx.listener(
             move |this, _: &IndentInline, window, cx| {
                 let input = this.form_text.clone();
                 if this.complete_slash(&input, Some(project_id), window, cx) {
@@ -209,7 +208,6 @@ impl Workspace {
                                 .flex()
                                 .flex_col()
                                 .gap_2()
-                                .children(chips)
                                 .child(Textarea::new(&self.form_text).appearance(false))
                                 .children(ghost),
                         )
@@ -293,7 +291,7 @@ impl Workspace {
     }
 
     pub(crate) fn start_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = crate::message_input::message(&text_of(&self.form_text, cx), &self.pasted);
+        let text = crate::message_input::message(&self.form_text.read(cx).content(), &self.pasted);
         let project = self
             .form
             .project

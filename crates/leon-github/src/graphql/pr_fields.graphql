@@ -6,4 +6,5 @@ fragment pr on PullRequest {
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   reviewRequests(first: 20) { nodes { requestedReviewer { ... on Actor { login } ... on Team { combinedSlug } } } }
   latestReviews(first: 20) { nodes { author { login } } }
+  closingIssuesReferences(first: 10) { nodes { number repository { nameWithOwner } } }
 }

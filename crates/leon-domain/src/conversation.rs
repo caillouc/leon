@@ -93,9 +93,10 @@ pub struct Conversation {
     pub unread: bool,
     /// Last activity, Unix milliseconds.
     pub updated_at: i64,
-    /// The folder an agent said the conversation moved to, e.g. a worktree
-    /// (D3, P10); `None`: the first session's folder.
-    pub working_dir: Option<PathBuf>,
+    /// The folders its agents work in — worktrees, other repositories — in
+    /// the order Leon saw them (D3, CTX-2); empty: the first session's
+    /// folder.
+    pub folders: Vec<PathBuf>,
     /// The issue it was started for (GH-2, CTX-1), if any.
     pub issue: Option<crate::GhRef>,
 }
@@ -130,6 +131,8 @@ pub struct AgentSession {
     pub working_dir: PathBuf,
     /// The CLI's own session id, once known; used to resume.
     pub cli_session: Option<String>,
+    /// Its last answer to the user is not read yet (NAV-4, FLOW-4).
+    pub unread: bool,
 }
 
 #[cfg(test)]

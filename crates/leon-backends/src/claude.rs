@@ -15,7 +15,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::process::{clip, spawn, stderr_tail};
-use crate::summary::{OUTPUT_MAX, claude_tool, result_text};
+use crate::summary::{OUTPUT_MAX, claude_files, claude_tool, result_text};
 
 /// The command line; `skills` is the folder of Leon's generic skills made
 /// for Claude Code (EXT-5), if any.
@@ -84,9 +84,13 @@ pub(crate) fn args(spec: &SessionSpec, skills: Option<&Path>) -> Vec<String> {
     if !denied.is_empty() {
         args.push(format!("--disallowedTools={}", denied.join(",")));
     }
-    // `~/.agents/AGENTS.md` for every agent (EXT-8), after its own prompt.
-    if let Some(shared) = &spec.instructions {
-        args.push(format!("--append-system-prompt={}", shared.text));
+    // Leon's rules for its tools (CTX-3) and `~/.agents/AGENTS.md` (EXT-8),
+    // for every agent, after its own prompt.
+    if let Some(text) = crate::told::told([
+        spec.app_instructions,
+        spec.instructions.as_ref().map(|i| i.text.as_str()),
+    ]) {
+        args.push(format!("--append-system-prompt={text}"));
     }
     // Its `.claude/skills/` loads like a project's (docs, skills page;
     // checked on 2.1.288, 2026-11-18). One value: the flag takes several.
@@ -297,6 +301,7 @@ impl Parser {
                         name: verb,
                         detail,
                     });
+                    out.extend(claude_files(name, &block["input"]));
                 }
                 _ => {}
             }
@@ -513,6 +518,7 @@ mod tests {
             }],
             skills: Vec::new(),
             instructions: None,
+            app_instructions: None,
         };
         let list = args(&spec, None);
         assert!(list.join(" ").contains("--plugin-dir /kit --resume s1"));
@@ -550,6 +556,12 @@ mod tests {
             text: "Be brief.".into(),
         });
         assert!(args(&shared, None).contains(&"--append-system-prompt=Be brief.".to_owned()));
+        // Leon's rules for its tools come first (CTX-3).
+        shared.app_instructions = Some("Use Leon.");
+        assert!(
+            args(&shared, None)
+                .contains(&"--append-system-prompt=Use Leon.\n\nBe brief.".to_owned())
+        );
         // Leon's generic skills folder (EXT-5), as one value.
         let with_skills = args(&spec, Some(std::path::Path::new("/data/skills/claude/ab")));
         assert!(

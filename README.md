@@ -56,8 +56,23 @@ As a Mac app (Leon.app with its icon, in /Applications):
 cargo xtask bundle --install
 ```
 
-Without `--install` it only builds `target/release/Leon.app`. While working on
-Leon itself:
+Without `--install` it only builds `target/release/Leon.app`.
+
+macOS asks Leon for access to folders such as Documents and Downloads. With
+the default ad-hoc signature it asks again after every rebuild. To keep the
+answer, sign with a certificate; the bundle step picks the first it finds in
+your keychain:
+
+1. **An Apple developer account** (preferred): Xcode → Settings → Accounts →
+   your account → Manage Certificates… → + → *Developer ID Application* (or
+   *Apple Development*).
+2. **Without one**: Keychain Access → Keychain Access menu → Certificate
+   Assistant → Create a Certificate…, name **Leon Local**, identity type
+   *Self Signed Root*, certificate type *Code Signing*.
+
+`LEON_SIGN_IDENTITY` names another one.
+
+While working on Leon itself:
 
 ```bash
 cargo run

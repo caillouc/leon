@@ -1,5 +1,7 @@
 //! Diffs as Leon shows them (GIT-1..4), independent of how git produced them.
 
+use std::sync::Arc;
+
 use regex::Regex;
 
 /// How a file changed.
@@ -106,6 +108,18 @@ pub fn fold_reason<'a>(patterns: &'a [FoldPattern], path: &str) -> Option<&'a Fo
     patterns.iter().find(|p| p.matches(path))
 }
 
+/// The files with those `patterns` fold moved to the end, each group in its
+/// own order (GIT-4); unchanged when they already are.
+pub fn folded_last(files: &Arc<Vec<FileDiff>>, patterns: &[FoldPattern]) -> Arc<Vec<FileDiff>> {
+    let folded = |f: &FileDiff| fold_reason(patterns, &f.path).is_some();
+    if files.is_sorted_by_key(folded) {
+        return Arc::clone(files);
+    }
+    let mut sorted = files.to_vec();
+    sorted.sort_by_key(folded);
+    Arc::new(sorted)
+}
+
 fn glob_to_regex(glob: &str) -> String {
     let mut out = String::from("^");
     let mut chars = glob.chars().peekable();
@@ -131,7 +145,37 @@ fn glob_to_regex(glob: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{FoldPattern, fold_reason};
+    use std::sync::Arc;
+
+    use super::{FileDiff, FileStatus, FoldPattern, fold_reason, folded_last};
+
+    #[test]
+    fn folded_files_go_last_in_their_order() {
+        let file = |path: &str| FileDiff {
+            path: path.into(),
+            status: FileStatus::Modified,
+            added: 1,
+            removed: 0,
+            binary: false,
+            hunks: vec![],
+        };
+        let fold = [FoldPattern::parse("glob:**/*.lock").unwrap()];
+        let files = Arc::new(vec![
+            file("Cargo.lock"),
+            file("src/a.rs"),
+            file("web/yarn.lock"),
+            file("src/b.rs"),
+        ]);
+        let paths = |files: &[FileDiff]| files.iter().map(|f| f.path.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            paths(&folded_last(&files, &fold)),
+            ["src/a.rs", "src/b.rs", "Cargo.lock", "web/yarn.lock"]
+        );
+        // Already in order, or nothing folds: the same list, not a copy.
+        let sorted = folded_last(&files, &fold);
+        assert!(Arc::ptr_eq(&folded_last(&sorted, &fold), &sorted));
+        assert!(Arc::ptr_eq(&folded_last(&files, &[]), &files));
+    }
 
     #[test]
     fn globs_and_regexes_match_repo_paths() {

@@ -8,7 +8,9 @@ use gpui::{
     AnyElement, Context, Focusable, FontWeight, IntoElement, SharedString, Window, div, prelude::*,
     px,
 };
-use leon_domain::{ConversationId, FileDiff, FoldPattern, LineKind, ReviewComment, fold_reason};
+use leon_domain::{
+    ConversationId, FileDiff, FoldPattern, LineKind, ReviewComment, fold_reason, folded_last,
+};
 
 use crate::diff_rows::{counts, path_text, status_letter};
 use crate::right::Pending;
@@ -54,7 +56,7 @@ impl Workspace {
         id: ConversationId,
         source: DiffSource,
     ) -> Result<DiffFiles, String> {
-        let Some(git) = self.snapshot.git.get(&id) else {
+        let Some(git) = self.folder_git(id) else {
             return Err("Reading git…".to_owned());
         };
         if let Some(error) = &git.error {
@@ -67,6 +69,8 @@ impl Workspace {
                 git.base.as_ref().map_or_default(|b| format!("since {b}")),
             ),
         };
+        // Folded files come last (GIT-4), in the list and the drawer alike.
+        let files = folded_last(&files, &self.snapshot.fold);
         if files.is_empty() {
             return Err(match (source, &git.base) {
                 (DiffSource::Changes, _) => {
@@ -93,17 +97,21 @@ impl Workspace {
             Err(text) => return empty(text),
         };
         let fold = Arc::clone(&self.snapshot.fold);
-        let review = self.right.review.get(&id);
+        let shown = self.folder(id);
+        let review: Vec<&Pending> = self
+            .right
+            .review
+            .get(&id)
+            .map_or_default(|r| r.iter().filter(|p| p.folder == shown).collect());
         let added: u32 = diff.files.iter().map(|f| f.added).sum();
         let removed: u32 = diff.files.iter().map(|f| f.removed).sum();
         let n = diff.files.len();
         let rows = diff.files.iter().enumerate().map(|(ix, file)| {
             let folded = fold_reason(&fold, &file.path).is_some();
-            let comments = review.map_or(0, |r| {
-                r.iter()
-                    .filter(|p| p.source == source && p.comment.path == file.path)
-                    .count()
-            });
+            let comments = review
+                .iter()
+                .filter(|p| p.source == source && p.comment.path == file.path)
+                .count();
             let path = file.path.clone();
             div()
                 .id(("diff-index", ix))
@@ -155,8 +163,11 @@ impl Workspace {
                     .child(counts(added, removed))
                     .child(div().text_color(theme::fg_muted()).child(diff.against)),
             )
+            // `flex_none`: in a scrolling column a child that may shrink is
+            // clipped instead of scrolled.
             .child(
                 div()
+                    .flex_none()
                     .flex()
                     .flex_col()
                     .rounded_lg()
@@ -204,12 +215,14 @@ impl Workspace {
             return;
         };
         if !text.trim().is_empty() {
+            let folder = self.folder(at.conversation);
             self.right
                 .review
                 .entry(at.conversation)
                 .or_default()
                 .push(Pending {
                     source: at.source,
+                    folder,
                     comment: ReviewComment {
                         path: at.path,
                         line: at.line,

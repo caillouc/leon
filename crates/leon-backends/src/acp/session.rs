@@ -216,12 +216,7 @@ impl Session {
                 )));
             }
             if !caps.system_prompt {
-                self.preamble = self
-                    .spec
-                    .agent
-                    .as_ref()
-                    .map(|a| a.instructions.clone())
-                    .filter(|i| !i.trim().is_empty());
+                self.preamble = setup::told(&self.spec);
             }
         }
         self.loading = matches!(start, Start::Load(_));

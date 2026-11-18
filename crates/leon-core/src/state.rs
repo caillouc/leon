@@ -1,11 +1,12 @@
 //! The core's mutable state and how it becomes a [`Snapshot`].
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_domain::{
-    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, Project, ProjectId,
-    Settings, Status, TimedEntry,
+    AgentSession, AgentSessionId, BackendKind, Conversation, ConversationId, GhRef, Project,
+    ProjectId, Settings, Status, TimedEntry,
 };
 
 use crate::ports::{AgentDefinition, BackendOptions};
@@ -86,11 +87,14 @@ pub(crate) struct State {
     pub sources: Arc<Vec<crate::ports::Source>>,
     /// The user-level folders of agents and skills (SETTINGS-1).
     pub folders: Arc<Vec<crate::ports::AgentFolder>>,
+    /// The GitHub lists' folded groups (GH-2, GH-3).
+    pub folded_groups: Arc<std::collections::HashSet<String>>,
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     pub notifications: Arc<Vec<Notification>>,
     pub next_notification: u64,
     pub git: crate::repo::GitMap,
-    pub prs: Arc<HashMap<ConversationId, leon_domain::PullRequest>>,
+    /// The pull request of each folder's branch (NAV-6, CTX-2).
+    pub prs: Arc<HashMap<PathBuf, leon_domain::PullRequest>>,
     pub my_issues: Arc<Vec<leon_domain::Issue>>,
     pub my_prs: Arc<Vec<leon_domain::PullRequest>>,
     pub github_error: Option<String>,
@@ -122,6 +126,36 @@ impl State {
 
     pub(crate) fn project(&self, id: ProjectId) -> Option<&Project> {
         self.projects.iter().find(|p| p.id == id)
+    }
+
+    /// The folders a conversation works in (CTX-2): those its agents
+    /// worked in, else the folder of the session the user started.
+    pub(crate) fn folders_of(&self, id: ConversationId) -> Vec<PathBuf> {
+        match self.conversations.iter().find(|c| c.id == id) {
+            Some(c) if !c.folders.is_empty() => c.folders.clone(),
+            Some(_) => self
+                .sessions
+                .values()
+                .find(|s| s.session.conversation == id && s.session.started_by.is_none())
+                .map_or_default(|s| vec![s.session.working_dir.clone()]),
+            None => Vec::new(),
+        }
+    }
+
+    /// The issues a conversation is linked to (CTX-2): the one it was
+    /// started for, then those its folders' pull requests close.
+    fn issues_of(&self, c: &Conversation, folders: &[PathBuf]) -> Vec<GhRef> {
+        let mut issues: Vec<GhRef> = c.issue.iter().cloned().collect();
+        let closed = folders
+            .iter()
+            .filter_map(|f| self.prs.get(f))
+            .flat_map(|pr| &pr.closes);
+        for issue in closed {
+            if !issues.contains(issue) {
+                issues.push(issue.clone());
+            }
+        }
+        issues
     }
 
     pub(crate) fn sessions_of(&self, conversation: ConversationId) -> Vec<AgentSessionId> {
@@ -158,10 +192,13 @@ impl State {
                         .filter_map(|id| self.sessions.get(id))
                         .map(|s| s.status),
                 );
+                let folders = self.folders_of(c.id);
                 ConversationView {
                     conversation: c.clone(),
                     status,
                     sessions,
+                    issues: self.issues_of(c, &folders),
+                    folders,
                 }
             })
             .collect();
@@ -200,6 +237,7 @@ impl State {
             agents: Arc::clone(&self.agents),
             commands: Arc::clone(&self.commands),
             folders: Arc::clone(&self.folders),
+            folded_groups: Arc::clone(&self.folded_groups),
             options: Arc::clone(&self.options),
             notifications: Arc::clone(&self.notifications),
             git: Arc::clone(&self.git),

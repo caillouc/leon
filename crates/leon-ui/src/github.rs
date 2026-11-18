@@ -5,8 +5,6 @@
 //! issue starts a conversation in the project whose repository it belongs
 //! to, or opens the one already started for it.
 
-use std::collections::HashSet;
-
 use gpui::{
     AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, SharedString, Window, div,
     prelude::*, px,
@@ -51,8 +49,6 @@ impl GhList {
 
 /// What the GitHub lists remember while the window is open.
 pub(crate) struct GhState {
-    /// Board columns folded by the user, by name.
-    pub folded: HashSet<String>,
     /// The sprint shown.
     pub sprint: SprintFilter,
     /// The comment box of the details drawer.
@@ -62,7 +58,6 @@ pub(crate) struct GhState {
 impl GhState {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Workspace>) -> Self {
         Self {
-            folded: HashSet::new(),
             sprint: SprintFilter::Current,
             comment: cx.new(|cx| {
                 TextareaState::new(window, cx)
@@ -243,7 +238,8 @@ impl Workspace {
         rows: Vec<AnyElement>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let folded = self.gh.folded.contains(&key);
+        // Kept by the core across restarts.
+        let folded = self.snapshot.folded_groups.contains(&key);
         let count = rows.len();
         div()
             .flex()
@@ -281,9 +277,7 @@ impl Workspace {
                             .child(count.to_string()),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if !this.gh.folded.remove(&key) {
-                            this.gh.folded.insert(key.clone());
-                        }
+                        this.core.send(Intent::FoldGroup(key.clone(), !folded));
                         cx.notify();
                     })),
             )
@@ -393,16 +387,21 @@ impl Workspace {
         self.snapshot
             .conversations
             .iter()
-            .find(|c| c.conversation.issue.as_ref() == Some(item))
+            .find(|c| c.issues.contains(item))
             .map(|c| c.conversation.id)
     }
 
     fn conversation_for_pr(&self, pr: &PullRequest) -> Option<ConversationId> {
         self.snapshot
-            .prs
+            .conversations
             .iter()
-            .find(|(_, p)| p.repo == pr.repo && p.number == pr.number)
-            .map(|(id, _)| *id)
+            .find(|c| {
+                self.snapshot
+                    .prs_of(c)
+                    .iter()
+                    .any(|p| p.repo == pr.repo && p.number == pr.number)
+            })
+            .map(|c| c.conversation.id)
     }
 }
 

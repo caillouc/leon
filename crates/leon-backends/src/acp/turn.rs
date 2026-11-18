@@ -7,7 +7,7 @@ use leon_domain::Usage;
 use serde_json::Value;
 
 use crate::process::clip;
-use crate::summary::{OUTPUT_MAX, result_text};
+use crate::summary::{OUTPUT_MAX, files_changed, result_text};
 
 const DETAIL_MAX: usize = 200;
 
@@ -106,7 +106,33 @@ impl Turn {
         out
     }
 
+    /// An update of a tool call: the files an edit names, then its end.
     fn tool_update(&mut self, update: &Value) -> Vec<BackendEvent> {
+        let mut out: Vec<BackendEvent> = self.files(update).into_iter().collect();
+        out.extend(self.tool_status(update));
+        out
+    }
+
+    /// The files an edit names (CTX-2): its `locations`, and the `path` of
+    /// its `diff` contents (ACP schema; ⚠️ not checked that Copilot CLI
+    /// sends them).
+    fn files(&self, update: &Value) -> Option<BackendEvent> {
+        let tool = self.tools.get(update["toolCallId"].as_str()?)?;
+        if !matches!(tool.kind.as_str(), "edit" | "delete" | "move") {
+            return None;
+        }
+        let list = |key: &str| update[key].as_array().map_or(&[][..], Vec::as_slice);
+        files_changed(
+            list("locations").iter().map(|l| &l["path"]).chain(
+                list("content")
+                    .iter()
+                    .filter(|c| c["type"] == "diff")
+                    .map(|c| &c["path"]),
+            ),
+        )
+    }
+
+    fn tool_status(&mut self, update: &Value) -> Vec<BackendEvent> {
         let Some(id) = update["toolCallId"].as_str() else {
             return Vec::new();
         };

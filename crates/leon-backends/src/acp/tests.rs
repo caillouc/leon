@@ -29,6 +29,7 @@ fn spec(resume: Option<&str>) -> SessionSpec {
         sources: Vec::new(),
         skills: Vec::new(),
         instructions: None,
+        app_instructions: None,
     }
 }
 
@@ -179,6 +180,38 @@ fn agent_instructions_go_in_the_system_prompt_or_the_first_prompt() {
         "Focus on security issues.\n\nfirst"
     );
     assert_eq!(sent[3]["params"]["prompt"][0]["text"], "second");
+    // Leon's rules for its tools come first (CTX-3).
+    s.app_instructions = Some("Use Leon.");
+    let (_, sent) = replay(&s, without, commands());
+    assert_eq!(
+        sent[2]["params"]["prompt"][0]["text"],
+        "Use Leon.\n\nFocus on security issues.\n\nfirst"
+    );
+}
+
+/// An edit names its files, in `locations` or a `diff`, so Leon follows the
+/// folders an agent works in (CTX-2); other kinds name none.
+#[test]
+fn edits_name_their_files() {
+    let (mut session, _) = Session::new(&spec(None), "Agent");
+    let update = |kind: &str| {
+        json!({ "method": "session/update", "params": { "update": {
+            "sessionUpdate": "tool_call", "toolCallId": kind, "title": "Edit a.rs", "kind": kind,
+            "locations": [{ "path": "/r/a.rs" }],
+            "content": [{ "type": "diff", "path": "/r/b.rs", "newText": "x" }] } } })
+    };
+    let files: Vec<BackendEvent> = ["edit", "read"]
+        .into_iter()
+        .flat_map(|kind| session.handle(&update(kind)).0)
+        .filter(|e| matches!(e, BackendEvent::FilesChanged(_)))
+        .collect();
+    assert_eq!(
+        files,
+        [BackendEvent::FilesChanged(vec![
+            std::path::PathBuf::from("/r/a.rs"),
+            std::path::PathBuf::from("/r/b.rs")
+        ])]
+    );
 }
 
 #[test]

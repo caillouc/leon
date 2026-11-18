@@ -69,6 +69,9 @@ pub(crate) struct FlowModel {
     pub edges: Vec<Edge>,
     /// The box that started each session's box: "You" or another session.
     pub parent: HashMap<Node, Node>,
+    /// Each session's agent (its CLI's name without one): the layout keeps
+    /// an agent's sessions together.
+    pub agent: HashMap<Node, String>,
 }
 
 /// Builds the flow of one conversation from its sessions (in order) and
@@ -79,9 +82,18 @@ pub(crate) fn build(
 ) -> FlowModel {
     let mut nodes = vec![Node::You];
     let mut parent = HashMap::new();
+    let mut agent = HashMap::new();
     for s in sessions {
         let me = Node::Session(s.session.id);
         parent.insert(me, s.session.started_by.map_or(Node::You, Node::Session));
+        let settings = &s.session.settings;
+        agent.insert(
+            me,
+            settings
+                .agent
+                .clone()
+                .unwrap_or_else(|| settings.backend.display_name().to_owned()),
+        );
         nodes.push(me);
     }
     let mut edges: Vec<Edge> = Vec::new();
@@ -159,6 +171,7 @@ pub(crate) fn build(
         nodes,
         edges,
         parent,
+        agent,
     }
 }
 

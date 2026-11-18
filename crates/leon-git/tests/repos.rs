@@ -238,3 +238,32 @@ fn default_base_prefers_the_remote_default_branch() {
         Some("origin/trunk".to_owned())
     );
 }
+
+#[test]
+fn a_file_belongs_to_the_working_tree_holding_it() {
+    let dir = repo();
+    write(dir.path(), "src/a.rs", "a\n");
+    commit_all(dir.path(), "first");
+    git(
+        dir.path(),
+        &["worktree", "add", "-q", "wt/fix", "-b", "fix"],
+    );
+    let root = dir.path().canonicalize().unwrap();
+    let git = GitCli::default();
+    let cases = [
+        // file, working tree
+        ("src/a.rs", root.clone()),
+        ("src/gone/b.rs", root.clone()),
+        ("wt/fix/src/a.rs", root.join("wt/fix")),
+        ("wt/fix", root.join("wt/fix")),
+    ];
+    for (file, expected) in cases {
+        assert_eq!(
+            git.working_tree(&dir.path().join(file)),
+            Some(expected),
+            "{file}"
+        );
+    }
+    let outside = tempfile::tempdir().unwrap();
+    assert_eq!(git.working_tree(&outside.path().join("a.rs")), None);
+}

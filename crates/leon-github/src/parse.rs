@@ -1,7 +1,7 @@
 //! `gh api graphql` answers into domain types. A node missing a field Leon
 //! needs is skipped and unknown fields are ignored; only invalid JSON fails.
 
-use leon_domain::{CheckState, Comment, Issue, Label, PrState, PullRequest};
+use leon_domain::{CheckState, Comment, GhRef, Issue, Label, PrState, PullRequest};
 use serde_json::Value;
 
 use crate::board::{Board, board};
@@ -106,6 +106,14 @@ fn pull_request_node(pr: &Value) -> Option<PullRequest> {
         body: text(&pr["body"]).unwrap_or_default(),
         threads: threads(pr),
         author: text(&pr["author"]["login"]).unwrap_or_default(),
+        closes: nodes(&pr["closingIssuesReferences"])
+            .filter_map(|i| {
+                Some(GhRef::issue(
+                    i["repository"]["nameWithOwner"].as_str()?,
+                    i["number"].as_u64()?,
+                ))
+            })
+            .collect(),
     })
 }
 

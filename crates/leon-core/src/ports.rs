@@ -41,6 +41,10 @@ pub trait Storage: Send + Sync + 'static {
     fn add_project(&self, name: &str, path: &Path, now: i64) -> Result<Project, PortError>;
     /// Folds or unfolds a project's conversations in the left pane.
     fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError>;
+    /// The GitHub lists' folded groups, by key (GH-2, GH-3).
+    fn folded_groups(&self) -> Result<Vec<String>, PortError>;
+    /// Folds or unfolds a GitHub list's group.
+    fn set_folded_group(&self, key: &str, folded: bool) -> Result<(), PortError>;
     /// Removes a project from Leon with its conversations, their sessions
     /// and transcripts. The folder stays on disk.
     fn remove_project(&self, id: ProjectId) -> Result<(), PortError>;
@@ -223,6 +227,9 @@ pub struct SessionSpec {
     pub skills: Vec<SkillFile>,
     /// What every agent is told, in every CLI (EXT-8).
     pub instructions: Option<SharedInstructions>,
+    /// What the app tells every agent about its tools (CTX-3), when it
+    /// gives them.
+    pub app_instructions: Option<&'static str>,
 }
 
 /// Something the CLI did, normalized across backends.
@@ -246,6 +253,9 @@ pub enum BackendEvent {
         /// Short detail.
         detail: String,
     },
+    /// Files a tool call changes, as the CLI gave them: absolute, or
+    /// relative to the session's folder (CTX-2).
+    FilesChanged(Vec<PathBuf>),
     /// A tool call finished.
     ToolDone {
         /// CLI's id for the call.
@@ -419,6 +429,10 @@ pub trait Git: Send + Sync + 'static {
     fn doctor(&self) -> DoctorSection;
     /// `owner/name` of the GitHub repository `origin` points to, if any.
     fn github_repo(&self, dir: &Path) -> Option<String>;
+    /// Root of the working tree — a repository or one of its worktrees —
+    /// holding `path`, a file or a folder that may be gone (deleted);
+    /// `None` outside a repository (CTX-2).
+    fn working_tree(&self, path: &Path) -> Option<PathBuf>;
 }
 
 /// Talks to GitHub with the user's own login (P7). Calls may block.
@@ -440,6 +454,10 @@ pub trait GitHub: Send + Sync + 'static {
     fn comment(&self, repo: &str, number: u64, body: &str) -> Result<(), PortError>;
     /// Marks a pull request as a draft (`true`) or ready for review (GH-7).
     fn set_draft(&self, repo: &str, number: u64, draft: bool) -> Result<(), PortError>;
+    /// Answers a review thread, by its node id (GH-8).
+    fn reply_to_thread(&self, thread: &str, body: &str) -> Result<(), PortError>;
+    /// Resolves a review thread, by its node id (GH-8).
+    fn resolve_thread(&self, thread: &str) -> Result<(), PortError>;
     /// Doctor: `gh` installed, its version, logged in. Blocks.
     fn doctor(&self) -> DoctorSection;
 }
@@ -497,6 +515,9 @@ pub trait AppTools: Send + Sync + 'static {
     fn server(&self, session: AgentSessionId) -> McpServer;
     /// Doctor: whether agents can reach the app's tools. Blocks.
     fn doctor(&self) -> DoctorCheck;
+    /// What every agent session is told about these tools: when to call
+    /// them so the app shows the current work (CTX-3).
+    fn instructions(&self) -> &'static str;
 }
 
 /// Where the app's MCP server sends tool calls to the core.

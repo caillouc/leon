@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use crate::options::codex_policy;
 use crate::process::clip;
 use crate::rpc::{self, Launch, Protocol};
-use crate::summary::{OUTPUT_MAX, compact};
+use crate::summary::{OUTPUT_MAX, compact, files_changed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
@@ -65,15 +65,14 @@ impl Session {
         if let Some(model) = &s.model {
             params["model"] = json!(model);
         }
-        // `~/.agents/AGENTS.md` (EXT-8), then the agent's own instructions.
-        let instructions: Vec<&str> = spec
-            .instructions
-            .iter()
-            .map(|i| i.text.as_str())
-            .chain(spec.agent.iter().map(|a| a.instructions.as_str()))
-            .collect();
-        if !instructions.is_empty() {
-            params["developerInstructions"] = json!(instructions.join("\n\n"));
+        // Leon's rules for its tools (CTX-3), `~/.agents/AGENTS.md` (EXT-8),
+        // then the agent's own instructions.
+        if let Some(text) = crate::told::told([
+            spec.app_instructions,
+            spec.instructions.as_ref().map(|i| i.text.as_str()),
+            spec.agent.as_ref().map(|a| a.instructions.as_str()),
+        ]) {
+            params["developerInstructions"] = json!(text);
         }
         // The app's own tools (P10) run without asking; the user's servers
         // from their source folders (EXT-2) follow their usual approvals.
@@ -365,7 +364,17 @@ impl Session {
         };
         match item["type"].as_str() {
             Some("commandExecution") => tool("Ran", command_text(&item["command"])),
-            Some("fileChange") => tool("Edited", changed_paths(&item["changes"])),
+            Some("fileChange") => {
+                let mut out = tool("Edited", changed_paths(&item["changes"]));
+                out.extend(files_changed(
+                    item["changes"]
+                        .as_array()
+                        .map_or(&[][..], Vec::as_slice)
+                        .iter()
+                        .map(|c| &c["path"]),
+                ));
+                out
+            }
             Some("mcpToolCall") => {
                 let name = format!(
                     "{}.{}",
@@ -538,6 +547,7 @@ mod tests {
             sources: Vec::new(),
             skills: Vec::new(),
             instructions: None,
+            app_instructions: None,
         }
     }
 
@@ -638,10 +648,11 @@ mod tests {
             file: PathBuf::from("/home/u/.agents/AGENTS.md"),
             text: "Be brief.".into(),
         });
+        shared.app_instructions = Some("Use Leon.");
         let (session, _) = Session::new(&shared, None);
         assert_eq!(
             session.thread_request.1["developerInstructions"],
-            "Be brief.\n\nWrite code."
+            "Use Leon.\n\nBe brief.\n\nWrite code."
         );
         assert_eq!(sent[3]["params"]["effort"], "low");
         assert_eq!(
@@ -742,6 +753,29 @@ mod tests {
                     stopped: false,
                     usage: None
                 }
+            ]
+        );
+    }
+
+    /// A file change names its files, so Leon follows the folders an agent
+    /// works in (CTX-2).
+    #[test]
+    fn file_changes_name_their_files() {
+        let (mut session, _) = Session::new(&spec(None), None);
+        let started = json!({ "method": "item/started", "params": { "item": { "type": "fileChange", "id": "f1",
+            "changes": [{ "path": "/r/a.rs" }, { "path": "/r/b.rs" }] } } });
+        assert_eq!(
+            session.handle(&started).0,
+            [
+                BackendEvent::Tool {
+                    id: "f1".into(),
+                    name: "Edited".into(),
+                    detail: "/r/a.rs, /r/b.rs".into()
+                },
+                BackendEvent::FilesChanged(vec![
+                    PathBuf::from("/r/a.rs"),
+                    PathBuf::from("/r/b.rs")
+                ]),
             ]
         );
     }

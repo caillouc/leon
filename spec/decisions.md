@@ -17,10 +17,14 @@ The maintainer owns `AGENTS.md`, `features.md` and `decisions.md`. Agents own
 the code and `architecture.md`, and ask the maintainer for anything the first
 three don't settle.
 
-**D3 — Worktrees are created by agents.** (2026-11-17)
-The app doesn't create worktrees. A conversation has one working directory at a
-time; when an agent moves into a worktree, the app follows (how: P10) and
-records the base branch and commit. The app never deletes a worktree.
+**D3 — Worktrees are created by agents.** (2026-11-17, changed 2026-11-18)
+The app doesn't create worktrees. When an agent moves into a worktree, the app
+follows (how: P10) and records the base branch and commit. The app never
+deletes a worktree.
+Changed 2026-11-18, in the maintainer's words: "one flow can edit several
+repo, have several PRs, be linked to several issue, have several worktree.
+All this should be doable and manageable and follow what the agent are
+doing". A conversation is no longer limited to one working directory.
 
 **D4 — Git changes go through agents.** (2026-11-17)
 Commit, push, rebase… are asked to the agent in the conversation. The app only

@@ -4,6 +4,9 @@
       "pullRequest": {
         "baseRefName": "feature/event-listen-deleted-sub",
         "body": "Adds check suite events.\n\n- Suggests them from `gh run view` and `gh run watch`.\n- Covers them with tests.\n",
+        "closingIssuesReferences": {
+          "nodes": []
+        },
         "comments": {
           "nodes": []
         },
@@ -170,9 +173,11 @@
                   }
                 ]
               },
+              "id": "PRRT_kwDODKw3uc64kEVt",
               "isResolved": false,
               "line": 35,
-              "path": "pkg/cmd/event/shared/hint.go"
+              "path": "pkg/cmd/event/shared/hint.go",
+              "viewerCanResolve": false
             },
             {
               "comments": {
@@ -186,9 +191,11 @@
                   }
                 ]
               },
+              "id": "PRRT_kwDODKw3uc64kEWr",
               "isResolved": false,
               "line": 15,
-              "path": "pkg/cmd/run/view/hint.go"
+              "path": "pkg/cmd/run/view/hint.go",
+              "viewerCanResolve": false
             },
             {
               "comments": {
@@ -209,9 +216,11 @@
                   }
                 ]
               },
+              "id": "PRRT_kwDODKw3uc64kEXm",
               "isResolved": true,
               "line": 37,
-              "path": "pkg/cmd/event/shared/completion_test.go"
+              "path": "pkg/cmd/event/shared/completion_test.go",
+              "viewerCanResolve": false
             },
             {
               "comments": {
@@ -232,9 +241,11 @@
                   }
                 ]
               },
+              "id": "PRRT_kwDODKw3uc64kEY1",
               "isResolved": true,
               "line": 299,
-              "path": "pkg/cmd/run/view/view.go"
+              "path": "pkg/cmd/run/view/view.go",
+              "viewerCanResolve": false
             },
             {
               "comments": {
@@ -255,9 +266,11 @@
                   }
                 ]
               },
+              "id": "PRRT_kwDODKw3uc64kEZw",
               "isResolved": true,
               "line": 165,
-              "path": "pkg/cmd/run/watch/watch.go"
+              "path": "pkg/cmd/run/watch/watch.go",
+              "viewerCanResolve": false
             },
             {
               "comments": {
@@ -278,9 +291,11 @@
                   }
                 ]
               },
+              "id": "PRRT_kwDODKw3uc64kEai",
               "isResolved": true,
               "line": 477,
-              "path": "pkg/cmd/run/watch/watch_test.go"
+              "path": "pkg/cmd/run/watch/watch_test.go",
+              "viewerCanResolve": false
             }
           ]
         },

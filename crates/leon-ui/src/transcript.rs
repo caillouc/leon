@@ -4,7 +4,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use gpui::{AnyElement, Context, ElementId, IntoElement, SharedString, div, list, prelude::*, px};
+use gpui::{
+    AnyElement, Context, ElementId, IntoElement, ListOffset, SharedString, div, list, prelude::*,
+    px,
+};
 use leon_core::TranscriptView;
 use leon_domain::{AgentSessionId, Entry, TimedEntry};
 
@@ -41,7 +44,40 @@ impl Workspace {
                 .collect(),
         );
         let expanded = self.expanded.clone();
-        list(state, move |ix, _window, _cx| {
+        // Back to the user's last message once an answer follows it, to read
+        // the answer from its start.
+        let jump = transcript
+            .entries
+            .iter()
+            .rposition(|e| matches!(e.entry, Entry::User { .. }))
+            .filter(|&ix| ix + 1 < count)
+            .map(|item_ix| {
+                let state = state.clone();
+                div()
+                    .id("jump-to-mine")
+                    .absolute()
+                    .bottom(px(12.))
+                    .right(px(20.))
+                    .px_3()
+                    .py(px(5.))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(theme::border_strong())
+                    .bg(theme::surface())
+                    .shadow_md()
+                    .text_size(px(12.))
+                    .text_color(theme::fg_muted())
+                    .cursor_pointer()
+                    .hover(|s| s.text_color(theme::fg()).bg(theme::surface_2()))
+                    .child("↑ Your last message")
+                    .on_click(move |_, _, _| {
+                        state.scroll_to(ListOffset {
+                            item_ix,
+                            offset_in_item: px(0.),
+                        });
+                    })
+            });
+        let list = list(state, move |ix, _window, _cx| {
             let item = match transcript.entries.get(ix) {
                 Some(entry) => entry_view(
                     session,
@@ -53,19 +89,34 @@ impl Workspace {
                 ),
                 None => partial_view(session, &transcript),
             };
+            // A list item is laid out alone, so `mx_auto` cannot centre it:
+            // a full-width row centres the column instead.
             div()
-                .px_6()
-                .py_1()
-                .max_w(px(860.))
                 .w_full()
-                .mx_auto()
-                .child(item)
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .w_full()
+                        .max_w(px(theme::COLUMN))
+                        .px_6()
+                        .py_1()
+                        .child(item),
+                )
                 .into_any_element()
         })
         .flex_1()
         .min_h_0()
-        .py_3()
-        .into_any_element()
+        .py_3();
+        div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(list)
+            .children(jump)
+            .into_any_element()
     }
 }
 
@@ -94,16 +145,28 @@ fn entry_view(
             let group: SharedString = format!("user-{ix}").into();
             // "Edit from here" floats in the top-right corner on hover, so a
             // one-line message keeps a one-line box.
+            // The user's messages stand out in a long transcript: tinted,
+            // in the accent colour, under "You".
             div()
                 .relative()
-                .my_1()
+                .my_2()
                 .px_3()
                 .py(px(9.))
                 .rounded_lg()
                 .border_1()
-                .border_color(theme::border())
-                .bg(theme::surface())
+                .border_color(gpui::Rgba {
+                    a: 0.5,
+                    ..theme::accent()
+                })
+                .bg(theme::accent_soft())
                 .group(group.clone())
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(theme::accent())
+                        .child("You"),
+                )
                 .child(long_text(session, ix, id("user"), text, expanded, view))
                 .child(
                     div()

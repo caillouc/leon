@@ -1,5 +1,8 @@
 //! One-line descriptions of tool calls, shared by every CLI.
 
+use std::path::PathBuf;
+
+use leon_core::ports::BackendEvent;
 use serde_json::Value;
 
 use crate::process::clip;
@@ -32,6 +35,30 @@ pub(crate) fn claude_tool(name: &str, input: &Value) -> (String, String) {
     (verb.to_owned(), clip(&detail, 200))
 }
 
+/// The files a tool call changes, as an event; `None` without any (CTX-2).
+pub(crate) fn files_changed<'a>(
+    paths: impl IntoIterator<Item = &'a Value>,
+) -> Option<BackendEvent> {
+    let mut files: Vec<PathBuf> = paths
+        .into_iter()
+        .filter_map(Value::as_str)
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .collect();
+    files.dedup();
+    (!files.is_empty()).then_some(BackendEvent::FilesChanged(files))
+}
+
+/// The file a Claude Code tool call changes, if it changes one.
+pub(crate) fn claude_files(name: &str, input: &Value) -> Option<BackendEvent> {
+    let key = match name {
+        "Edit" | "MultiEdit" | "Write" => "file_path",
+        "NotebookEdit" => "notebook_path",
+        _ => return None,
+    };
+    files_changed([&input[key]])
+}
+
 /// Short JSON for a tool input with no known shape.
 pub(crate) fn compact(input: &Value) -> String {
     if input.is_null() || input.as_object().is_some_and(serde_json::Map::is_empty) {
@@ -57,7 +84,42 @@ pub(crate) fn result_text(content: &Value) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::{claude_tool, result_text};
+    use std::path::PathBuf;
+
+    use leon_core::ports::BackendEvent;
+
+    use super::{claude_files, claude_tool, result_text};
+
+    #[test]
+    fn tools_that_change_files_name_them() {
+        let changed = |paths: &[&str]| {
+            Some(BackendEvent::FilesChanged(
+                paths.iter().map(PathBuf::from).collect(),
+            ))
+        };
+        let cases = [
+            (
+                "Edit",
+                json!({"file_path": "/r/a.rs"}),
+                changed(&["/r/a.rs"]),
+            ),
+            (
+                "Write",
+                json!({"file_path": "/r/b.rs"}),
+                changed(&["/r/b.rs"]),
+            ),
+            (
+                "NotebookEdit",
+                json!({"notebook_path": "/r/n.ipynb"}),
+                changed(&["/r/n.ipynb"]),
+            ),
+            ("Read", json!({"file_path": "/r/a.rs"}), None),
+            ("Edit", json!({}), None),
+        ];
+        for (name, input, expected) in cases {
+            assert_eq!(claude_files(name, &input), expected, "{name}");
+        }
+    }
 
     #[test]
     fn known_tools_get_a_verb() {

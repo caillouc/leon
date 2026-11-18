@@ -22,12 +22,12 @@ pub(crate) struct Rect {
 
 const NODE: Pt = Pt { x: 250., y: 96. };
 const YOU: Pt = Pt { x: 140., y: 56. };
-const COL_GAP: f32 = 150.;
-const ROW_GAP: f32 = 64.;
-/// Distance between the centres of two neighbours on a ring.
-const RING_GAP: f32 = 270.;
-/// Smallest ring radius.
-const RING_MIN: f32 = 180.;
+/// Space between two regions: room for an arrow and its label.
+const GAP: Pt = Pt { x: 170., y: 120. };
+/// Space between two boxes of one region.
+const INNER: Pt = Pt { x: 40., y: 36. };
+/// Most boxes stacked in one column of a region.
+const STACK: usize = 3;
 
 fn size_of(node: Node) -> Pt {
     match node {
@@ -36,151 +36,97 @@ fn size_of(node: Node) -> Pt {
     }
 }
 
-/// Columns by who started whom, boxes centred on each column (the automatic
-/// layout). Agents that message each other in a ring are placed on a circle
-/// with the agent that started the ring: the loop reads as a loop. Whatever
-/// comes after a ring moves right, past the circle.
+/// The automatic layout: regions on a grid that fills the space instead of
+/// a long line. "You" first, then one region per agent in the order each
+/// first appeared; the rows snake (left to right, then right to left), so
+/// each region sits next to the one before and a planner → coder →
+/// reviewer → planner loop reads as a loop. An agent's sessions share its
+/// region, stacked, a new column every `STACK` boxes.
 #[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
 pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
-    let rings = rings(model);
-    let ring_of = |node: &Node| rings.iter().position(|(_, members)| members.contains(node));
-    // Display column of each box, parents before children.
-    let mut column_of: HashMap<Node, usize> = HashMap::from([(Node::You, 0)]);
-    for node in &model.nodes {
-        let starter = match ring_of(node) {
-            Some(r) => rings[r].0,
-            None => model.parent.get(node).copied().unwrap_or(Node::You),
-        };
-        if *node != Node::You {
-            let c = column_of.get(&starter).copied().unwrap_or(0) + 1;
-            column_of.insert(*node, c);
-        }
+    let groups = groups(model);
+    let cols = grid_columns(groups.len());
+    let rows = groups.len().div_ceil(cols);
+    let cell = |ix: usize| {
+        let (row, i) = (ix / cols, ix % cols);
+        (row, if row % 2 == 1 { cols - 1 - i } else { i })
+    };
+    let sizes: Vec<Pt> = groups.iter().map(|g| region_size(g)).collect();
+    let (mut widths, mut heights) = (vec![0f32; cols], vec![0f32; rows]);
+    for (ix, size) in sizes.iter().enumerate() {
+        let (row, col) = cell(ix);
+        widths[col] = widths[col].max(size.x);
+        heights[row] = heights[row].max(size.y);
     }
-    // Boxes per column, ring members left out: the circle places them.
-    let mut columns: Vec<Vec<Node>> = Vec::new();
-    for node in model.nodes.iter().filter(|n| ring_of(n).is_none()) {
-        let c = column_of.get(node).copied().unwrap_or(0);
-        if columns.len() <= c {
-            columns.resize(c + 1, Vec::new());
-        }
-        columns[c].push(*node);
-    }
+    let (xs, ys) = (starts(&widths, GAP.x), starts(&heights, GAP.y));
     let mut pos = HashMap::new();
-    for (c, column) in columns.iter().enumerate() {
-        let total: f32 = column.iter().map(|n| size_of(*n).y).sum::<f32>()
-            + ROW_GAP * column.len().saturating_sub(1) as f32;
-        let mut y = -total / 2.;
-        for node in column {
+    for (ix, group) in groups.iter().enumerate() {
+        let (row, col) = cell(ix);
+        let origin = Pt {
+            x: xs[col] + (widths[col] - sizes[ix].x) / 2.,
+            y: ys[row] + (heights[row] - sizes[ix].y) / 2.,
+        };
+        for (k, node) in group.iter().enumerate() {
             let size = size_of(*node);
-            let x = c as f32 * (NODE.x + COL_GAP) + (NODE.x - size.x) / 2.;
-            pos.insert(*node, Pt { x, y });
-            y += size.y + ROW_GAP;
-        }
-    }
-    for (root, members) in &rings {
-        let Some(at) = pos.get(root).copied() else {
-            continue;
-        };
-        let size = size_of(*root);
-        let start = Pt {
-            x: at.x + size.x / 2.,
-            y: at.y + size.y / 2.,
-        };
-        let (centers, radius) = circle(start, members.len() + 1);
-        for (member, center) in members.iter().zip(centers) {
             pos.insert(
-                *member,
+                *node,
                 Pt {
-                    x: center.x - NODE.x / 2.,
-                    y: center.y - NODE.y / 2.,
+                    x: origin.x + (k / STACK) as f32 * (size.x + INNER.x),
+                    y: origin.y + (k % STACK) as f32 * (size.y + INNER.y),
                 },
             );
-        }
-        // Columns after the ring's start move right, past the circle.
-        let root_column = column_of.get(root).copied().unwrap_or(0);
-        let next = (root_column + 1) as f32 * (NODE.x + COL_GAP);
-        let past = start.x + 2. * radius + NODE.x / 2. + COL_GAP;
-        let shift = (past - next).max(0.);
-        for (node, p) in &mut pos {
-            let later = column_of.get(node).copied().unwrap_or(0) > root_column;
-            if later && !members.contains(node) {
-                p.x += shift;
-            }
         }
     }
     pos
 }
 
-/// The centres of the other `n - 1` boxes of a ring whose first box is
-/// centred at `start`, on a circle that has `start` as its westmost point,
-/// going clockwise from the top; and the circle's radius.
-#[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
-fn circle(start: Pt, n: usize) -> (Vec<Pt>, f32) {
-    use std::f32::consts::PI;
-    let n = n.max(2);
-    // Neighbours far enough apart for two boxes, never a tiny circle.
-    let radius = (RING_GAP / (2. * (PI / n as f32).sin())).max(RING_MIN);
-    let center = Pt {
-        x: start.x + radius,
-        y: start.y,
-    };
-    let centers = (1..n)
-        .map(|k| {
-            // Screen y points down, so a growing angle turns clockwise.
-            let angle = PI + 2. * PI * k as f32 / n as f32;
-            Pt {
-                x: center.x + radius * angle.cos(),
-                y: center.y + radius * angle.sin(),
-            }
-        })
-        .collect();
-    (centers, radius)
-}
-
-/// Rings of agents: a message between two sessions where neither started
-/// the other closes a loop through whoever started them both. Each ring is
-/// that first agent and the others in loop order. A session belongs to one
-/// ring at most.
-pub(crate) fn rings(model: &FlowModel) -> Vec<(Node, Vec<Node>)> {
-    let starters = |mut node: Node| {
-        let mut chain = vec![node];
-        while let Some(p) = model.parent.get(&node) {
-            chain.push(*p);
-            node = *p;
-        }
-        chain
-    };
-    let mut rings: Vec<(Node, Vec<Node>)> = Vec::new();
-    for edge in &model.edges {
-        let (Node::Session(_), Node::Session(_)) = (edge.from, edge.to) else {
-            continue;
+/// "You", then the sessions of each agent, agents in the order they first
+/// appear.
+fn groups(model: &FlowModel) -> Vec<Vec<Node>> {
+    let mut groups: Vec<(Option<&str>, Vec<Node>)> = Vec::new();
+    for node in &model.nodes {
+        let agent = match node {
+            Node::You => None,
+            Node::Session(_) => Some(model.agent.get(node).map_or("", String::as_str)),
         };
-        let related = |a, b| model.parent.get(&a) == Some(&b);
-        if edge.from == edge.to || related(edge.from, edge.to) || related(edge.to, edge.from) {
-            continue;
-        }
-        let (from_chain, to_chain) = (starters(edge.from), starters(edge.to));
-        let Some(root) = from_chain.iter().find(|n| to_chain.contains(n)).copied() else {
-            continue;
-        };
-        // From the root down to a session, root excluded.
-        let down = |chain: &[Node]| {
-            let mut path: Vec<Node> = chain.iter().take_while(|n| **n != root).copied().collect();
-            path.reverse();
-            path
-        };
-        let (to_from, to_to) = (down(&from_chain), down(&to_chain));
-        let members: Vec<Node> = if to_from.is_empty() {
-            to_to
-        } else {
-            to_from.into_iter().chain(to_to.into_iter().rev()).collect()
-        };
-        let taken = |n: &Node| rings.iter().any(|(_, m)| m.contains(n));
-        if members.len() >= 2 && !members.iter().any(taken) {
-            rings.push((root, members));
+        match groups
+            .iter_mut()
+            .find(|(a, _)| agent.is_some() && *a == agent)
+        {
+            Some((_, members)) => members.push(*node),
+            None => groups.push((agent, vec![*node])),
         }
     }
-    rings
+    groups.into_iter().map(|(_, members)| members).collect()
+}
+
+/// The fewest grid columns that make the grid about square.
+fn grid_columns(regions: usize) -> usize {
+    (1..=regions).find(|c| c * c >= regions).unwrap_or(1)
+}
+
+/// The size of a region holding `group`'s boxes.
+#[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
+fn region_size(group: &[Node]) -> Pt {
+    let size = group.first().map_or(NODE, |n| size_of(*n));
+    let (cols, rows) = (group.len().div_ceil(STACK), group.len().min(STACK));
+    Pt {
+        x: cols as f32 * size.x + cols.saturating_sub(1) as f32 * INNER.x,
+        y: rows as f32 * size.y + rows.saturating_sub(1) as f32 * INNER.y,
+    }
+}
+
+/// Where each of `lengths` starts, laid end to end with `gap` between them.
+fn starts(lengths: &[f32], gap: f32) -> Vec<f32> {
+    let mut at = 0.;
+    lengths
+        .iter()
+        .map(|length| {
+            let start = at;
+            at += length + gap;
+            start
+        })
+        .collect()
 }
 
 pub(crate) fn rect(node: Node, at: Pt) -> Rect {
@@ -301,15 +247,18 @@ fn toward(from: Pt, to: Pt, d: f32) -> Pt {
     }
 }
 
-/// Where an arrow's label sits: the middle of its first long segment.
+/// Where an arrow's label sits: a third of the way along its first long
+/// segment, so the labels of the two directions between the same boxes,
+/// travelling opposite ways, never sit side by side.
 pub(crate) fn label_at(points: &[Pt]) -> Pt {
+    const ALONG: f32 = 0.35;
     let (a, b) = match points {
         [a, b] | [_, a, b, ..] => (*a, *b),
         [a] => (*a, *a),
         [] => (Pt { x: 0., y: 0. }, Pt { x: 0., y: 0. }),
     };
     Pt {
-        x: f32::midpoint(a.x, b.x),
-        y: f32::midpoint(a.y, b.y),
+        x: a.x + (b.x - a.x) * ALONG,
+        y: a.y + (b.y - a.y) * ALONG,
     }
 }

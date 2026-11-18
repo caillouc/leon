@@ -1,6 +1,12 @@
 //! `cargo xtask bundle [--install]`: builds Leon.app (macOS) from the release
-//! binary, the icon in `assets/` and an Info.plist, signs it ad hoc so macOS
-//! runs it, and with `--install` moves it to /Applications.
+//! binary, the icon in `assets/` and an Info.plist, signs it, and with
+//! `--install` moves it to /Applications.
+//!
+//! Signed with the code-signing certificate named by `LEON_SIGN_IDENTITY`,
+//! else an Apple developer certificate or one named "Leon Local" when the
+//! keychain has it, else ad hoc. macOS
+//! ties folder permissions (Documents, Downloads…) to an ad-hoc app's exact
+//! build, so it asks again after each rebuild; a certificate keeps them.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -41,9 +47,24 @@ pub(crate) fn bundle(install: bool) -> bool {
             return false;
         }
     }
+    let identity = signing_identity();
+    if identity == "-" {
+        println!(
+            "bundle: signed ad hoc; macOS will ask again for folder access. Add your \
+             Apple developer certificate, or create one named \"Leon Local\" (README)."
+        );
+    } else {
+        println!("bundle: signed with \"{identity}\"");
+    }
     if !run(
         "codesign",
-        &["--force", "--deep", "--sign", "-", &app.to_string_lossy()],
+        &[
+            "--force",
+            "--deep",
+            "--sign",
+            &identity,
+            &app.to_string_lossy(),
+        ],
     ) {
         return false;
     }
@@ -101,6 +122,65 @@ fn run(program: &str, args: &[&str]) -> bool {
         Err(error) => {
             eprintln!("bundle: could not run {program}: {error}");
             false
+        }
+    }
+}
+
+/// The certificate to sign with: `LEON_SIGN_IDENTITY`, else the best
+/// code-signing identity of the keychain (see [`pick_identity`]), else `-`
+/// (ad hoc).
+fn signing_identity() -> String {
+    if let Ok(name) = std::env::var("LEON_SIGN_IDENTITY")
+        && !name.trim().is_empty()
+    {
+        return name;
+    }
+    let listed = Command::new("security")
+        .args(["find-identity", "-v", "-p", "codesigning"])
+        .output()
+        .map_or_default(|out| String::from_utf8_lossy(&out.stdout).into_owned());
+    pick_identity(&listed).unwrap_or_else(|| "-".to_owned())
+}
+
+/// From `security find-identity` output (`  1) <hash> "<name>"` lines), the
+/// identity macOS keeps folder permissions for across rebuilds: an Apple
+/// Developer ID, else an Apple Development certificate (both from an Apple
+/// developer account), else the self-signed "Leon Local".
+fn pick_identity(listed: &str) -> Option<String> {
+    let names: Vec<&str> = listed
+        .lines()
+        .filter_map(|line| line.split('"').nth(1))
+        .collect();
+    [
+        "Developer ID Application:",
+        "Apple Development:",
+        "Leon Local",
+    ]
+    .into_iter()
+    .find_map(|kind| names.iter().find(|name| name.starts_with(kind)))
+    .map(|name| (*name).to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_identity;
+
+    #[test]
+    fn a_developer_account_certificate_comes_first() {
+        let line = |n: u8, name: &str| format!("  {n}) 0123ABCD \"{name}\"\n");
+        let dev = "Apple Development: Dev Name (TEAM123)";
+        let id = "Developer ID Application: Dev Name (TEAM123)";
+        let cases = [
+            (
+                format!("{}{}", line(1, "Leon Local"), line(2, dev)),
+                Some(dev),
+            ),
+            (format!("{}{}", line(1, dev), line(2, id)), Some(id)),
+            (line(1, "Leon Local"), Some("Leon Local")),
+            ("     0 valid identities found\n".to_owned(), None),
+        ];
+        for (listed, expected) in cases {
+            assert_eq!(pick_identity(&listed).as_deref(), expected, "{listed}");
         }
     }
 }

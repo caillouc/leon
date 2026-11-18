@@ -12,6 +12,17 @@ const MESSAGE_AGENT: &str = "message_agent";
 const RENAME_CONVERSATION: &str = "rename_conversation";
 const SET_WORKING_DIRECTORY: &str = "set_working_directory";
 
+/// What every agent session is told (CTX-3): Leon shows the user the
+/// agents' work only as well as they keep it up to date.
+pub(crate) const INSTRUCTIONS: &str = "You run inside Leon, an app that shows the user \
+what every agent of this conversation is doing. Keep it up to date with the tools of its \
+`leon` MCP server, each time it applies, without being asked:
+- Each time you start working in another folder (a git worktree you create or enter, \
+another repository), call `set_working_directory` with its absolute path, before you work \
+there.
+- Once the subject of the conversation is clear, and when it changes, call \
+`rename_conversation` with a short title.";
+
 /// Why a `tools/call` could not become an [`AppToolCall`].
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ToolError {
@@ -85,9 +96,10 @@ pub(crate) fn list() -> Value {
         },
         {
             "name": SET_WORKING_DIRECTORY,
-            "description": "Tell Leon this session now works in another folder, e.g. a git \
-                worktree you created or another repository, so Leon shows that folder's \
-                changes. Call it right after you move.",
+            "description": "Tell Leon this session now also works in another folder: a git \
+                worktree you created or entered, or another repository. Leon then shows that \
+                folder's changes and pull request with the conversation's other folders. Call \
+                it each time you start working in a new folder, before you work there.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

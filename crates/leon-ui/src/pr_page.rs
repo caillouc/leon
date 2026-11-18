@@ -6,18 +6,17 @@
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, div, prelude::*, px};
 use gpui_component::input::{Textarea, TextareaState};
 use leon_core::Intent;
-use leon_domain::{Check, CheckState, Comment, GhRef, PrState, PullRequest, ReviewThread};
+use leon_domain::{Check, CheckState, GhRef, PrState, PullRequest};
 
 use crate::github::pr_glyph;
 use crate::icons::{Icon, icon};
-use crate::left::since;
 use crate::pr_view::{check_color, labels, pr_state};
 use crate::theme;
 use crate::widgets::{button, primary};
 use crate::workspace::{Workspace, text_of};
 
 /// `color` at `alpha`.
-fn tint(color: Rgba, alpha: f32) -> Rgba {
+pub(crate) fn tint(color: Rgba, alpha: f32) -> Rgba {
     Rgba { a: alpha, ..color }
 }
 
@@ -283,44 +282,6 @@ fn check_glyph(state: CheckState) -> Icon {
     }
 }
 
-/// One code line of a review thread: its diff sign, green or red as GitHub
-/// colours it; `last` is the commented line.
-fn code_line(line: &str, last: bool) -> Div {
-    let (sign, text) = line.split_at(line.chars().next().map_or(0, char::len_utf8));
-    let (bg, sign_color) = match sign {
-        "+" => (Some(theme::add_bg()), theme::ok()),
-        "-" => (Some(theme::del_bg()), theme::err()),
-        _ => (None, theme::fg_faint()),
-    };
-    div()
-        .flex()
-        .when_some(bg, Styled::bg)
-        // Every line keeps the edge, so the commented one's text stays put.
-        .border_l_2()
-        .border_color(if last {
-            theme::accent()
-        } else {
-            tint(theme::accent(), 0.)
-        })
-        .child(
-            div()
-                .w(px(22.))
-                .flex_none()
-                .text_center()
-                .text_color(sign_color)
-                .child(sign.to_owned()),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(text.to_owned()),
-        )
-}
-
 impl Workspace {
     /// What can be done with a pull request from Leon: ready or draft, a
     /// Copilot review. Shown next to "Open on GitHub".
@@ -421,152 +382,6 @@ impl Workspace {
                             self.rich_markdown(id, body, cx)
                         },
                     )),
-            )
-    }
-
-    /// An open review thread: the file and line it is on, the code there,
-    /// then each comment with its author's avatar; a link to reply on
-    /// GitHub.
-    pub(crate) fn thread_card(
-        &self,
-        id: &str,
-        pr: &PullRequest,
-        thread: &ReviewThread,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let url = pr.url.clone();
-        let last = thread.code.len().saturating_sub(1);
-        div()
-            .rounded_lg()
-            .border_1()
-            .border_color(theme::border_strong())
-            .bg(theme::panel())
-            .overflow_hidden()
-            .child(
-                div()
-                    .px_3()
-                    .py(px(7.))
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .bg(theme::surface_2())
-                    .border_b_1()
-                    .border_color(theme::border())
-                    .child(icon(Icon::Conversation, theme::warn(), 13.))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .font_family(theme::MONO)
-                            .text_size(px(12.))
-                            .child(thread.path.clone()),
-                    )
-                    .children(thread.line.map(|line| {
-                        div()
-                            .flex_none()
-                            .text_size(px(12.))
-                            .text_color(theme::fg_muted())
-                            .child(format!("line {line}"))
-                    }))
-                    .child(div().flex_1())
-                    .when(thread.line.is_none(), |d| {
-                        d.child(
-                            div()
-                                .px(px(7.))
-                                .rounded_full()
-                                .border_1()
-                                .border_color(tint(theme::warn(), 0.6))
-                                .text_size(px(11.))
-                                .text_color(theme::warn())
-                                .child("Outdated"),
-                        )
-                    }),
-            )
-            .when(!thread.code.is_empty(), |d| {
-                d.child(
-                    div()
-                        .py_1()
-                        .bg(theme::window())
-                        .border_b_1()
-                        .border_color(theme::border())
-                        .font_family(theme::MONO)
-                        .text_size(px(11.5))
-                        .children(
-                            thread
-                                .code
-                                .iter()
-                                .enumerate()
-                                .map(|(ix, line)| code_line(line, ix == last)),
-                        ),
-                )
-            })
-            .children(
-                thread.comments.iter().enumerate().map(|(c, comment)| {
-                    self.thread_comment(&format!("{id}-{c}"), comment, c > 0, cx)
-                }),
-            )
-            .child(
-                div()
-                    .id(gpui::SharedString::from(format!("{id}-reply")))
-                    .px_3()
-                    .py(px(6.))
-                    .border_t_1()
-                    .border_color(theme::border())
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .text_size(px(12.))
-                    .text_color(theme::accent())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()))
-                    .child(icon(Icon::External, theme::accent(), 12.))
-                    .child("Reply on GitHub")
-                    .on_click(move |_, _, cx| cx.open_url(&url)),
-            )
-    }
-
-    fn thread_comment(
-        &self,
-        id: &str,
-        comment: &Comment,
-        divided: bool,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        div()
-            .px_3()
-            .py_2()
-            .flex()
-            .items_start()
-            .gap_2()
-            .when(divided, |d| d.border_t_1().border_color(theme::border()))
-            .child(avatar(&comment.author, 22.))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(5.))
-                            .text_size(px(12.5))
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(comment.author.clone()),
-                            )
-                            .child(div().text_color(theme::fg_faint()).child(since(comment.at))),
-                    )
-                    .child(div().text_size(px(13.)).child(self.rich_markdown(
-                        id,
-                        &comment.body,
-                        cx,
-                    ))),
             )
     }
 

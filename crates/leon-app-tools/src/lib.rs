@@ -90,6 +90,10 @@ impl AppTools for LocalTools {
             trusted: true,
         }
     }
+
+    fn instructions(&self) -> &'static str {
+        tools::INSTRUCTIONS
+    }
 }
 
 /// What went wrong while serving or bridging.

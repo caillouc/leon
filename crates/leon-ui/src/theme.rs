@@ -84,6 +84,10 @@ pub fn del_gutter() -> Rgba {
     rgba(0xe672_7b38)
 }
 
+/// Width of the reading column: a transcript, its composer, an item's
+/// details. Centred in its pane.
+pub const COLUMN: f32 = 860.;
+
 /// Monospace font for code, paths and diffs.
 pub const MONO: &str = if cfg!(target_os = "macos") {
     "Menlo"

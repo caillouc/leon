@@ -61,6 +61,7 @@ async fn calls_a_leon_tool(backend: BackendKind) {
         sources: Vec::new(),
         skills: Vec::new(),
         instructions: None,
+        app_instructions: None,
     };
     let mut channel = clis.start(spec).unwrap();
     channel

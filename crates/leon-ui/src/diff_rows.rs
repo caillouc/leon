@@ -138,7 +138,12 @@ impl Workspace {
                     .unwrap_or(by.is_none())
             })
             .collect();
-        let review = self.right.review.get(&id).cloned().unwrap_or_default();
+        let folder = self.folder(id);
+        let review: Vec<Pending> = self
+            .right
+            .review
+            .get(&id)
+            .map_or_default(|r| r.iter().filter(|p| p.folder == folder).cloned().collect());
         let draft = self
             .right
             .draft
@@ -698,6 +703,7 @@ mod tests {
     fn pending(source: DiffSource, kind: LineKind, line: u32) -> Pending {
         Pending {
             source,
+            folder: None,
             comment: ReviewComment {
                 path: "a.rs".into(),
                 line,

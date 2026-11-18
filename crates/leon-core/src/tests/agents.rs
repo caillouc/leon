@@ -21,9 +21,16 @@ impl AppTools for FakeTools {
             trusted: true,
         }
     }
+    fn instructions(&self) -> &'static str {
+        "Keep Leon up to date."
+    }
 }
 
-async fn call(h: &Harness, session: AgentSessionId, call: AppToolCall) -> Result<String, String> {
+pub(super) async fn call(
+    h: &Harness,
+    session: AgentSessionId,
+    call: AppToolCall,
+) -> Result<String, String> {
     let (reply, answer) = oneshot::channel();
     h.core
         .app_tools()
@@ -161,4 +168,49 @@ async fn an_agent_can_rename_the_conversation() {
         s.conversations[0].conversation.title == "Webhook retries"
     })
     .await;
+}
+
+/// With several agents, only the one whose answer the user has not read is
+/// to review; reading its tab reads the conversation (NAV-4, FLOW-4).
+#[tokio::test(flavor = "multi_thread")]
+async fn only_the_agent_that_answered_you_is_to_review() {
+    let h = harness();
+    // The user reads the planner's tab (intents reach the core in order).
+    h.core.send(Intent::Read(Some(AgentSessionId(1))));
+    let planner = new_conversation(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    let start = AppToolCall::StartAgent {
+        agent: "coder".into(),
+        prompt: "Implement step 1".into(),
+        working_directory: None,
+    };
+    call(&h, planner, start).await.unwrap();
+    started(&h, 2).await;
+    next_command(&h, 1).await;
+    end_turn(&h, 1, "Step 1 done.");
+    end_turn(&h, 0, "Waiting for the coder.");
+    // The user asks the coder directly; its answer comes while the planner's
+    // tab is shown.
+    let coder = AgentSessionId(2);
+    until(&h.core, "coder idle", |s| {
+        s.sessions
+            .get(&coder)
+            .is_some_and(|x| x.status == Status::Idle)
+    })
+    .await;
+    h.core.send(Intent::Send {
+        session: coder,
+        text: "Also step 2".into(),
+    });
+    next_command(&h, 1).await;
+    end_turn(&h, 1, "Step 2 done.");
+    let s = until(&h.core, "coder to review", |s| {
+        s.sessions[&coder].session.unread
+    })
+    .await;
+    assert!(!s.sessions[&planner].session.unread);
+    assert!(s.conversations[0].conversation.unread);
+    h.core.send(Intent::Read(Some(coder)));
+    let s = until(&h.core, "read", |s| !s.conversations[0].conversation.unread).await;
+    assert!(!s.sessions[&coder].session.unread);
 }

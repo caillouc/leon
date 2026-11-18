@@ -20,6 +20,7 @@ mod process;
 mod rpc;
 mod summary;
 mod title;
+mod told;
 
 use leon_core::ports::{
     BackendChannel, BackendOptions, Backends, PortError, SearchPath, SessionSpec, inherited_path,

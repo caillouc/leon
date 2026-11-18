@@ -58,6 +58,8 @@ fn session(
             },
             working_dir: PathBuf::from("/code/payments-api/.worktrees/fix-webhook-retry"),
             cli_session: Some("s".to_owned()),
+            // The reviewer's answer to the user is not read yet.
+            unread: id == 4,
         },
         status,
         subagents: if id == 1 { (2, 1) } else { (0, 0) },
@@ -94,7 +96,12 @@ fn conversation(id: i64, project: i64, title: &str, unread: bool, pinned: bool) 
         archived: false,
         unread,
         updated_at: hours_ago(id * 5),
-        working_dir: None,
+        // The first conversation works in two repositories (CTX-2).
+        folders: if id == 1 {
+            vec![repo::API.into(), repo::WEB.into()]
+        } else {
+            Vec::new()
+        },
         // The first conversation was started for issue #401.
         issue: (id == 1).then(|| leon_domain::GhRef::issue("acme/payments-api", 401)),
     }
@@ -239,21 +246,32 @@ fn sample() -> Snapshot {
             conversation: conversation(1, 1, "Fix webhook retry timeout", false, false),
             status: Status::Running,
             sessions: vec![AgentSessionId(1), AgentSessionId(2), AgentSessionId(4)],
+            folders: vec![repo::API.into(), repo::WEB.into()],
+            issues: vec![
+                leon_domain::GhRef::issue("acme/payments-api", 401),
+                leon_domain::GhRef::issue("acme/web-dashboard", 31),
+            ],
         },
         ConversationView {
             conversation: conversation(2, 2, "Migrate config to TOML", true, false),
             status: Status::NeedsInput,
             sessions: vec![AgentSessionId(3)],
+            folders: vec!["/code/infra-tools".into()],
+            issues: vec![],
         },
         ConversationView {
             conversation: conversation(3, 1, "Draft release notes v2.3", true, true),
             status: Status::Idle,
             sessions: vec![],
+            folders: vec![],
+            issues: vec![],
         },
         ConversationView {
             conversation: conversation(4, 2, "Investigate flaky login e2e test", true, false),
             status: Status::Error,
             sessions: vec![],
+            folders: vec![],
+            issues: vec![],
         },
     ];
     let sessions = [
@@ -430,7 +448,7 @@ fn main() {
         (
             "pr-detail".to_owned(),
             Shot::Detail(Box::new(Detail::PullRequest(Box::new(
-                repo::prs()[&ConversationId(1)].clone(),
+                repo::prs()[std::path::Path::new(repo::API)].clone(),
             )))),
         ),
         (

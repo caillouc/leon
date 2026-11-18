@@ -12,7 +12,7 @@ use crate::icons::{Icon, icon};
 use crate::picker::Look;
 use crate::theme;
 use crate::widgets::{button, primary};
-use crate::workspace::{Workspace, text_of};
+use crate::workspace::Workspace;
 
 impl Workspace {
     pub(crate) fn render_composer(
@@ -31,7 +31,7 @@ impl Workspace {
             .pb_4()
             .pt_1()
             .w_full()
-            .max_w(px(860.))
+            .max_w(px(theme::COLUMN))
             .mx_auto()
             .flex()
             .flex_col()
@@ -170,14 +170,13 @@ impl Workspace {
             .map(|c| c.conversation.project);
         let slash = self.slash_list(&self.composer.clone(), project, cx);
         let ghost = self.argument_ghost(&self.composer, project, cx);
-        let chips = self.pasted_chips(cx);
         let suggestion = (!running && self.rewind.is_none())
             .then(|| s.suggestions.first().cloned())
             .flatten();
         self.show_suggestion(suggestion.as_deref(), window, cx);
         // Tab: the first `/` command while the list shows, else the
         // suggestion in an empty box, else a tab.
-        let input_box = Self::paste_aware(div(), cx).capture_action(cx.listener(
+        let input_box = Self::paste_aware(div(), &self.composer, cx).capture_action(cx.listener(
             move |this, _: &IndentInline, window, cx| {
                 let composer = this.composer.clone();
                 if this.complete_slash(&composer, project, window, cx) {
@@ -199,7 +198,6 @@ impl Workspace {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .children(chips)
                     .child(Textarea::new(&self.composer).appearance(false))
                     .children(ghost)
                     .child(
@@ -238,7 +236,7 @@ impl Workspace {
         {
             return;
         }
-        let text = crate::message_input::message(&text_of(&self.composer, cx), &self.pasted);
+        let text = crate::message_input::message(&self.composer.read(cx).content(), &self.pasted);
         if text.is_empty() {
             return;
         }

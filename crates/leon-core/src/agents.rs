@@ -55,8 +55,7 @@ impl Core {
             AppToolCall::SetWorkingDirectory { path } => {
                 check_dir(&path)?;
                 let shown = path.display().to_string();
-                self.edit(conversation, |c| c.working_dir = Some(path));
-                self.refresh_git(conversation);
+                self.find_working_tree(conversation, path, true);
                 Ok(format!("Leon now shows the changes in {shown}."))
             }
         }
@@ -98,8 +97,11 @@ impl Core {
                 path
             }
             None => self
-                .conversation_dir(conversation)
-                .ok_or_else(|| "This conversation has no folder.".to_owned())?,
+                .state
+                .sessions
+                .get(&caller)
+                .map(|s| s.session.working_dir.clone())
+                .ok_or_else(|| "Leon does not know this agent session.".to_owned())?,
         };
         let mut settings = self
             .state
@@ -249,24 +251,6 @@ impl Core {
                     .unwrap_or_else(|| s.session.settings.backend.display_name().to_owned())
             },
         )
-    }
-
-    /// The folder a conversation works in (D3): where an agent said it moved,
-    /// else the folder of the session the user started.
-    pub(crate) fn conversation_dir(&self, id: ConversationId) -> Option<PathBuf> {
-        self.state
-            .conversations
-            .iter()
-            .find(|c| c.id == id)
-            .and_then(|c| c.working_dir.clone())
-            .or_else(|| {
-                self.state
-                    .sessions
-                    .values()
-                    .filter(|s| s.session.conversation == id)
-                    .find(|s| s.session.started_by.is_none())
-                    .map(|s| s.session.working_dir.clone())
-            })
     }
 }
 

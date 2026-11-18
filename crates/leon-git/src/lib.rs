@@ -96,6 +96,12 @@ impl Git for GitCli {
             .map(str::to_owned)
     }
 
+    fn working_tree(&self, path: &Path) -> Option<PathBuf> {
+        let dir = path.ancestors().find(|p| p.is_dir())?;
+        let root = git_line((self.path)(), dir, &["rev-parse", "--show-toplevel"]).ok()?;
+        (!root.is_empty()).then(|| PathBuf::from(root))
+    }
+
     fn changes(&self, dir: &Path) -> Result<Vec<FileDiff>, PortError> {
         changes((self.path)(), dir).map_err(|e| PortError::new("reading git changes", e))
     }

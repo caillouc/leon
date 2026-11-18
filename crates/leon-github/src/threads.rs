@@ -19,6 +19,8 @@ fn thread(node: &Value) -> Option<ReviewThread> {
         return None;
     }
     Some(ReviewThread {
+        id: text(&node["id"]).unwrap_or_default(),
+        can_resolve: node["viewerCanResolve"].as_bool().unwrap_or(false),
         path: text(&node["path"])?,
         line: node["line"].as_u64().and_then(|l| u32::try_from(l).ok()),
         comments: comments(node),
@@ -77,12 +79,15 @@ mod tests {
     #[test]
     fn unresolved_threads_only() {
         let node = |resolved: Value, path: Value, line: Value| {
-            json!({ "isResolved": resolved, "path": path, "line": line, "comments": { "nodes": [
+            json!({ "id": "PRRT_1", "viewerCanResolve": true,
+                "isResolved": resolved, "path": path, "line": line, "comments": { "nodes": [
                 { "author": { "login": "octocat" }, "body": "Why?", "createdAt": "1970-01-01T00:00:01Z" },
                 { "author": null, "body": "Fixed.", "createdAt": "1970-01-01T00:00:02Z" }
             ] } })
         };
         let open = |line| ReviewThread {
+            id: "PRRT_1".into(),
+            can_resolve: true,
             path: "src/a.rs".into(),
             line,
             comments: vec![
@@ -138,8 +143,11 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(pr.number, 15081);
+        assert_eq!(pr.closes, []);
         assert!(pr.body.starts_with("Adds check suite events.\n"));
-        let thread = |path: &str, line, body: &str| ReviewThread {
+        let thread = |id: &str, path: &str, line, body: &str| ReviewThread {
+            id: id.into(),
+            can_resolve: false,
             path: path.into(),
             line: Some(line),
             comments: vec![comment(
@@ -153,11 +161,13 @@ mod tests {
             pr.threads,
             [
                 thread(
+                    "PRRT_kwDODKw3uc64kEVt",
                     "pkg/cmd/event/shared/hint.go",
                     35,
                     "This hint is printed even when the list is empty."
                 ),
                 thread(
+                    "PRRT_kwDODKw3uc64kEWr",
                     "pkg/cmd/run/view/hint.go",
                     15,
                     "The flag name in this message does not match the command."

@@ -2,6 +2,7 @@
 //! `Arc`).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_domain::{
@@ -33,12 +34,14 @@ pub struct Snapshot {
     /// The user-level folders of agents and skills, with what each holds
     /// (SETTINGS-1).
     pub folders: Arc<Vec<crate::ports::AgentFolder>>,
+    /// The GitHub lists' folded groups, by key (GH-2, GH-3).
+    pub folded_groups: Arc<std::collections::HashSet<String>>,
     /// What each backend's pickers offer (CONV-4).
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
-    /// Git state of each conversation's working directory (GIT-*, CONV-14).
-    pub git: Arc<HashMap<ConversationId, GitView>>,
-    /// Pull request of each conversation's branch (NAV-6, GH-1).
-    pub prs: Arc<HashMap<ConversationId, PullRequest>>,
+    /// Git state of each folder of a conversation (GIT-*, CONV-14, CTX-2).
+    pub git: Arc<HashMap<PathBuf, GitView>>,
+    /// Pull request of each folder's branch (NAV-6, GH-1, CTX-2).
+    pub prs: Arc<HashMap<PathBuf, PullRequest>>,
     /// My open issues (GH-2).
     pub my_issues: Arc<Vec<Issue>>,
     /// My open pull requests (GH-3).
@@ -82,6 +85,21 @@ impl Snapshot {
     pub fn conversation(&self, id: ConversationId) -> Option<&ConversationView> {
         self.conversations.iter().find(|c| c.conversation.id == id)
     }
+
+    /// A conversation's pull requests, one per folder in folder order, each
+    /// once (CTX-2).
+    pub fn prs_of(&self, c: &ConversationView) -> Vec<&PullRequest> {
+        let mut prs: Vec<&PullRequest> = Vec::new();
+        for pr in c.folders.iter().filter_map(|f| self.prs.get(f)) {
+            if !prs
+                .iter()
+                .any(|p| p.repo == pr.repo && p.number == pr.number)
+            {
+                prs.push(pr);
+            }
+        }
+        prs
+    }
 }
 
 /// A conversation with what the left pane shows about it.
@@ -93,6 +111,11 @@ pub struct ConversationView {
     pub status: Status,
     /// Its agent sessions, the one the user started first.
     pub sessions: Vec<AgentSessionId>,
+    /// The folders it works in, never empty once it has a session (CTX-2).
+    pub folders: Vec<PathBuf>,
+    /// The issues it is linked to, the one it was started for first
+    /// (CTX-2).
+    pub issues: Vec<GhRef>,
 }
 
 /// An agent session with its live state.
@@ -147,9 +170,11 @@ pub struct Notification {
     pub body: String,
 }
 
-/// Git state of a conversation's working directory.
+/// Git state of a folder.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GitView {
+    /// `owner/name` of its GitHub repository, from `origin` (CTX-2).
+    pub repo: Option<String>,
     /// Current branch (CONV-14).
     pub branch: Option<String>,
     /// Branch the branch diff compares with.

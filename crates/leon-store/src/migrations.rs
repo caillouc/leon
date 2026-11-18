@@ -50,6 +50,16 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE projects ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;",
     // 5: the issue a conversation was started for, `owner/name#12` (GH-2).
     "ALTER TABLE conversations ADD COLUMN issue TEXT;",
+    // 6: groups folded in the GitHub lists: board columns, repositories (GH-2,
+    // GH-3).
+    "CREATE TABLE folded_groups (key TEXT PRIMARY KEY) STRICT;",
+    // 7: every folder a conversation works in, a JSON array of paths, instead
+    // of one (CTX-2).
+    "ALTER TABLE conversations ADD COLUMN folders TEXT NOT NULL DEFAULT '[]';
+    UPDATE conversations SET folders = json_array(working_dir) WHERE working_dir IS NOT NULL;
+    ALTER TABLE conversations DROP COLUMN working_dir;",
+    // 8: which agent session's answer is not read yet (NAV-4, FLOW-4).
+    "ALTER TABLE agent_sessions ADD COLUMN unread INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Latest schema version this build knows.
@@ -84,8 +94,32 @@ pub(crate) fn run(conn: &mut Connection) -> Result<(), StoreError> {
 mod tests {
     use rusqlite::Connection;
 
-    use super::{latest, run, version};
+    use super::{MIGRATIONS, latest, run, version};
     use crate::StoreError;
+
+    #[test]
+    fn a_conversations_folder_becomes_its_first_folder() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..6] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 6).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, path, added_at) VALUES (1, 'api', '/code/api', 0);
+             INSERT INTO conversations (id, project_id, title, updated_at, working_dir)
+               VALUES (1, 1, 'moved', 0, '/code/api/.worktrees/fix'), (2, 1, 'stayed', 0, NULL);",
+        )
+        .unwrap();
+        run(&mut conn).unwrap();
+        let folders: Vec<String> = conn
+            .prepare("SELECT folders FROM conversations ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(folders, [r#"["/code/api/.worktrees/fix"]"#, "[]"]);
+    }
 
     #[test]
     fn fresh_database_reaches_latest() {

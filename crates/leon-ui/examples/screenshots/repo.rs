@@ -1,12 +1,13 @@
 //! Sample git and GitHub state for the screenshots.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use leon_core::GitView;
 use leon_domain::{
-    BoardOption, Check, CheckState, Comment, ConversationId, Day, DiffLine, FileDiff, FileStatus,
-    FoldPattern, Hunk, Issue, Iteration, Label, LineKind, PrState, PullRequest, ReviewThread,
+    BoardOption, Check, CheckState, Comment, Day, DiffLine, FileDiff, FileStatus, FoldPattern,
+    Hunk, Issue, Iteration, Label, LineKind, PrState, PullRequest, ReviewThread,
 };
 
 fn line(kind: LineKind, old: Option<u32>, new: Option<u32>, text: &str) -> DiffLine {
@@ -86,23 +87,41 @@ fn file(path: &str, status: FileStatus, added: u32, removed: u32) -> FileDiff {
     }
 }
 
-pub fn git() -> Arc<HashMap<ConversationId, GitView>> {
-    Arc::new(HashMap::from([(
-        ConversationId(1),
-        GitView {
-            branch: Some("fix-webhook-retry".into()),
-            base: Some("origin/main".into()),
-            changes: Arc::new(vec![
-                file("Cargo.lock", FileStatus::Modified, 1, 1),
-                retry_rs(),
-            ]),
-            branch_diff: Arc::new(vec![
-                retry_rs(),
-                file("tests/webhook_retry.rs", FileStatus::Added, 17, 0),
-            ]),
-            error: None,
-        },
-    )]))
+/// The two folders the first conversation works in (CTX-2).
+pub const API: &str = "/code/payments-api/.worktrees/fix-webhook-retry";
+pub const WEB: &str = "/code/web-dashboard/.worktrees/fix-webhook-retry";
+
+pub fn git() -> Arc<HashMap<PathBuf, GitView>> {
+    Arc::new(HashMap::from([
+        (
+            PathBuf::from(WEB),
+            GitView {
+                repo: Some("acme/web-dashboard".into()),
+                branch: Some("show-webhook-retries".into()),
+                base: Some("origin/main".into()),
+                changes: Arc::new(vec![file("src/Retries.tsx", FileStatus::Added, 40, 0)]),
+                branch_diff: Arc::new(vec![]),
+                error: None,
+            },
+        ),
+        (
+            PathBuf::from(API),
+            GitView {
+                repo: Some("acme/payments-api".into()),
+                branch: Some("fix-webhook-retry".into()),
+                base: Some("origin/main".into()),
+                changes: Arc::new(vec![
+                    file("Cargo.lock", FileStatus::Modified, 1, 1),
+                    retry_rs(),
+                ]),
+                branch_diff: Arc::new(vec![
+                    retry_rs(),
+                    file("tests/webhook_retry.rs", FileStatus::Added, 17, 0),
+                ]),
+                error: None,
+            },
+        ),
+    ]))
 }
 
 pub fn fold() -> Arc<Vec<FoldPattern>> {
@@ -147,6 +166,8 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
             .into(),
         threads: vec![
             ReviewThread {
+                id: "PRRT_1".into(),
+                can_resolve: true,
                 path: "src/webhooks/retry.rs".into(),
                 line: Some(14),
                 comments: vec![
@@ -170,6 +191,8 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
                 ],
             },
             ReviewThread {
+                id: "PRRT_2".into(),
+                can_resolve: true,
                 path: "src/webhooks/mod.rs".into(),
                 line: None,
                 comments: vec![Comment {
@@ -181,14 +204,21 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
             },
         ],
         author: "octocat".into(),
+        closes: vec![leon_domain::GhRef::issue("acme/payments-api", 401)],
     }
 }
 
-pub fn prs() -> Arc<HashMap<ConversationId, PullRequest>> {
-    Arc::new(HashMap::from([(
-        ConversationId(1),
-        pr(412, "Fix webhook retry timeout", PrState::Open),
-    )]))
+pub fn prs() -> Arc<HashMap<PathBuf, PullRequest>> {
+    let mut web = pr(77, "Show webhook retries", PrState::Draft);
+    web.repo = "acme/web-dashboard".into();
+    web.closes = vec![leon_domain::GhRef::issue("acme/web-dashboard", 31)];
+    Arc::new(HashMap::from([
+        (
+            PathBuf::from(API),
+            pr(412, "Fix webhook retry timeout", PrState::Open),
+        ),
+        (PathBuf::from(WEB), web),
+    ]))
 }
 
 fn label(name: &str, color: &str) -> Label {

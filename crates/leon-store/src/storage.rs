@@ -19,6 +19,12 @@ fn path_text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// The `folders` column: a JSON array of paths; unreadable, none.
+fn folders(json: &str) -> Vec<PathBuf> {
+    serde_json::from_str::<Vec<String>>(json)
+        .map_or_default(|paths| paths.into_iter().map(PathBuf::from).collect())
+}
+
 fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
     Ok(Project {
         id: ProjectId(row.get(0)?),
@@ -37,7 +43,7 @@ fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
         archived: row.get(4)?,
         unread: row.get(5)?,
         updated_at: row.get(6)?,
-        working_dir: row.get::<_, Option<String>>(7)?.map(PathBuf::from),
+        folders: folders(&row.get::<_, String>(7)?),
         issue: row
             .get::<_, Option<String>>(8)?
             .as_deref()
@@ -45,7 +51,7 @@ fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
     })
 }
 
-const SESSION_COLUMNS: &str = "id, conversation_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session";
+const SESSION_COLUMNS: &str = "id, conversation_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session, unread";
 
 fn session_row(row: &Row<'_>) -> rusqlite::Result<AgentSession> {
     let backend: String = row.get(3)?;
@@ -62,6 +68,7 @@ fn session_row(row: &Row<'_>) -> rusqlite::Result<AgentSession> {
         },
         working_dir: PathBuf::from(row.get::<_, String>(8)?),
         cli_session: row.get(9)?,
+        unread: row.get(10)?,
     })
 }
 
@@ -109,7 +116,7 @@ impl Storage for Store {
         let conn = self.lock();
         let mut stmt = conn
             .prepare_cached(
-                "SELECT id, project_id, title, pinned, archived, unread, updated_at, working_dir, issue FROM conversations
+                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders, issue FROM conversations
                  ORDER BY updated_at DESC, id DESC",
             )
             .map_err(err(C))?;
@@ -150,7 +157,7 @@ impl Storage for Store {
             archived: false,
             unread: false,
             updated_at: now,
-            working_dir: None,
+            folders: Vec::new(),
             issue: None,
         })
     }
@@ -159,7 +166,7 @@ impl Storage for Store {
         self.lock()
             .execute(
                 "UPDATE conversations SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
-                 working_dir = ?7, issue = ?8 WHERE id = ?1",
+                 folders = ?7, issue = ?8 WHERE id = ?1",
                 params![
                     c.id.0,
                     c.title,
@@ -167,12 +174,39 @@ impl Storage for Store {
                     c.archived,
                     c.unread,
                     c.updated_at,
-                    c.working_dir.as_deref().map(path_text),
+                    serde_json::Value::from(
+                        c.folders.iter().map(|p| path_text(p)).collect::<Vec<_>>()
+                    )
+                    .to_string(),
                     c.issue.as_ref().map(GhRef::text)
                 ],
             )
             .map(drop)
             .map_err(err("saving a conversation"))
+    }
+
+    fn folded_groups(&self) -> Result<Vec<String>, PortError> {
+        const C: &str = "reading the folded groups";
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare("SELECT key FROM folded_groups ORDER BY key")
+            .map_err(err(C))?;
+        stmt.query_map([], |row| row.get(0))
+            .map_err(err(C))?
+            .collect::<Result<Vec<String>, _>>()
+            .map_err(err(C))
+    }
+
+    fn set_folded_group(&self, key: &str, folded: bool) -> Result<(), PortError> {
+        let sql = if folded {
+            "INSERT OR IGNORE INTO folded_groups (key) VALUES (?1)"
+        } else {
+            "DELETE FROM folded_groups WHERE key = ?1"
+        };
+        self.lock()
+            .execute(sql, [key])
+            .map(drop)
+            .map_err(err("folding a group"))
     }
 
     fn remove_project(&self, id: ProjectId) -> Result<(), PortError> {
@@ -216,6 +250,7 @@ impl Storage for Store {
             settings: new.settings.clone(),
             working_dir: new.working_dir.clone(),
             cli_session: None,
+            unread: false,
         })
     }
 
@@ -224,8 +259,8 @@ impl Storage for Store {
         self.lock()
             .execute(
                 "UPDATE agent_sessions SET backend = ?2, agent = ?3, model = ?4, effort = ?5, permission = ?6,
-                 working_dir = ?7, cli_session = ?8 WHERE id = ?1",
-                params![a.id.0, s.backend.id(), s.agent, s.model, s.effort, s.permission, path_text(&a.working_dir), a.cli_session],
+                 working_dir = ?7, cli_session = ?8, unread = ?9 WHERE id = ?1",
+                params![a.id.0, s.backend.id(), s.agent, s.model, s.effort, s.permission, path_text(&a.working_dir), a.cli_session, a.unread],
             )
             .map(drop)
             .map_err(err("saving an agent session"))
@@ -372,9 +407,13 @@ mod tests {
             })
             .unwrap();
         session.cli_session = Some("thread-1".into());
+        session.unread = true;
         store.update_session(&session).unwrap();
         conv.pinned = true;
-        conv.working_dir = Some(PathBuf::from("/code/api/.worktrees/fix"));
+        conv.folders = vec![
+            PathBuf::from("/code/api/.worktrees/fix"),
+            PathBuf::from("/code/web/.worktrees/fix"),
+        ];
         conv.issue = Some(leon_domain::GhRef::issue("acme/api", 12));
         store.update_conversation(&conv).unwrap();
         store
@@ -472,6 +511,17 @@ mod tests {
         assert!(!store.has_conversation(gone.id));
         assert!(store.has_conversation(kept.id));
         assert_eq!(store.entries(session.id).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn folded_groups_are_kept() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(store.folded_groups().unwrap(), Vec::<String>::new());
+        store.set_folded_group("In review", true).unwrap();
+        store.set_folded_group("repo:acme/web", true).unwrap();
+        store.set_folded_group("In review", true).unwrap();
+        store.set_folded_group("repo:acme/web", false).unwrap();
+        assert_eq!(store.folded_groups().unwrap(), ["In review"]);
     }
 
     #[test]

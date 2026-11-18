@@ -54,7 +54,7 @@ CLI output ─▶ adapter ─▶ domain Event ─▶ apply(state, event) ─▶ 
 ## Agent sessions (D5, P15)
 
 ```
-Conversation (working_dir: where an agent said it moved, D3)
+Conversation (folders: every working tree its agents work in, D3, CTX-2)
  ├─ AgentSession  planner   (started_by: none, the user)
  ├─ AgentSession  coder     (started_by: planner)
  └─ AgentSession  reviewer  (started_by: planner)
@@ -77,11 +77,22 @@ Conversation (working_dir: where an agent said it moved, D3)
    Answers between agents raise no notification.
 5. `message_agent(session, text)` follows the same path. A message the user
    types in the coder's session is answered to the user.
-6. `rename_conversation` and `set_working_directory` edit the conversation; the
-   latter moves the git view and the folder of later sessions, not the folder
-   the calling CLI was started in (its resume depends on it).
-7. The flow view (FLOW-4) is built from the sessions' `started_by` and their
-   transcripts only (`crates/leon-ui/src/flow_model.rs`).
+6. `rename_conversation` edits the conversation. A folder joins the
+   conversation (`crates/leon-core/src/folders.rs`) when an agent calls
+   `set_working_directory`, or when its CLI reports a file edit
+   (`BackendEvent::FilesChanged`): the core asks git for the working tree
+   holding the file (`Git::working_tree`, a repository or one of its
+   worktrees) and adds it once. The folder the calling CLI was started in
+   never changes (its resume depends on it).
+7. Git state (`GitView`) and pull requests are kept per folder; a
+   conversation's issues are the one it was started for, then those its
+   folders' pull requests close (`closingIssuesReferences`). The right pane
+   shows one folder at a time (`crates/leon-ui/src/right_folders.rs`).
+8. Every session is told, in its CLI's system prompt or first message, to
+   keep Leon up to date with these tools (`AppTools::instructions`, CTX-3;
+   assembled in `crates/leon-backends/src/told.rs`).
+9. The flow view (FLOW-4) is built from the sessions' `started_by`, their
+   agents and their transcripts only (`crates/leon-ui/src/flow_model.rs`).
 
 ## Events (sketch, shaped like ACP session updates — P2)
 

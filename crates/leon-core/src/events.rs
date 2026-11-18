@@ -40,6 +40,7 @@ pub(crate) fn apply(core: &mut Core, id: AgentSessionId, event: BackendEvent) {
             name,
             detail,
         } => tool_started(core, id, tool, name, detail),
+        BackendEvent::FilesChanged(paths) => core.files_changed(id, &paths),
         BackendEvent::ToolDone {
             id: tool,
             output,

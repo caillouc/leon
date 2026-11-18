@@ -25,6 +25,7 @@ fn spec(backend: BackendKind, dir: &std::path::Path, resume: Option<String>) -> 
         sources: Vec::new(),
         skills: Vec::new(),
         instructions: None,
+        app_instructions: None,
     }
 }
 

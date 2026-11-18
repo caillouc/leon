@@ -1,6 +1,7 @@
 //! Core behaviour with fake storage, CLIs, git and GitHub.
 
 mod agents;
+mod folders;
 mod repo;
 mod rewind;
 mod tools;
@@ -29,6 +30,7 @@ struct FakeStorage {
     conversations: Mutex<Vec<Conversation>>,
     sessions: Mutex<Vec<AgentSession>>,
     entries: Mutex<HashMap<AgentSessionId, Vec<TimedEntry>>>,
+    folded: Mutex<std::collections::BTreeSet<String>>,
 }
 
 impl Storage for FakeStorage {
@@ -56,6 +58,18 @@ impl Storage for FakeStorage {
             .filter(|p| p.id == id)
         {
             p.collapsed = collapsed;
+        }
+        Ok(())
+    }
+    fn folded_groups(&self) -> Result<Vec<String>, PortError> {
+        Ok(self.folded.lock().unwrap().iter().cloned().collect())
+    }
+    fn set_folded_group(&self, key: &str, folded: bool) -> Result<(), PortError> {
+        let mut set = self.folded.lock().unwrap();
+        if folded {
+            set.insert(key.to_owned());
+        } else {
+            set.remove(key);
         }
         Ok(())
     }
@@ -88,7 +102,7 @@ impl Storage for FakeStorage {
             archived: false,
             unread: false,
             updated_at: now,
-            working_dir: None,
+            folders: Vec::new(),
             issue: None,
         };
         list.push(c.clone());
@@ -114,6 +128,7 @@ impl Storage for FakeStorage {
             settings: new.settings.clone(),
             working_dir: new.working_dir.clone(),
             cli_session: None,
+            unread: false,
         };
         list.push(s.clone());
         Ok(s)

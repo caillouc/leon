@@ -40,7 +40,7 @@ impl Workspace {
             Status::Running => ("Working", theme::accent()),
             Status::NeedsInput => ("Waiting for your answer", theme::warn()),
             Status::Error => ("Stopped with an error", theme::err()),
-            Status::Idle => ("Idle, waiting for your next message", theme::fg_muted()),
+            Status::Idle => ("Idle", theme::fg_muted()),
         };
         // Calls without a result mean something only while a turn runs.
         let live = matches!(s.status, Status::Running | Status::NeedsInput);
@@ -68,10 +68,21 @@ impl Workspace {
                     ))
                     .child(
                         div()
+                            .flex_none()
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(self.session_name(s)),
                     )
-                    .child(div().text_color(color).child(state)),
+                    // A narrow pane cuts it short rather than overflow.
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_color(color)
+                            .child(state),
+                    ),
             )
             .children(
                 tools
@@ -152,5 +163,12 @@ fn activity(key: &str, text: String) -> Div {
             theme::accent(),
             11.,
         ))
-        .child(text)
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(text),
+        )
 }

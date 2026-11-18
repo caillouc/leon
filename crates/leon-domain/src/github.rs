@@ -154,11 +154,17 @@ pub struct PullRequest {
     pub threads: Vec<ReviewThread>,
     /// Who opened it, by login; empty when GitHub did not say.
     pub author: String,
+    /// The issues it closes when merged, as GitHub links them (CTX-2).
+    pub closes: Vec<GhRef>,
 }
 
 /// A review thread on a pull request's code, not resolved yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewThread {
+    /// GitHub's node id, to answer or resolve it (GH-8).
+    pub id: String,
+    /// The user may resolve it.
+    pub can_resolve: bool,
     /// File it is on.
     pub path: String,
     /// Line it is on, when GitHub still knows it.
@@ -293,6 +299,7 @@ mod tests {
             body: String::new(),
             threads: vec![],
             author: String::new(),
+            closes: vec![],
         }
     }
 

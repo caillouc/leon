@@ -42,6 +42,7 @@ fn recorded_open_pull_request() {
         body: String::new(),
         threads: vec![],
         author: String::new(),
+        closes: vec![],
     };
     assert_eq!(pr, expected);
     assert_eq!(pr.checks_state(), Some(CheckState::Pass));
@@ -134,10 +135,23 @@ fn reviewers_and_ghost_comments() {
             { "requestedReviewer": { "login": "a" } }
         ] },
         "latestReviews": { "nodes": [{ "author": { "login": "a" } }, { "author": { "login": "b" } }] },
-        "comments": { "nodes": [{ "author": null, "body": "hi", "createdAt": "bad" }] }
+        "comments": { "nodes": [{ "author": null, "body": "hi", "createdAt": "bad" }] },
+        "closingIssuesReferences": { "nodes": [
+            { "number": 5, "repository": { "nameWithOwner": "o/r" } },
+            { "number": null },
+            { "number": 9, "repository": { "nameWithOwner": "o/other" } }
+        ] }
     }] } } } });
     let pr = fixture_pr(&json.to_string(), "b");
     assert_eq!(pr.reviewers, ["org/team", "a", "b"]);
+    // The issues it closes, in another repository too (CTX-2).
+    assert_eq!(
+        pr.closes,
+        [
+            leon_domain::GhRef::issue("o/r", 5),
+            leon_domain::GhRef::issue("o/other", 9)
+        ]
+    );
     assert_eq!(
         pr.comments,
         [Comment {

@@ -9,7 +9,7 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, TextareaState};
 use leon_core::Intent;
-use leon_domain::{AgentSessionId, ConversationId, ReviewComment, review_message};
+use leon_domain::{AgentSessionId, ConversationId, GhRef, ReviewComment, review_message};
 
 use crate::diff_drawer::Drawer;
 use crate::diff_rows::{DiffList, counts};
@@ -34,13 +34,15 @@ pub(crate) enum RightTab {
 #[derive(Debug, Clone)]
 pub(crate) struct Pending {
     pub source: DiffSource,
+    /// The folder of that diff (CTX-2).
+    pub folder: Option<std::path::PathBuf>,
     pub comment: ReviewComment,
 }
 
-/// The tab a conversation opens on: Info until it works in its own
-/// worktree, then Changes.
-pub(crate) fn default_tab(has_worktree: bool) -> RightTab {
-    if has_worktree {
+/// The tab a conversation opens on: Info until its agents work in a folder,
+/// then Changes.
+pub(crate) fn default_tab(working: bool) -> RightTab {
+    if working {
         RightTab::Changes
     } else {
         RightTab::Info
@@ -51,6 +53,8 @@ pub(crate) fn default_tab(has_worktree: bool) -> RightTab {
 pub(crate) struct RightState {
     /// The tab picked by hand, per conversation; else [`default_tab`].
     pub tabs: HashMap<ConversationId, RightTab>,
+    /// The folder picked, per conversation working in several (CTX-2).
+    pub folder: HashMap<ConversationId, std::path::PathBuf>,
     /// Files the user opened or closed by hand, overriding `diff.fold`.
     pub open: HashMap<(ConversationId, DiffSource, String), bool>,
     /// Pending review per conversation (GIT-5).
@@ -65,6 +69,10 @@ pub(crate) struct RightState {
     pub split: bool,
     pub comment: Entity<TextareaState>,
     pub pr_comment: Entity<TextareaState>,
+    /// The answer to a review thread being written, and that thread's id
+    /// (GH-8).
+    pub thread_reply: Entity<TextareaState>,
+    pub replying: Option<String>,
     pub lists: HashMap<(ConversationId, DiffSource), DiffList>,
     /// The diff drawer, when open.
     pub drawer: Option<Drawer>,
@@ -86,6 +94,11 @@ impl RightState {
                 .auto_grow(2, 8)
                 .placeholder("Comment on the pull request")
         });
+        let thread_reply = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .auto_grow(2, 8)
+                .placeholder("Reply to the thread")
+        });
         let subscriptions = vec![cx.subscribe_in(
             &comment,
             window,
@@ -97,6 +110,7 @@ impl RightState {
         )];
         let state = Self {
             tabs: HashMap::new(),
+            folder: HashMap::new(),
             open: HashMap::new(),
             review: HashMap::new(),
             review_to: HashMap::new(),
@@ -105,6 +119,8 @@ impl RightState {
             split: false,
             comment,
             pr_comment,
+            thread_reply,
+            replying: None,
             lists: HashMap::new(),
             drawer: None,
         };
@@ -140,8 +156,13 @@ impl Workspace {
             RightTab::Pr => self.render_pr(id, cx),
             RightTab::Info => self.render_info(id, cx),
         };
+        let chips = match self.right_tab(id) {
+            RightTab::Changes | RightTab::Branch | RightTab::Pr => self.folder_chips(id, cx),
+            RightTab::Info => None,
+        };
         frame
             .child(self.right_tabs(id, cx))
+            .children(chips)
             .child(div().flex_1().min_h_0().flex().flex_col().child(body))
             // While the drawer is open, the review is sent from there.
             .when(self.right.drawer.is_none(), |d| {
@@ -153,16 +174,16 @@ impl Workspace {
     /// The tab shown for conversation `id`.
     pub(crate) fn right_tab(&self, id: ConversationId) -> RightTab {
         self.right.tabs.get(&id).copied().unwrap_or_else(|| {
-            let worktree = self
+            let working = self
                 .snapshot
                 .conversation(id)
-                .is_some_and(|c| c.conversation.working_dir.is_some());
-            default_tab(worktree)
+                .is_some_and(|c| !c.conversation.folders.is_empty());
+            default_tab(working)
         })
     }
 
     fn right_tabs(&self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
-        let git = self.snapshot.git.get(&id);
+        let git = self.folder_git(id);
         // Lines added and removed, as git counts them.
         let lines = |files: &[leon_domain::FileDiff]| {
             (!files.is_empty()).then(|| {
@@ -185,7 +206,7 @@ impl Workspace {
             (
                 RightTab::Pr,
                 "PR",
-                self.snapshot.prs.get(&id).map(|pr| {
+                self.folder_pr(id).map(|pr| {
                     div()
                         .flex()
                         .items_center()
@@ -275,65 +296,70 @@ impl Workspace {
             .iter()
             .filter_map(|s| self.snapshot.sessions.get(s))
             .collect();
-        let git = self.snapshot.git.get(&id);
+        // Every folder its agents work in, with its branch and base (CTX-2).
         let none = || "none".to_owned();
-        let place = card(
-            "Where",
-            vec![
-                (
-                    "Project",
-                    project.map_or_default(|p| p.path.display().to_string()),
-                    true,
-                ),
-                (
-                    "Working dir",
-                    sessions
-                        .first()
-                        .map_or_default(|s| s.session.working_dir.display().to_string()),
-                    true,
-                ),
-                (
-                    "Branch",
-                    git.and_then(|g| g.branch.clone()).unwrap_or_else(none),
-                    true,
-                ),
-                (
-                    "Base",
-                    git.and_then(|g| g.base.clone()).unwrap_or_else(none),
-                    true,
-                ),
-            ],
-        );
-        let issue = view.conversation.issue.clone().map(|item| {
-            let text = item.text();
-            div()
-                .id("info-issue")
-                .mx_3()
-                .px_3()
-                .py_2()
-                .flex()
-                .items_center()
-                .gap_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::window())
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::surface_2()))
-                .child(icon(Icon::Issue, theme::fg_muted(), 14.))
-                .child(div().text_size(px(12.5)).child("Issue"))
-                .child(
-                    div()
-                        .flex_1()
-                        .font_family(theme::MONO)
-                        .text_size(px(12.))
-                        .text_color(theme::fg_muted())
-                        .child(text),
-                )
-                .on_click(cx.listener(move |this, _, _, _| {
-                    this.core.send(Intent::ShowDetail(Some(item.clone())));
-                }))
+        let mut rows = vec![(
+            "Project",
+            project.map_or_default(|p| p.path.display().to_string()),
+            true,
+        )];
+        for folder in &view.folders {
+            let git = self.snapshot.git.get(folder);
+            let branch = git.and_then(|g| g.branch.clone()).unwrap_or_else(none);
+            let base = git.and_then(|g| g.base.clone()).unwrap_or_else(none);
+            rows.push(("Folder", folder.display().to_string(), true));
+            rows.push(("Branch", format!("{branch} · from {base}"), true));
+        }
+        let place = card("Where", rows);
+        // The issues it works on and its pull requests: each opens in
+        // Leon's details drawer first, GitHub from there (CTX-1, CTX-2).
+        let issues = view.issues.iter().map(|item| {
+            (
+                item.clone(),
+                icon(Icon::Issue, theme::fg_muted(), 14.),
+                "Issue",
+            )
         });
+        let prs = self.snapshot.prs_of(view).into_iter().map(|pr| {
+            (
+                GhRef::pull_request(&pr.repo, pr.number),
+                pr_icon(pr.state, 14.),
+                "Pull request",
+            )
+        });
+        let links = issues
+            .chain(prs)
+            .enumerate()
+            .map(|(ix, (item, glyph, what))| {
+                let text = item.text();
+                div()
+                    .id(("info-link", ix))
+                    .mx_3()
+                    .px_3()
+                    .py_2()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::border())
+                    .bg(theme::window())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::surface_2()))
+                    .child(glyph)
+                    .child(div().text_size(px(12.5)).child(what))
+                    .child(
+                        div()
+                            .flex_1()
+                            .font_family(theme::MONO)
+                            .text_size(px(12.))
+                            .text_color(theme::fg_muted())
+                            .child(text),
+                    )
+                    .on_click(cx.listener(move |this, _, _, _| {
+                        this.core.send(Intent::ShowDetail(Some(item.clone())));
+                    }))
+            });
         let session_cards = sessions.iter().map(|s| {
             let settings = &s.session.settings;
             let (model, effort) = self.model_and_effort(settings);
@@ -401,7 +427,7 @@ impl Workspace {
             .gap_3()
             .child(self.now_card(&sessions))
             .child(place)
-            .children(issue)
+            .children(links)
             .child(label("Agent sessions").pt_1())
             .children(session_cards)
             .into_any_element()
@@ -513,7 +539,21 @@ impl Workspace {
         let Some(pending) = self.right.review.remove(&id) else {
             return;
         };
-        let comments: Vec<ReviewComment> = pending.into_iter().map(|p| p.comment).collect();
+        // With several folders, each file by its full path (CTX-2).
+        let several = self
+            .snapshot
+            .conversation(id)
+            .is_some_and(|c| c.folders.len() > 1);
+        let comments: Vec<ReviewComment> = pending
+            .into_iter()
+            .map(|p| match (several, &p.folder) {
+                (true, Some(folder)) => ReviewComment {
+                    path: folder.join(&p.comment.path).display().to_string(),
+                    ..p.comment
+                },
+                _ => p.comment,
+            })
+            .collect();
         self.core.send(Intent::Send {
             session,
             text: review_message(&comments),

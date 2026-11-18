@@ -33,10 +33,12 @@ mod nav;
 mod panes;
 mod picker;
 mod pr_page;
+mod pr_thread;
 mod pr_view;
 #[cfg(feature = "preview")]
 pub mod preview;
 mod right;
+mod right_folders;
 mod row_menu;
 mod settings_agents;
 mod settings_pickers;

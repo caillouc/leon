@@ -73,6 +73,16 @@ impl Start {
 }
 
 /// The session request and its params.
+/// What the agent is told, in the system prompt or before its first
+/// message: Leon's rules for its tools (CTX-3), then the agent's own
+/// instructions. `~/.agents/AGENTS.md` goes through Copilot's own setting.
+pub(super) fn told(spec: &SessionSpec) -> Option<String> {
+    crate::told::told([
+        spec.app_instructions,
+        spec.agent.as_ref().map(|a| a.instructions.as_str()),
+    ])
+}
+
 pub(super) fn session_request(
     spec: &SessionSpec,
     start: &Start,
@@ -85,14 +95,11 @@ pub(super) fn session_request(
         "mcpServers": [],
     });
     if caps.system_prompt
-        && let Some(agent) = spec
-            .agent
-            .as_ref()
-            .filter(|a| !a.instructions.trim().is_empty())
+        && let Some(text) = told(spec)
     {
         params["systemPrompt"] = json!({
             "mode": "append",
-            "content": [{ "type": "text", "text": agent.instructions }],
+            "content": [{ "type": "text", "text": text }],
         });
     }
     let method = match start {

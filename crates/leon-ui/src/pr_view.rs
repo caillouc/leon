@@ -44,11 +44,9 @@ pub(crate) fn labels(labels: &[Label]) -> Div {
 impl Workspace {
     /// The PR tab of the right pane: the conversation's pull request.
     pub(crate) fn render_pr(&mut self, id: ConversationId, cx: &mut Context<Self>) -> AnyElement {
-        let Some(pr) = self.snapshot.prs.get(&id).cloned() else {
+        let Some(pr) = self.folder_pr(id).cloned() else {
             let branch = self
-                .snapshot
-                .git
-                .get(&id)
+                .folder_git(id)
                 .and_then(|g| g.branch.clone())
                 .unwrap_or_else(|| "this branch".into());
             return empty(format!(

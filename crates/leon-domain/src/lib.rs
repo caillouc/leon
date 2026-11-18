@@ -29,7 +29,9 @@ pub use conversation::{
     AgentSession, AgentSessionId, Attention, Conversation, ConversationId, SessionSettings, Status,
 };
 pub use date::Day;
-pub use diff::{DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason};
+pub use diff::{
+    DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason, folded_last,
+};
 pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
 pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,

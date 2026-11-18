@@ -8,8 +8,7 @@ use leon_domain::{
     TimedEntry,
 };
 
-use super::layout::rings;
-use super::{Edge, EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build, layout, route};
+use super::{EdgeKind, FlowModel, Node, Pt, Rect, Step, View, bends, build, layout, route};
 
 fn session(id: i64, started_by: Option<i64>) -> SessionView {
     SessionView {
@@ -26,6 +25,7 @@ fn session(id: i64, started_by: Option<i64>) -> SessionView {
             },
             working_dir: PathBuf::from("/code"),
             cli_session: None,
+            unread: false,
         },
         status: Status::Idle,
         subagents: (0, 0),
@@ -132,8 +132,10 @@ fn arrows_come_from_what_the_sessions_did() {
     }
     assert_eq!(model.parent[&coder], planner);
 
+    // You, the planner to the right, the coder it started below it.
     let pos = layout(&model);
-    assert!(pos[&Node::You].x < pos[&planner].x && pos[&planner].x < pos[&coder].x);
+    assert!(pos[&Node::You].x < pos[&planner].x && pos[&planner].y < pos[&coder].y);
+    assert_eq!(model.agent[&coder], "Codex");
 }
 
 #[test]
@@ -224,8 +226,8 @@ fn bends_are_rounded_within_their_segments() {
     );
 }
 
-/// A model from (session, who started it) and (from, to) prompts.
-fn model(sessions: &[(i64, Option<i64>)], messages: &[(i64, i64)]) -> FlowModel {
+/// A model from (session, its agent, who started it).
+fn model(sessions: &[(i64, &str, Option<i64>)]) -> FlowModel {
     let node = |id| {
         if id == 0 {
             Node::You
@@ -235,95 +237,84 @@ fn model(sessions: &[(i64, Option<i64>)], messages: &[(i64, i64)]) -> FlowModel 
     };
     FlowModel {
         nodes: std::iter::once(Node::You)
-            .chain(sessions.iter().map(|(id, _)| node(*id)))
+            .chain(sessions.iter().map(|(id, _, _)| node(*id)))
             .collect(),
-        edges: messages
-            .iter()
-            .map(|(from, to)| Edge {
-                from: node(*from),
-                to: node(*to),
-                kind: EdgeKind::Prompt,
-                items: vec![],
-            })
-            .collect(),
+        edges: vec![],
         parent: sessions
             .iter()
-            .map(|(id, by)| (node(*id), by.map_or(Node::You, node)))
+            .map(|(id, _, by)| (node(*id), by.map_or(Node::You, node)))
+            .collect(),
+        agent: sessions
+            .iter()
+            .map(|(id, agent, _)| (node(*id), (*agent).to_owned()))
             .collect(),
     }
 }
 
-type Rings = Vec<(Node, Vec<Node>)>;
-
+/// The planner, two coders and a reviewer: regions on a 2 × 2 grid that
+/// snakes — You, then the planner to its right, the coders under the
+/// planner, the reviewer back on the left — each agent's sessions together.
 #[test]
-fn agents_messaging_in_a_loop_make_a_ring() {
+fn agents_fill_a_grid_each_in_its_own_region() {
     let s = |id| Node::Session(AgentSessionId(id));
-    let chain = [(1, None), (2, Some(1)), (3, Some(2))];
-    let cases: Vec<(FlowModel, Rings)> = vec![
-        // Only who-started-whom messages, and yours: no ring.
-        (
-            model(&chain, &[(0, 1), (1, 2), (2, 3), (3, 2), (0, 3)]),
-            vec![],
-        ),
-        // planner → coder → reviewer, and the reviewer back to the planner.
-        (
-            model(&chain, &[(1, 2), (2, 3), (3, 1)]),
-            vec![(s(1), vec![s(2), s(3)])],
-        ),
-        // The planner straight to the reviewer the coder started.
-        (model(&chain, &[(1, 3)]), vec![(s(1), vec![s(2), s(3)])]),
-        // Two agents the planner started, talking to each other.
-        (
-            model(&[(1, None), (2, Some(1)), (3, Some(1))], &[(2, 3)]),
-            vec![(s(1), vec![s(2), s(3)])],
-        ),
-    ];
-    for (model, expected) in cases {
-        assert_eq!(rings(&model), expected, "{:?}", model.edges);
-    }
+    let m = model(&[
+        (1, "planner", None),
+        (2, "coder", Some(1)),
+        (3, "reviewer", Some(1)),
+        (4, "coder", Some(1)),
+    ]);
+    let pos = layout(&m);
+    let centre = |node: Node| {
+        let r = super::rect(node, pos[&node]);
+        Pt {
+            x: r.x + r.w / 2.,
+            y: r.y + r.h / 2.,
+        }
+    };
+    let (you, planner, coder, reviewer, coder_2) = (
+        centre(Node::You),
+        centre(s(1)),
+        centre(s(2)),
+        centre(s(3)),
+        centre(s(4)),
+    );
+    assert!(
+        (you.y - planner.y).abs() < 1. && planner.x > you.x,
+        "{pos:?}"
+    );
+    assert!(
+        (coder.x - planner.x).abs() < 1. && coder.y > planner.y,
+        "{pos:?}"
+    );
+    assert!(
+        (coder.x - coder_2.x).abs() < 1. && coder_2.y > coder.y,
+        "{pos:?}"
+    );
+    assert!(
+        (reviewer.x - you.x).abs() < 1. && reviewer.y > planner.y,
+        "{pos:?}"
+    );
+    // About as tall as wide, not a long line.
+    let world = super::bounds(pos.iter().map(|(n, p)| super::rect(*n, *p))).unwrap();
+    assert!(world.w < 2. * world.h, "{world:?}");
 }
 
+/// Four sessions of one agent stack three high, then start a new column.
 #[test]
-fn a_ring_is_laid_out_as_a_circle() {
+fn a_busy_agent_stacks_its_sessions() {
     let s = |id| Node::Session(AgentSessionId(id));
-    let centre = |p: Pt| Pt {
-        x: p.x + 100.,
-        y: p.y + 48.,
-    };
-    // planner (1) → coder (2) → reviewer (3) → back to planner; the reviewer
-    // started a tester (4).
-    let m = model(
-        &[(1, None), (2, Some(1)), (3, Some(2)), (4, Some(3))],
-        &[(1, 2), (2, 3), (3, 1), (3, 4)],
-    );
+    let m = model(&[
+        (1, "coder", None),
+        (2, "coder", None),
+        (3, "coder", None),
+        (4, "coder", None),
+    ]);
     let pos = layout(&m);
-    let (planner, coder, reviewer, tester) = (
-        centre(pos[&s(1)]),
-        centre(pos[&s(2)]),
-        centre(pos[&s(3)]),
-        centre(pos[&s(4)]),
+    assert!((pos[&s(1)].x - pos[&s(3)].x).abs() < 1., "{pos:?}");
+    assert!(
+        pos[&s(3)].y > pos[&s(2)].y && pos[&s(2)].y > pos[&s(1)].y,
+        "{pos:?}"
     );
-    // A triangle: the planner on the left, the coder above, the reviewer
-    // below, both to its right.
-    assert!(coder.y < planner.y && reviewer.y > planner.y, "{pos:?}");
-    assert!(coder.x > planner.x && reviewer.x > planner.x, "{pos:?}");
-    assert!((coder.x - reviewer.x).abs() < 1., "{pos:?}");
-    // What comes after the ring starts right of the whole circle.
-    assert!(tester.x - 100. > coder.x + 100., "{pos:?}");
-
-    // Four in a loop: one above, one opposite, one below.
-    let m = model(
-        &[(1, None), (2, Some(1)), (3, Some(2)), (4, Some(3))],
-        &[(1, 2), (2, 3), (3, 4), (4, 1)],
-    );
-    let pos = layout(&m);
-    let (first, top, far, bottom) = (
-        centre(pos[&s(1)]),
-        centre(pos[&s(2)]),
-        centre(pos[&s(3)]),
-        centre(pos[&s(4)]),
-    );
-    assert!(top.y < first.y && bottom.y > first.y, "{pos:?}");
-    assert!((far.y - first.y).abs() < 1. && far.x > top.x, "{pos:?}");
-    assert!((top.x - bottom.x).abs() < 1., "{pos:?}");
+    assert!(pos[&s(4)].x > pos[&s(1)].x, "{pos:?}");
+    assert!((pos[&s(4)].y - pos[&s(1)].y).abs() < 1., "{pos:?}");
 }

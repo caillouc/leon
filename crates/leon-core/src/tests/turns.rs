@@ -97,7 +97,7 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
 async fn an_answer_read_on_its_agents_tab_is_read() {
     let h = harness();
     // The user reads the agent's messages (intents reach the core in order).
-    h.core.send(Intent::Read(Some(ConversationId(1))));
+    h.core.send(Intent::Read(Some(AgentSessionId(1))));
     new_conversation(&h, BackendKind::Codex).await;
     emit(&h, 0, BackendEvent::Text("Done.".into()));
     emit(
@@ -138,9 +138,11 @@ async fn an_answer_off_screen_marks_unread_and_notifies() {
     assert_eq!(s.notifications[0].title, "planner answered");
     let conversation = s.conversations[0].conversation.id;
     // Showing it (its Flow) does not read it; opening an agent's tab does.
+    assert!(s.sessions[&id].session.unread);
     h.core.send(Intent::View(Some(conversation)));
-    h.core.send(Intent::Read(Some(conversation)));
-    until(&h.core, "read", |s| !s.conversations[0].conversation.unread).await;
+    h.core.send(Intent::Read(Some(id)));
+    let s = until(&h.core, "read", |s| !s.conversations[0].conversation.unread).await;
+    assert!(!s.sessions[&id].session.unread);
     assert_eq!(entries(&s, id).len(), 3);
 }
 
@@ -367,4 +369,15 @@ async fn removing_a_project_forgets_it_and_its_conversations() {
     assert!(s.sessions.is_empty());
     assert!(h.storage.projects.lock().unwrap().is_empty());
     assert!(h.storage.conversations.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn folded_groups_are_saved() {
+    let h = harness();
+    until(&h.core, "loaded", |s| s.loaded).await;
+    h.core.send(Intent::FoldGroup("In review".into(), true));
+    let s = until(&h.core, "folded", |s| s.folded_groups.contains("In review")).await;
+    assert_eq!(s.folded_groups.len(), 1);
+    h.core.send(Intent::FoldGroup("In review".into(), false));
+    until(&h.core, "unfolded", |s| s.folded_groups.is_empty()).await;
 }

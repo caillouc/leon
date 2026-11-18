@@ -11,13 +11,16 @@ pub enum Intent {
     AddProject(PathBuf),
     /// Remove a project from Leon with its conversations; the folder stays.
     RemoveProject(ProjectId),
+    /// Fold (`true`) or unfold a GitHub list's group, kept across restarts.
+    FoldGroup(String, bool),
     /// The conversation shown in the main pane (`None`: none): loads its
     /// transcripts and git state.
     View(Option<ConversationId>),
-    /// The conversation whose agent messages are on screen — one of its
-    /// agents' tabs, not its Flow (`None`: none). Marks it read; an answer
-    /// that arrives while it is read stays read (NAV-4).
-    Read(Option<ConversationId>),
+    /// The agent session whose messages are on screen — its tab, not the
+    /// conversation's Flow (`None`: none). Marks its answer read, and its
+    /// conversation once no other session's answer waits; an answer that
+    /// arrives while it is read stays read (NAV-4, FLOW-4).
+    Read(Option<AgentSessionId>),
     /// Leon's window became active (`true`) or went behind another app: an
     /// answer counts as seen only in the active window (NAV-4, NOTIF-1).
     WindowActive(bool),
@@ -100,6 +103,22 @@ pub enum Intent {
     Comment(leon_domain::GhRef, String),
     /// Mark a pull request as a draft (`true`) or ready for review (GH-7).
     SetDraft(leon_domain::GhRef, bool),
+    /// Answer a review thread of a pull request (GH-8).
+    ReplyToThread {
+        /// The pull request.
+        pr: leon_domain::GhRef,
+        /// The thread's node id.
+        thread: String,
+        /// The answer.
+        body: String,
+    },
+    /// Resolve a review thread of a pull request (GH-8).
+    ResolveThread {
+        /// The pull request.
+        pr: leon_domain::GhRef,
+        /// The thread's node id.
+        thread: String,
+    },
     /// Show an issue's or a pull request's details (`None`: close them);
     /// they are read from GitHub in the background.
     ShowDetail(Option<leon_domain::GhRef>),

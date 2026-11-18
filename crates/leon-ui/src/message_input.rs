@@ -6,7 +6,7 @@ use gpui::{
     AnyElement, App, ClipboardItem, ContentMask, Context, Entity, Focusable, IntoElement,
     SharedString, TextAlign, TextRun, Window, canvas, deferred, div, point, prelude::*, px,
 };
-use gpui_component::input::{Paste, TextareaState};
+use gpui_component::input::{InlineToken, InputContent, Paste, TextareaState};
 use leon_core::ports::SlashCommand;
 use leon_domain::ProjectId;
 
@@ -25,79 +25,79 @@ fn folds(text: &str) -> bool {
     text.lines().count() >= FOLD_LINES || text.chars().count() >= FOLD_CHARS
 }
 
-/// The message to send: what was typed, then each folded paste.
-pub(crate) fn message(typed: &str, pasted: &[String]) -> String {
-    std::iter::once(typed.trim())
-        .chain(pasted.iter().map(|p| p.trim_end()))
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n")
+/// The message to send: the text, each folded paste put back where its box
+/// is.
+pub(crate) fn message(content: &InputContent, pasted: &[String]) -> String {
+    let text = content.text();
+    let mut out = String::new();
+    let mut at = 0;
+    for span in content.tokens() {
+        let range = span.range();
+        out.push_str(&text[at..range.start]);
+        let paste = span
+            .token()
+            .id()
+            .strip_prefix(PASTE_ID)
+            .and_then(|ix| ix.parse::<usize>().ok())
+            .and_then(|ix| pasted.get(ix));
+        out.push_str(paste.map_or(&text[range.clone()], |p| p.trim_end()));
+        at = range.end;
+    }
+    out.push_str(&text[at..]);
+    out.trim().to_owned()
+}
+
+/// Ids of folded pastes' boxes: this, then the paste's index.
+const PASTE_ID: &str = "paste-";
+
+/// The box a long paste folds into, in the text where it was pasted
+/// (CONV-12): its text in the input, its label on screen.
+fn paste_token(ix: usize, text: &str) -> InlineToken {
+    InlineToken::new(
+        format!("{PASTE_ID}{ix}"),
+        format!("[Pasted text #{}]", ix + 1),
+    )
+    .with_label(format!("Pasted text · {} lines", text.lines().count()))
 }
 
 impl Workspace {
-    /// Keeps a long paste out of the input, as a chip (CONV-12).
-    pub(crate) fn on_paste(&mut self, cx: &mut Context<Self>) {
+    /// Folds a long paste into a box where the caret is (CONV-12); the
+    /// text goes back in its place when the message is sent.
+    fn on_paste(
+        &mut self,
+        input: &Entity<TextareaState>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(text) = cx
             .read_from_clipboard()
             .and_then(|c: ClipboardItem| c.text())
+            .filter(|text| folds(text))
         else {
             return;
         };
-        if folds(&text) {
-            self.pasted.push(text);
-            cx.stop_propagation();
-            cx.notify();
+        let token = paste_token(self.pasted.len(), &text);
+        let folded = input.update(cx, |state, cx| state.replace_with_token(token, window, cx));
+        match folded {
+            Ok(()) => {
+                self.pasted.push(text);
+                cx.stop_propagation();
+                cx.notify();
+            }
+            // Pasted as plain text instead.
+            Err(error) => tracing::debug!(?error, "could not fold a paste"),
         }
     }
 
-    /// Wraps an input so that long pastes become chips.
-    pub(crate) fn paste_aware(input: gpui::Div, cx: &mut Context<Self>) -> gpui::Div {
-        input.capture_action(cx.listener(|this, _: &Paste, _, cx| this.on_paste(cx)))
-    }
-
-    /// The chips of folded pastes, each removable.
-    pub(crate) fn pasted_chips(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.pasted.is_empty() {
-            return None;
-        }
-        let chips = self.pasted.iter().enumerate().map(|(ix, text)| {
-            let lines = text.lines().count();
-            div()
-                .id(("pasted", ix))
-                .flex()
-                .items_center()
-                .gap_1()
-                .px_2()
-                .py(px(2.))
-                .rounded_md()
-                .border_1()
-                .border_color(theme::border_strong())
-                .bg(theme::surface_2())
-                .text_size(px(12.))
-                .text_color(theme::fg_muted())
-                .child(format!("Pasted text · {lines} lines"))
-                .child(
-                    div()
-                        .id(("pasted-remove", ix))
-                        .px_1()
-                        .cursor_pointer()
-                        .hover(|s| s.text_color(theme::fg()))
-                        .child("×")
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if ix < this.pasted.len() {
-                                this.pasted.remove(ix);
-                            }
-                            cx.notify();
-                        })),
-                )
-        });
-        Some(
-            div()
-                .flex()
-                .flex_wrap()
-                .gap_1()
-                .children(chips)
-                .into_any_element(),
+    /// Wraps `input`'s box so that long pastes fold.
+    pub(crate) fn paste_aware(
+        input_box: gpui::Div,
+        input: &Entity<TextareaState>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let input = input.clone();
+        input_box.capture_action(
+            cx.listener(move |this, _: &Paste, window, cx| this.on_paste(&input, window, cx)),
         )
     }
 
@@ -379,20 +379,54 @@ pub(crate) const PLACEHOLDER: &str = "Message the agent";
 mod tests {
     use leon_core::ports::SlashCommand;
 
-    use super::{argument_hint, folds, message, slash_completion, slash_matches};
+    use gpui_component::input::InputContent;
+
+    use super::{argument_hint, folds, message, paste_token, slash_completion, slash_matches};
+
+    /// A text with the boxes of `pastes` where `{0}`, `{1}`… stand.
+    fn content(text: &str, pastes: &[&str]) -> InputContent {
+        let mut full = text.to_owned();
+        let mut tokens = Vec::new();
+        for (ix, paste) in pastes.iter().enumerate() {
+            let token = paste_token(ix, paste);
+            let mark = format!("{{{ix}}}");
+            let at = full.find(&mark).unwrap();
+            full.replace_range(at..at + mark.len(), token.text());
+            tokens.push((at..at + token.text().len(), token));
+        }
+        tokens.sort_by_key(|(range, _)| range.start);
+        tokens
+            .into_iter()
+            .fold(InputContent::new(full), |c, (range, token)| {
+                c.with_token(range, token).unwrap()
+            })
+    }
 
     #[test]
-    fn long_pastes_fold_and_join_the_message() {
+    fn long_pastes_go_back_where_their_box_is() {
         assert!(!folds("one line"));
         assert!(folds(&"line\n".repeat(10)));
         assert!(folds(&"x".repeat(800)));
-        let pasted = ["log line 1\nlog line 2\n".to_owned()];
+        let log = "log line 1\nlog line 2\n";
+        let diff = "+a\n-b\n";
+        let pasted = [log.to_owned(), diff.to_owned()];
+        let cases = [
+            (
+                content("Why does {0} fail after {1}?", &[log, diff]),
+                "Why does log line 1\nlog line 2 fail after +a\n-b?",
+            ),
+            (content("  {0}  ", &[log]), "log line 1\nlog line 2"),
+            (content("hi", &[]), "hi"),
+        ];
+        for (content, expected) in cases {
+            assert_eq!(message(&content, &pasted), expected);
+        }
+        // A box whose paste is gone keeps its text.
+        assert_eq!(message(&content("{0}", &[log]), &[]), "[Pasted text #1]");
         assert_eq!(
-            message("Why does this fail?", &pasted),
-            "Why does this fail?\n\nlog line 1\nlog line 2"
+            paste_token(0, log).label().as_ref(),
+            "Pasted text · 2 lines"
         );
-        assert_eq!(message("  ", &pasted), "log line 1\nlog line 2");
-        assert_eq!(message("hi", &[]), "hi");
     }
 
     #[test]

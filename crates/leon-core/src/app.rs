@@ -114,6 +114,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         internal_tx,
         git_in_flight: HashSet::new(),
         git_dirty: HashSet::new(),
+        working_trees: HashMap::new(),
         next_flash: 0,
     };
     runtime.spawn(core.run(intent_rx, event_rx, internal_rx, tool_rx));
@@ -162,14 +163,16 @@ pub(crate) struct Core {
     /// When each live CLI finished its last turn.
     pub(crate) idle_since: HashMap<AgentSessionId, i64>,
     viewing: Option<ConversationId>,
-    /// The conversation whose agent messages are on screen.
-    reading: Option<ConversationId>,
+    /// The agent session whose messages are on screen.
+    reading: Option<AgentSessionId>,
     /// Leon's window is the active one.
     window_active: bool,
     event_tx: UnboundedSender<SessionEvent>,
     pub(crate) internal_tx: UnboundedSender<Internal>,
-    pub(crate) git_in_flight: HashSet<ConversationId>,
-    pub(crate) git_dirty: HashSet<ConversationId>,
+    pub(crate) git_in_flight: HashSet<std::path::PathBuf>,
+    pub(crate) git_dirty: HashSet<std::path::PathBuf>,
+    /// The working tree holding each folder agents changed files in (CTX-2).
+    pub(crate) working_trees: HashMap<std::path::PathBuf, std::path::PathBuf>,
     next_flash: u64,
 }
 
@@ -239,6 +242,13 @@ impl Core {
             )
         });
         self.state.projects = Arc::new(Self::report(projects).unwrap_or_default());
+        let folded = blocking(|| storage.folded_groups());
+        self.state.folded_groups = Arc::new(
+            Self::report(folded)
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
+        );
         self.state.conversations = Self::report(conversations).unwrap_or_default();
         for session in Self::report(sessions).unwrap_or_default() {
             self.state
@@ -320,6 +330,7 @@ impl Core {
             }
             Intent::CollapseProject(id, collapsed) => self.collapse_project(id, collapsed),
             Intent::RemoveProject(id) => self.remove_project(id),
+            Intent::FoldGroup(key, folded) => self.fold_group(key, folded),
             Intent::Rename(id, title) => self.edit(id, |c| title.trim().clone_into(&mut c.title)),
             Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
@@ -337,6 +348,8 @@ impl Core {
             Intent::RequestCopilotReview(item) => self.request_review(item),
             Intent::Comment(item, body) => self.comment(item, body),
             Intent::SetDraft(item, draft) => self.set_draft(item, draft),
+            Intent::ReplyToThread { pr, thread, body } => self.reply_to_thread(pr, thread, body),
+            Intent::ResolveThread { pr, thread } => self.resolve_thread(pr, thread),
             Intent::ShowDetail(item) => self.show_detail(item),
         }
     }
@@ -367,17 +380,36 @@ impl Core {
         }
     }
 
-    /// The user reads conversation `id`'s agent messages: it is read.
-    fn read(&mut self, id: Option<ConversationId>) {
+    /// The user reads agent session `id`'s messages.
+    fn read(&mut self, id: Option<AgentSessionId>) {
         self.reading = id;
-        let Some(id) = id else { return };
+        if let Some(id) = id {
+            self.mark_read(id);
+        }
+    }
+
+    /// The user saw session `id`'s answer: it is read, and so is its
+    /// conversation once no other session's answer waits (NAV-4, FLOW-4).
+    fn mark_read(&mut self, id: AgentSessionId) {
+        let Some(s) = self.state.sessions.get_mut(&id) else {
+            return;
+        };
+        let conversation = s.session.conversation;
+        if std::mem::take(&mut s.session.unread) {
+            self.save_session(id);
+        }
+        let waiting = self
+            .state
+            .sessions
+            .values()
+            .any(|s| s.session.conversation == conversation && s.session.unread);
         if self
             .state
             .conversations
             .iter()
-            .any(|c| c.id == id && c.unread)
+            .any(|c| c.id == conversation && c.unread != waiting)
         {
-            self.edit(id, |c| c.unread = false);
+            self.edit(conversation, |c| c.unread = waiting);
         }
     }
 
@@ -424,15 +456,14 @@ impl Core {
         Self::report(blocking(|| storage.update_conversation(&saved)));
     }
 
-    /// Whether the user sees conversation `id`'s messages: one of its
-    /// agents' tabs, in the active window.
-    fn on_screen(&self, id: ConversationId) -> bool {
+    /// Whether the user sees agent session `id`'s messages: its tab, in the
+    /// active window.
+    fn on_screen(&self, id: AgentSessionId) -> bool {
         self.window_active && self.reading == Some(id)
     }
 
-    fn touch(&mut self, id: ConversationId, mark_unread: bool) {
+    fn touch(&mut self, id: ConversationId, unread: bool) {
         let now = self.now();
-        let unread = mark_unread && !self.on_screen(id);
         self.edit(id, |c| {
             c.updated_at = now;
             c.unread |= unread;
@@ -508,9 +539,7 @@ impl Core {
     /// Sends the user's message (CONV-1).
     fn send(&mut self, id: AgentSessionId, text: &str) {
         // Replying means its answer was read.
-        if let Some(conversation) = self.state.sessions.get(&id).map(|s| s.session.conversation) {
-            self.edit(conversation, |c| c.unread = false);
-        }
+        self.mark_read(id);
         self.deliver(
             id,
             Entry::User {
@@ -597,6 +626,7 @@ impl Core {
             sources: self.state.sources.to_vec(),
             skills,
             instructions,
+            app_instructions: self.ports.app_tools.as_ref().map(|t| t.instructions()),
         };
         match self.ports.backends.start(spec) {
             Ok(channel) => {
@@ -736,6 +766,18 @@ impl Core {
         self.state.conversations.retain(|c| c.id != id);
     }
 
+    fn fold_group(&mut self, key: String, folded: bool) {
+        let storage = Arc::clone(&self.ports.storage);
+        if Self::report(blocking(|| storage.set_folded_group(&key, folded))).is_some() {
+            let groups = Arc::make_mut(&mut self.state.folded_groups);
+            if folded {
+                groups.insert(key);
+            } else {
+                groups.remove(&key);
+            }
+        }
+    }
+
     fn remove_project(&mut self, id: leon_domain::ProjectId) {
         let storage = Arc::clone(&self.ports.storage);
         if Self::report(blocking(|| storage.remove_project(id))).is_none() {
@@ -826,8 +868,13 @@ impl Core {
         conversation: ConversationId,
         failed: bool,
     ) {
-        self.touch(conversation, true);
-        if self.on_screen(conversation) {
+        let unread = !self.on_screen(id);
+        if let Some(s) = self.state.sessions.get_mut(&id).filter(|_| unread) {
+            s.session.unread = true;
+            self.save_session(id);
+        }
+        self.touch(conversation, unread);
+        if !unread {
             return;
         }
         let agent = self
