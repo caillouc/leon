@@ -34,20 +34,7 @@ actions!(
 /// Binds the shortcuts and sets the menu bar; app-wide actions are handled
 /// here, the others by the workspace.
 pub(crate) fn install(cx: &mut App) {
-    cx.bind_keys([
-        KeyBinding::new("secondary-q", Quit, None),
-        KeyBinding::new("cmd-h", Hide, None),
-        KeyBinding::new("alt-cmd-h", HideOthers, None),
-        KeyBinding::new("cmd-m", Minimize, None),
-        KeyBinding::new("secondary-w", CloseWindow, None),
-        KeyBinding::new("secondary-n", NewConversation, None),
-        KeyBinding::new("secondary-shift-o", AddProject, None),
-        KeyBinding::new("secondary-,", OpenSettings, None),
-        KeyBinding::new("secondary-l", FocusMessage, None),
-        KeyBinding::new("secondary-k", FocusSearch, None),
-        KeyBinding::new("ctrl-tab", NextConversation, None),
-        KeyBinding::new("ctrl-shift-tab", PreviousConversation, None),
-    ]);
+    cx.bind_keys(bindings());
     cx.on_action(|_: &Quit, cx| cx.quit());
     cx.on_action(|_: &Hide, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
@@ -89,6 +76,37 @@ pub(crate) fn install(cx: &mut App) {
             MenuItem::action("Zoom", Zoom),
         ]),
     ]);
+}
+
+/// `key` with the platform's main modifier: ⌘ on macOS, Ctrl elsewhere.
+/// (`KeyBinding::new` does not accept GPUI's `secondary-`.)
+macro_rules! primary {
+    ($key:literal) => {
+        if cfg!(target_os = "macos") {
+            concat!("cmd-", $key)
+        } else {
+            concat!("ctrl-", $key)
+        }
+    };
+}
+
+/// The shortcuts. `KeyBinding::new` panics on a keystroke it cannot parse,
+/// so the test below builds them all.
+fn bindings() -> Vec<KeyBinding> {
+    vec![
+        KeyBinding::new(primary!("q"), Quit, None),
+        KeyBinding::new("cmd-h", Hide, None),
+        KeyBinding::new("alt-cmd-h", HideOthers, None),
+        KeyBinding::new("cmd-m", Minimize, None),
+        KeyBinding::new(primary!("w"), CloseWindow, None),
+        KeyBinding::new(primary!("n"), NewConversation, None),
+        KeyBinding::new(primary!("shift-o"), AddProject, None),
+        KeyBinding::new(primary!(","), OpenSettings, None),
+        KeyBinding::new(primary!("l"), FocusMessage, None),
+        KeyBinding::new(primary!("k"), FocusSearch, None),
+        KeyBinding::new("ctrl-tab", NextConversation, None),
+        KeyBinding::new("ctrl-shift-tab", PreviousConversation, None),
+    ]
 }
 
 impl Workspace {
@@ -168,5 +186,13 @@ impl Workspace {
         if let Some(id) = usize::try_from(next).ok().and_then(|i| order.get(i)) {
             self.select(*id, cx);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_shortcut_parses() {
+        assert_eq!(super::bindings().len(), 12);
     }
 }

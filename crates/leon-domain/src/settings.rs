@@ -18,9 +18,9 @@ pub struct Settings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ArrowStyle {
     /// Right angles.
-    #[default]
     Square,
     /// Rounded bends.
+    #[default]
     Rounded,
 }
 

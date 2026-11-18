@@ -25,6 +25,7 @@ pub(crate) enum Icon {
     Info,
     Filter,
     Conversation,
+    Copy,
     Connectors,
     Plus,
     Refresh,
@@ -54,6 +55,7 @@ impl Icon {
             Self::Info => "icons/info.svg",
             Self::Filter => "icons/list-filter.svg",
             Self::Conversation => "icons/message-square.svg",
+            Self::Copy => "icons/copy.svg",
             Self::Connectors => "icons/plug.svg",
             Self::Plus => "icons/plus.svg",
             Self::Refresh => "icons/refresh-cw.svg",
@@ -106,7 +108,7 @@ impl AssetSource for Assets {
     }
 }
 
-const ALL: [Icon; 24] = [
+const ALL: [Icon; 25] = [
     Icon::ChevronDown,
     Icon::ChevronRight,
     Icon::Pending,
@@ -123,6 +125,7 @@ const ALL: [Icon; 24] = [
     Icon::Info,
     Icon::Filter,
     Icon::Conversation,
+    Icon::Copy,
     Icon::Connectors,
     Icon::Plus,
     Icon::Refresh,
@@ -157,6 +160,7 @@ fn bytes(path: &str) -> Option<&'static [u8]> {
         "icons/info.svg" => include_bytes!("../../../assets/icons/info.svg"),
         "icons/list-filter.svg" => include_bytes!("../../../assets/icons/list-filter.svg"),
         "icons/message-square.svg" => include_bytes!("../../../assets/icons/message-square.svg"),
+        "icons/copy.svg" => include_bytes!("../../../assets/icons/copy.svg"),
         "icons/plug.svg" => include_bytes!("../../../assets/icons/plug.svg"),
         "icons/plus.svg" => include_bytes!("../../../assets/icons/plus.svg"),
         "icons/refresh-cw.svg" => include_bytes!("../../../assets/icons/refresh-cw.svg"),

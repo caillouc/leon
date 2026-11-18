@@ -24,8 +24,10 @@ const NODE: Pt = Pt { x: 200., y: 96. };
 const YOU: Pt = Pt { x: 140., y: 56. };
 const COL_GAP: f32 = 150.;
 const ROW_GAP: f32 = 64.;
-/// How far a ring's middle box sits right of its column.
-const BOW: f32 = 90.;
+/// Distance between the centres of two neighbours on a ring.
+const RING_GAP: f32 = 270.;
+/// Smallest ring radius.
+const RING_MIN: f32 = 180.;
 
 fn size_of(node: Node) -> Pt {
     match node {
@@ -35,9 +37,9 @@ fn size_of(node: Node) -> Pt {
 }
 
 /// Columns by who started whom, boxes centred on each column (the automatic
-/// layout). Agents that message each other in a ring sit together in the
-/// column after the ring's first agent, bowed out, so the ring reads as a
-/// loop rather than a long line.
+/// layout). Agents that message each other in a ring are placed on a circle
+/// with the agent that started the ring: the loop reads as a loop. Whatever
+/// comes after a ring moves right, past the circle.
 #[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
 pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
     let rings = rings(model);
@@ -54,22 +56,14 @@ pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
             column_of.insert(*node, c);
         }
     }
-    // Boxes per column, each ring's members together and in ring order.
+    // Boxes per column, ring members left out: the circle places them.
     let mut columns: Vec<Vec<Node>> = Vec::new();
-    let mut placed: Vec<Node> = Vec::new();
-    for node in &model.nodes {
-        if placed.contains(node) {
-            continue;
+    for node in model.nodes.iter().filter(|n| ring_of(n).is_none()) {
+        let c = column_of.get(node).copied().unwrap_or(0);
+        if columns.len() <= c {
+            columns.resize(c + 1, Vec::new());
         }
-        let group = ring_of(node).map_or_else(|| vec![*node], |r| rings[r].1.clone());
-        for member in group {
-            let c = column_of.get(&member).copied().unwrap_or(0);
-            if columns.len() <= c {
-                columns.resize(c + 1, Vec::new());
-            }
-            columns[c].push(member);
-            placed.push(member);
-        }
+        columns[c].push(*node);
     }
     let mut pos = HashMap::new();
     for (c, column) in columns.iter().enumerate() {
@@ -78,26 +72,69 @@ pub(crate) fn layout(model: &FlowModel) -> HashMap<Node, Pt> {
         let mut y = -total / 2.;
         for node in column {
             let size = size_of(*node);
-            let x = c as f32 * (NODE.x + COL_GAP) + (NODE.x - size.x) / 2. + bow(&rings, *node);
+            let x = c as f32 * (NODE.x + COL_GAP) + (NODE.x - size.x) / 2.;
             pos.insert(*node, Pt { x, y });
             y += size.y + ROW_GAP;
+        }
+    }
+    for (root, members) in &rings {
+        let Some(at) = pos.get(root).copied() else {
+            continue;
+        };
+        let size = size_of(*root);
+        let start = Pt {
+            x: at.x + size.x / 2.,
+            y: at.y + size.y / 2.,
+        };
+        let (centers, radius) = circle(start, members.len() + 1);
+        for (member, center) in members.iter().zip(centers) {
+            pos.insert(
+                *member,
+                Pt {
+                    x: center.x - NODE.x / 2.,
+                    y: center.y - NODE.y / 2.,
+                },
+            );
+        }
+        // Columns after the ring's start move right, past the circle.
+        let root_column = column_of.get(root).copied().unwrap_or(0);
+        let next = (root_column + 1) as f32 * (NODE.x + COL_GAP);
+        let past = start.x + 2. * radius + NODE.x / 2. + COL_GAP;
+        let shift = (past - next).max(0.);
+        for (node, p) in &mut pos {
+            let later = column_of.get(node).copied().unwrap_or(0) > root_column;
+            if later && !members.contains(node) {
+                p.x += shift;
+            }
         }
     }
     pos
 }
 
-/// How far right a ring member sits, so the ring's column bows out like an
-/// arc: most in the middle, least at its ends.
+/// The centres of the other `n - 1` boxes of a ring whose first box is
+/// centred at `start`, on a circle that has `start` as its westmost point,
+/// going clockwise from the top; and the circle's radius.
 #[allow(clippy::cast_precision_loss, reason = "a handful of boxes")]
-fn bow(rings: &[(Node, Vec<Node>)], node: Node) -> f32 {
-    rings
-        .iter()
-        .find_map(|(_, members)| {
-            let i = members.iter().position(|m| *m == node)?;
-            let t = (i + 1) as f32 / (members.len() + 1) as f32;
-            Some(BOW * (std::f32::consts::PI * t).sin())
+fn circle(start: Pt, n: usize) -> (Vec<Pt>, f32) {
+    use std::f32::consts::PI;
+    let n = n.max(2);
+    // Neighbours far enough apart for two boxes, never a tiny circle.
+    let radius = (RING_GAP / (2. * (PI / n as f32).sin())).max(RING_MIN);
+    let center = Pt {
+        x: start.x + radius,
+        y: start.y,
+    };
+    let centers = (1..n)
+        .map(|k| {
+            // Screen y points down, so a growing angle turns clockwise.
+            let angle = PI + 2. * PI * k as f32 / n as f32;
+            Pt {
+                x: center.x + radius * angle.cos(),
+                y: center.y + radius * angle.sin(),
+            }
         })
-        .unwrap_or(0.)
+        .collect();
+    (centers, radius)
 }
 
 /// Rings of agents: a message between two sessions where neither started

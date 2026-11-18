@@ -186,11 +186,11 @@ mod tests {
         settings.defaults.model = None;
         settings.defaults.effort = Some("high".into());
         settings.diff_fold = vec!["glob:**/*.lock".into()];
-        settings.arrows = ArrowStyle::Rounded;
+        settings.arrows = ArrowStyle::Square;
         let text = update(original, &settings).unwrap();
         assert_eq!(
             text,
-            "# My Leon config.\nversion = 1\n\n[defaults]\n# Codex for everything.\nbackend = \"codex\"\neffort = \"high\"\n\n[extra]\nkept = true\n\n[diff]\nfold = [\"glob:**/*.lock\"]\n\n[flow]\narrows = \"rounded\"\n"
+            "# My Leon config.\nversion = 1\n\n[defaults]\n# Codex for everything.\nbackend = \"codex\"\neffort = \"high\"\n\n[extra]\nkept = true\n\n[diff]\nfold = [\"glob:**/*.lock\"]\n\n[flow]\narrows = \"square\"\n"
         );
         // What was written reads back as what was saved.
         assert_eq!(parse(&text).settings, settings);
@@ -238,13 +238,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("leon").join("config.toml");
         let settings = Settings {
-            arrows: ArrowStyle::Rounded,
+            arrows: ArrowStyle::Square,
             ..Settings::default()
         };
         save(&path, &settings).unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            "version = 1\n\n[flow]\narrows = \"rounded\"\n"
+            "version = 1\n\n[flow]\narrows = \"square\"\n"
         );
     }
 }

@@ -41,7 +41,13 @@ fn session(
         session: AgentSession {
             id: AgentSessionId(id),
             conversation: ConversationId(conversation),
-            started_by: (id != 1 && id != 3).then_some(AgentSessionId(1)),
+            // planner (1) → coder (2) → reviewer (4), who reports back to the
+            // planner: a loop.
+            started_by: match id {
+                2 => Some(AgentSessionId(1)),
+                4 => Some(AgentSessionId(2)),
+                _ => None,
+            },
             settings: SessionSettings {
                 backend,
                 agent: Some(agent.to_owned()),
@@ -107,11 +113,16 @@ fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
         timed(Entry::TurnEnd { usage: Some(Usage { input_tokens: 41_200, output_tokens: 1_830, cost_usd: Some(0.42) }) }),
         timed(Entry::User { text: "Go ahead".into() }),
         timed(Entry::FromAgent {
+            from: AgentSessionId(4),
+            text: "Before you merge: add a test for attempt 0.".into(),
+            answer: false,
+        }),
+        timed(Entry::FromAgent {
             from: AgentSessionId(2),
             text: "Done: the window is 15 minutes and each delay is capped at 2 minutes.".into(),
             answer: true,
         }),
-        timed(Entry::Notice { text: "Changed model sonnet from your next message.".into() }),
+        timed(Entry::Notice { text: "From your next message: model sonnet.".into() }),
         timed(Entry::Tool { id: "3".into(), name: "Edited".into(), detail: "src/webhooks/retry.rs".into(), output: None, failed: false }),
     ];
     let mut transcripts = HashMap::new();
@@ -120,6 +131,23 @@ fn transcripts() -> HashMap<AgentSessionId, Arc<TranscriptView>> {
         Arc::new(TranscriptView {
             entries: Arc::new(transcript.clone()),
             partial: Some("Editing the retry loop: the delay now".into()),
+        }),
+    );
+    transcripts.insert(
+        AgentSessionId(4),
+        Arc::new(TranscriptView {
+            entries: Arc::new(vec![
+                timed(Entry::FromAgent {
+                    from: AgentSessionId(2),
+                    text: "Review the retry change.".into(),
+                    answer: false,
+                }),
+                timed(Entry::Agent {
+                    text: "One finding: no test for attempt 0.".into(),
+                }),
+                timed(Entry::TurnEnd { usage: None }),
+            ]),
+            partial: None,
         }),
     );
     transcripts.insert(
@@ -199,7 +227,7 @@ fn sample() -> Snapshot {
         ConversationView {
             conversation: conversation(1, 1, "Fix webhook retry timeout", false, false),
             status: Status::Running,
-            sessions: vec![AgentSessionId(1), AgentSessionId(2)],
+            sessions: vec![AgentSessionId(1), AgentSessionId(2), AgentSessionId(4)],
         },
         ConversationView {
             conversation: conversation(2, 2, "Migrate config to TOML", true, false),
@@ -221,6 +249,7 @@ fn sample() -> Snapshot {
         session(1, 1, "planner", BackendKind::ClaudeCode, Status::Running),
         session(2, 1, "coder", BackendKind::Codex, Status::Idle),
         session(3, 2, "coder", BackendKind::Codex, Status::NeedsInput),
+        session(4, 1, "reviewer", BackendKind::ClaudeCode, Status::Idle),
     ];
     let transcripts = transcripts();
     let options = options();

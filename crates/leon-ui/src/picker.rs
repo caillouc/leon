@@ -145,9 +145,28 @@ impl Workspace {
                     this.open_picker = None;
                     cx.notify();
                 }));
+            // Next to the button, never over it: the message box's pickers
+            // (bottom of the window) open upwards, a form's downwards.
+            let (place, anchor) = match look {
+                Look::Inline => (
+                    div().absolute().top(px(-4.)).left_0(),
+                    gpui::Anchor::BottomLeft,
+                ),
+                Look::Field => (
+                    div().absolute().top(gpui::relative(1.)).mt_1().left_0(),
+                    gpui::Anchor::TopLeft,
+                ),
+            };
             container = container.child(
-                deferred(anchored().snap_to_window_with_margin(px(8.)).child(list))
+                place.child(
+                    deferred(
+                        anchored()
+                            .anchor(anchor)
+                            .snap_to_window_with_margin(px(8.))
+                            .child(list),
+                    )
                     .with_priority(1),
+                ),
             );
         }
         container.into_any_element()

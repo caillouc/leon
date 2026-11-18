@@ -283,8 +283,12 @@ fn agents_messaging_in_a_loop_make_a_ring() {
 }
 
 #[test]
-fn a_ring_sits_in_one_bowed_column_after_its_first_agent() {
+fn a_ring_is_laid_out_as_a_circle() {
     let s = |id| Node::Session(AgentSessionId(id));
+    let centre = |p: Pt| Pt {
+        x: p.x + 100.,
+        y: p.y + 48.,
+    };
     // planner (1) → coder (2) → reviewer (3) → back to planner; the reviewer
     // started a tester (4).
     let m = model(
@@ -292,9 +296,33 @@ fn a_ring_sits_in_one_bowed_column_after_its_first_agent() {
         &[(1, 2), (2, 3), (3, 1), (3, 4)],
     );
     let pos = layout(&m);
-    let (planner, coder, reviewer, tester) = (pos[&s(1)], pos[&s(2)], pos[&s(3)], pos[&s(4)]);
-    assert!(planner.x < coder.x, "{pos:?}");
-    assert!((coder.x - reviewer.x).abs() < 1., "same column: {pos:?}");
-    assert!(coder.y < reviewer.y, "in loop order: {pos:?}");
-    assert!(tester.x > reviewer.x, "{pos:?}");
+    let (planner, coder, reviewer, tester) = (
+        centre(pos[&s(1)]),
+        centre(pos[&s(2)]),
+        centre(pos[&s(3)]),
+        centre(pos[&s(4)]),
+    );
+    // A triangle: the planner on the left, the coder above, the reviewer
+    // below, both to its right.
+    assert!(coder.y < planner.y && reviewer.y > planner.y, "{pos:?}");
+    assert!(coder.x > planner.x && reviewer.x > planner.x, "{pos:?}");
+    assert!((coder.x - reviewer.x).abs() < 1., "{pos:?}");
+    // What comes after the ring starts right of the whole circle.
+    assert!(tester.x - 100. > coder.x + 100., "{pos:?}");
+
+    // Four in a loop: one above, one opposite, one below.
+    let m = model(
+        &[(1, None), (2, Some(1)), (3, Some(2)), (4, Some(3))],
+        &[(1, 2), (2, 3), (3, 4), (4, 1)],
+    );
+    let pos = layout(&m);
+    let (first, top, far, bottom) = (
+        centre(pos[&s(1)]),
+        centre(pos[&s(2)]),
+        centre(pos[&s(3)]),
+        centre(pos[&s(4)]),
+    );
+    assert!(top.y < first.y && bottom.y > first.y, "{pos:?}");
+    assert!((far.y - first.y).abs() < 1. && far.x > top.x, "{pos:?}");
+    assert!((top.x - bottom.x).abs() < 1., "{pos:?}");
 }

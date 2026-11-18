@@ -1,6 +1,6 @@
 //! `cargo xtask bundle [--install]`: builds Leon.app (macOS) from the release
 //! binary, the icon in `assets/` and an Info.plist, signs it ad hoc so macOS
-//! runs it, and with `--install` copies it to /Applications.
+//! runs it, and with `--install` moves it to /Applications.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -53,7 +53,9 @@ pub(crate) fn bundle(install: bool) -> bool {
             eprintln!("bundle: could not replace {}", target.display());
             return false;
         }
-        if !run("cp", &["-R", &app.to_string_lossy(), "/Applications/"]) {
+        // Moved, not copied: a second Leon.app left in target/ would show in
+        // Spotlight and Launchpad next to the installed one.
+        if !run("mv", &[&app.to_string_lossy(), "/Applications/"]) {
             return false;
         }
         println!("bundle: installed {}", target.display());

@@ -98,9 +98,9 @@ conversation**: one item in the left pane (D5).
   returned, a highlighted arrow for a question waiting for you, and live status
   on each box. Click a box to open its session; click an arrow to read its
   prompts or reports. Each agent has its own colour. Agents that message each
-  other in a loop (planner → coder → reviewer → planner) are laid out as a
-  loop, not a long line. Arrows bend rounded or square (a toggle in the
-  diagram and in Settings).
+  other in a loop (planner → coder → reviewer → planner) are placed on a
+  circle, not on a long line. Arrows bend rounded (default) or square (a
+  toggle in the diagram and in Settings).
 - **FLOW-5** Nothing hardcoded: the flow is built from what the agents actually
   do. A new agent that starts another agent shows up on its own.
 - **FLOW-6** The diagram is a canvas: drag to pan, scroll or pinch to zoom, drag

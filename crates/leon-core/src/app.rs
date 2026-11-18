@@ -862,5 +862,5 @@ fn describe_change(old: &SessionSettings, new: &SessionSettings) -> String {
     if old.permission != new.permission {
         parts.push(format!("permission {}", new.permission));
     }
-    format!("Changed {} from your next message.", parts.join(", "))
+    format!("From your next message: {}.", parts.join(", "))
 }

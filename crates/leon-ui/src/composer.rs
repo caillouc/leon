@@ -76,9 +76,15 @@ impl Workspace {
                     )
                     .when(!q.detail.is_empty(), |d| {
                         d.child(
+                            // What waits for approval, e.g. the command: the
+                            // most important text of the card.
                             div()
-                                .text_size(px(12.))
-                                .text_color(theme::fg_muted())
+                                .px_2()
+                                .py_1()
+                                .rounded_md()
+                                .bg(theme::surface_2())
+                                .text_size(px(12.5))
+                                .text_color(theme::fg())
                                 .font_family(theme::MONO)
                                 .child(q.detail.clone()),
                         )
