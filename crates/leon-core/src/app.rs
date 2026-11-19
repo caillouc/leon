@@ -114,6 +114,8 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         git_in_flight: HashSet::new(),
         git_dirty: HashSet::new(),
         working_trees: HashMap::new(),
+        lookups: 0,
+        latest_lookup: HashMap::new(),
         next_flash: 0,
     };
     runtime.spawn(core.run(intent_rx, event_rx, internal_rx, tool_rx));
@@ -172,6 +174,10 @@ pub(crate) struct Core {
     pub(crate) git_dirty: HashSet<std::path::PathBuf>,
     /// The working tree holding each folder agents changed files in (CTX-2).
     pub(crate) working_trees: HashMap<std::path::PathBuf, std::path::PathBuf>,
+    /// Folder lookups started, and each conversation's latest: a lookup
+    /// that ends after a later one does not move its conversation back.
+    pub(crate) lookups: u64,
+    pub(crate) latest_lookup: HashMap<ConversationId, u64>,
     next_flash: u64,
 }
 

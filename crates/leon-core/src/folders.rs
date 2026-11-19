@@ -29,8 +29,11 @@ impl Core {
         dirs.sort();
         dirs.dedup();
         for dir in dirs {
-            match self.working_trees.get(&dir) {
-                Some(root) => self.worked_in(conversation, flow, root.clone()),
+            match self.working_trees.get(&dir).cloned() {
+                Some(root) => {
+                    let seq = self.next_lookup(conversation);
+                    self.worked_in(conversation, flow, root, seq);
+                }
                 None => self.find_working_tree(conversation, flow, dir, false),
             }
         }
@@ -40,18 +43,20 @@ impl Core {
     /// in the background. `keep`: `dir` joins the flow even outside a
     /// repository.
     pub(crate) fn find_working_tree(
-        &self,
+        &mut self,
         conversation: ConversationId,
         flow: FlowId,
         dir: PathBuf,
         keep: bool,
     ) {
+        let seq = self.next_lookup(conversation);
         let git = Arc::clone(&self.ports.git);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || {
             let root = git.working_tree(&dir);
             let _ = tx.send(Internal::WorkingTree {
                 conversation,
+                seq,
                 flow,
                 dir,
                 root,
@@ -60,9 +65,16 @@ impl Core {
         });
     }
 
+    /// Numbers a folder `conversation` works in, in the order it happened.
+    fn next_lookup(&mut self, conversation: ConversationId) -> u64 {
+        self.lookups += 1;
+        self.latest_lookup.insert(conversation, self.lookups);
+        self.lookups
+    }
+
     pub(crate) fn working_tree_found(
         &mut self,
-        conversation: ConversationId,
+        (conversation, seq): (ConversationId, u64),
         flow: FlowId,
         dir: PathBuf,
         root: Option<PathBuf>,
@@ -71,18 +83,27 @@ impl Core {
         match root {
             Some(root) => {
                 self.working_trees.insert(dir, root.clone());
-                self.worked_in(conversation, flow, root);
+                self.worked_in(conversation, flow, root, seq);
             }
-            None if keep => self.worked_in(conversation, flow, dir),
+            None if keep => self.worked_in(conversation, flow, dir, seq),
             None => {}
         }
     }
 
-    /// `conversation` works in `folder`: the folder joins its flow, and is
-    /// where the right pane shows it working.
-    fn worked_in(&mut self, conversation: ConversationId, flow: FlowId, folder: PathBuf) {
-        if let Some(s) = self.state.conversations.get_mut(&conversation) {
-            s.folder = Some(folder.clone());
+    /// `conversation` works in `folder` (its `seq`th folder): the folder
+    /// joins its flow, and is where the right pane shows it working unless
+    /// it has worked somewhere since.
+    fn worked_in(&mut self, conversation: ConversationId, flow: FlowId, folder: PathBuf, seq: u64) {
+        let latest = self.latest_lookup.get(&conversation) == Some(&seq);
+        let moved = self
+            .state
+            .conversations
+            .get_mut(&conversation)
+            .filter(|s| latest && s.conversation.folder.as_ref() != Some(&folder))
+            .map(|s| s.conversation.folder = Some(folder.clone()))
+            .is_some();
+        if moved {
+            self.save_conversation(conversation);
         }
         self.add_folder(flow, folder);
     }

@@ -81,6 +81,9 @@ const MIGRATIONS: &[&str] = &[
              CAST(substr(issue, instr(issue, '#') + 1) AS INTEGER)
       FROM flows WHERE instr(issue, '#') > 1 ORDER BY id;
     ALTER TABLE flows DROP COLUMN issue;",
+    // 11: the folder each conversation works in, so the right pane shows
+    // only the worktrees an agent works in, across restarts (CTX-2, I20).
+    "ALTER TABLE conversations ADD COLUMN folder TEXT;",
 ];
 
 /// Latest schema version this build knows.

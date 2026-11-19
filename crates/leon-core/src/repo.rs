@@ -25,6 +25,8 @@ pub(crate) enum Internal {
     /// then (an agent said it works there).
     WorkingTree {
         conversation: leon_domain::ConversationId,
+        /// Which of its conversation's folders this is, in order.
+        seq: u64,
         flow: FlowId,
         dir: PathBuf,
         root: Option<PathBuf>,
@@ -274,11 +276,12 @@ impl Core {
             }
             Internal::WorkingTree {
                 conversation,
+                seq,
                 flow,
                 dir,
                 root,
                 keep,
-            } => self.working_tree_found(conversation, flow, dir, root, keep),
+            } => self.working_tree_found((conversation, seq), flow, dir, root, keep),
             Internal::Lists(Ok((issues, prs))) => {
                 self.state.my_issues = Arc::new(issues);
                 self.state.my_prs = Arc::new(prs);

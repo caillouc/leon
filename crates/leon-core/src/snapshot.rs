@@ -90,17 +90,14 @@ impl Snapshot {
         self.flows.iter().find(|c| c.flow.id == id)
     }
 
-    /// A flow's pull requests, each once: its folders' in folder order,
-    /// then those linked to it (CTX-2).
+    /// A flow's pull requests, each once: its folders' in folder order (a
+    /// worktree its agents left keeps its pull request here), then those
+    /// linked to it (CTX-2).
     pub fn prs_of(&self, c: &FlowView) -> Vec<&PullRequest> {
         let mut prs: Vec<&PullRequest> = Vec::new();
         let linked = c.flow.links.iter().filter_map(|l| self.linked_prs.get(l));
-        for pr in c
-            .folders
-            .iter()
-            .filter_map(|f| self.prs.get(f))
-            .chain(linked)
-        {
+        let folders = c.folders.iter().chain(&c.flow.folders);
+        for pr in folders.filter_map(|f| self.prs.get(f)).chain(linked) {
             if !prs
                 .iter()
                 .any(|p| p.repo == pr.repo && p.number == pr.number)
@@ -121,7 +118,8 @@ pub struct FlowView {
     pub status: Status,
     /// Its conversations, the one the user started first.
     pub conversations: Vec<ConversationId>,
-    /// The folders it works in, never empty once it has a conversation (CTX-2).
+    /// The worktrees its agents work in now, in the order Leon saw them
+    /// (CTX-2).
     pub folders: Vec<PathBuf>,
     /// The issues it is linked to, the one it was started for first
     /// (CTX-2).
@@ -202,6 +200,20 @@ pub struct GitView {
     pub branch_diff: Arc<Vec<FileDiff>>,
     /// Why git could not be read (not a repository…).
     pub error: Option<String>,
+}
+
+impl GitView {
+    /// Its checkout sits on its repository's default branch (`dev` when the
+    /// base is `origin/dev`): where worktrees start from, not where agents
+    /// work, so the right pane leaves it out (CTX-2).
+    pub fn on_default_branch(&self) -> bool {
+        match (&self.branch, &self.base) {
+            (Some(branch), Some(base)) => {
+                base.split_once('/').map_or(base.as_str(), |(_, name)| name) == branch
+            }
+            _ => false,
+        }
+    }
 }
 
 /// An issue's or a pull request's details, as read from GitHub.

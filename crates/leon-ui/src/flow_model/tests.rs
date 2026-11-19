@@ -26,6 +26,7 @@ fn conversation(id: i64, started_by: Option<i64>) -> ConversationView {
             working_dir: PathBuf::from("/code"),
             cli_session: None,
             unread: false,
+            folder: None,
         },
         status: Status::Idle,
         subagents: (0, 0),

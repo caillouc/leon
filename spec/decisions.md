@@ -258,3 +258,10 @@ order they were linked; the issue a flow was started for became its first
 link (migration 10). Chosen by the maintainer on 2026-11-19: "Yes, enable
 the fact that agent can link issues in PR in Leon. Yes, you can do the
 storage migration to store several issues".
+
+**I20 — Each conversation's folder is saved (CTX-2).** The worktree a
+conversation last worked in is kept in SQLite `conversations.folder`
+(migration 11), so the right pane shows only the worktrees an agent works
+in, also after a restart. Chosen by the maintainer on 2026-11-19, asked
+"Save each agent's folder in the store so empty worktrees can be hidden?":
+"Yes, save it".

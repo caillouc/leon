@@ -4,39 +4,23 @@ One native window to run and follow many coding-agent conversations across
 many repositories, on top of the coding CLIs you already use: Claude Code,
 Codex and Copilot CLI.
 
-![A flow in Leon: the Flow tab with a planner, two coders and two reviewers spread around it, the prompts and reports between them, and the right pane's Info: the flow's pull requests, what each agent does now, its folders and issues (sample data)](docs/flow.png)
+Each flow's agents, and what they send each other:
+
+![A flow in Leon: the Flow tab with a planner, two coders and two reviewers around it, the prompts and reports between them, and the right pane's Info: the flow's pull requests, what each agent does now and where (sample data)](docs/flow.png)
+
+One conversation per agent, as in its CLI:
+
+![A conversation in Leon: a reviewer's answer with its findings, your question, and its answer with code, above the message box with its CLI, model, effort and permission; on the right, the flow's pull requests and what each agent does now (sample data)](docs/conversation.png)
 
 ## Why Leon
 
-Coding agents now work in parallel: a planner hands work to a coder, a
-reviewer checks it, and you juggle several of these at once, in several
-repositories, in several terminal tabs. Leon puts all of them in one fast
-window:
-
-- **The Flow tab** — Leon's signature. Each flow is drawn as a live diagram:
-  you, every agent, and the prompts, reports and questions flowing
-  between them, laid out live by the forces of CS Academy's graph editor:
-  drag a box and the others make room, the arrows curving round it. Click a box to talk to that agent,
-  an arrow to read what was said; the one with an answer for you is marked
-  "To review".
-- **What each agent does now**, live at the bottom of its conversation:
-  the command it runs and for how long, its subagents, its plan, and the
-  agents it waits for ("Waiting for coder 1 · Working").
-- **Agents that start agents.** Any agent can start or message another
-  through Leon's own tools, whichever CLI it runs on: a Claude Code planner
-  can hand work to a Codex coder. Agents call each other by the names you
-  see (coder 1, reviewer 2), link the issues and pull requests they create,
-  and each can work in its own worktree or repository.
-- **Your work around it**: the git changes and branch diff of each flow with
-  line comments sent back as one review, its pull requests with their
-  checks (a failing job one click away) and merge conflicts, your GitHub issues by board column, priority and sprint (start a
-  flow from an issue in one click), and the connectors each CLI can reach.
-- **Your subscriptions, your CLIs.** Leon drives the official CLIs with your
-  own logins; it never calls a model API itself and stores everything locally.
-- **Native and fast**: Rust and GPUI (Zed's UI framework), no web view.
-
-Use it if you run more than one coding agent at a time and want to see, in
-one place, who is doing what, what changed, and what waits for you.
+Coding agents now work in teams: a planner hands work to coders and
+reviewers, often in several repositories at once. Leon gives each agent its
+own conversation, through the official CLI and your own login, draws the
+whole team as a live diagram, and shows what waits for you: answers to
+review, questions, each flow's changes and pull requests. Native and fast
+(Rust and GPUI); it never calls a model API itself and keeps everything on
+your machine.
 
 How it works, in plain language: [docs/how-leon-works.md](docs/how-leon-works.md).
 What it does: [spec/features.md](spec/features.md).

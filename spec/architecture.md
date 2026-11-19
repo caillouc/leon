@@ -92,8 +92,10 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    worktrees) and adds it once; a conversation started with a
    `working_directory` brings it at once. Each conversation keeps the folder
    it last worked in (`ConversationView::folder`), which the right pane shows
-   on its tab. The folder the calling CLI was started in never changes (its
-   resume depends on it).
+   on its tab, saved in `conversations.folder` (I20). The right pane shows
+   only the worktrees a conversation works in, never a checkout on its
+   default branch (`GitView::on_default_branch`). The folder the calling CLI
+   was started in never changes (its resume depends on it).
 7. Git state (`GitView`) and pull requests are kept per folder. A flow's
    links (`Flow::links`, SQLite `flow_links`, I19) are the issue it was
    started for and what its agents linked with `link_github`

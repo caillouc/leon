@@ -11,7 +11,7 @@ use leon_domain::{
 
 use crate::ports::{AgentDefinition, BackendOptions};
 use crate::snapshot::{
-    ConversationView, FlowView, Notification, Question, Snapshot, TranscriptView,
+    ConversationView, FlowView, GitView, Notification, Question, Snapshot, TranscriptView,
 };
 
 /// Live state of one conversation.
@@ -37,9 +37,6 @@ pub(crate) struct ConversationState {
     pub reply_to: Option<ConversationId>,
     /// Messages from other conversations waiting for this one to finish its turn.
     pub inbox: VecDeque<Waiting>,
-    /// The flow folder it last worked in: changed a file in, said it moved
-    /// to, or was started in (CTX-2).
-    pub folder: Option<PathBuf>,
 }
 
 /// A message from another conversation, not sent yet.
@@ -76,7 +73,6 @@ impl ConversationState {
             carry_context: false,
             reply_to: None,
             inbox: VecDeque::new(),
-            folder: None,
         }
     }
 
@@ -182,11 +178,36 @@ impl State {
             .find(|c| Some(*c) == id || self.conversation_name(*c).eq_ignore_ascii_case(to))
     }
 
-    /// The folder of its flow a conversation works in: the one it last
-    /// worked in, else the flow folder holding its working directory.
+    /// A flow's worktrees: its folders but a checkout on its repository's
+    /// default branch (CTX-2).
+    fn worktrees(&self, flow: FlowId) -> Vec<PathBuf> {
+        self.folders_of(flow)
+            .into_iter()
+            .filter(|f| !self.git.get(f).is_some_and(GitView::on_default_branch))
+            .collect()
+    }
+
+    /// The folders of a flow the user sees: its worktrees one of its agents
+    /// works in now, in the order Leon saw them (CTX-2).
+    fn shown_folders(&self, flow: FlowId) -> Vec<PathBuf> {
+        let busy: Vec<PathBuf> = self
+            .conversations
+            .values()
+            .filter(|s| s.conversation.flow == flow)
+            .filter_map(|s| self.folder_of(s))
+            .collect();
+        self.worktrees(flow)
+            .into_iter()
+            .filter(|f| busy.contains(f))
+            .collect()
+    }
+
+    /// The worktree of its flow a conversation works in: the one it last
+    /// worked in, else the one holding its working directory.
     fn folder_of(&self, s: &ConversationState) -> Option<PathBuf> {
-        let folders = self.folders_of(s.conversation.flow);
-        s.folder
+        let folders = self.worktrees(s.conversation.flow);
+        s.conversation
+            .folder
             .clone()
             .filter(|f| folders.contains(f))
             .or_else(|| {
@@ -298,13 +319,12 @@ impl State {
                         .filter_map(|id| self.conversations.get(id))
                         .map(|s| s.status),
                 );
-                let folders = self.folders_of(c.id);
                 FlowView {
                     flow: c.clone(),
                     status,
                     conversations,
-                    issues: self.issues_of(c, &folders),
-                    folders,
+                    issues: self.issues_of(c, &self.folders_of(c.id)),
+                    folders: self.shown_folders(c.id),
                 }
             })
             .collect();

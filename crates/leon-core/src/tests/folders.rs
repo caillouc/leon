@@ -28,17 +28,20 @@ async fn folders_join_a_flow_where_its_agents_change_files() {
     }
     let s = until(&h.core, "both pull requests", |s| {
         let c = &s.flows[0];
-        c.folders.len() == 2 && s.prs_of(c).len() == 2
+        c.flow.folders.len() == 2 && s.prs_of(c).len() == 2
     })
     .await;
     let c = &s.flows[0];
     assert_eq!(
-        c.folders,
+        c.flow.folders,
         [
             PathBuf::from("/code/api/.worktrees/fix"),
             PathBuf::from("/code/web")
         ]
     );
+    // Shown: only the worktree its agent works in now; the one it left
+    // keeps its pull request.
+    assert_eq!(c.folders, [PathBuf::from("/code/api/.worktrees/fix")]);
     // Each folder's branch brings its pull request, and each pull request
     // the issues it closes, after the one the flow started for.
     let prs: Vec<(&str, u64)> = s
@@ -70,7 +73,7 @@ async fn folders_join_a_flow_where_its_agents_change_files() {
     );
     // Kept: the folders are saved with the flow.
     let saved = h.storage.flows.lock().unwrap()[0].folders.clone();
-    assert_eq!(saved, c.folders);
+    assert_eq!(saved, c.flow.folders);
     assert_eq!(id, c.flow.id);
     assert_eq!(conversation, c.conversations[0]);
 }
@@ -126,17 +129,65 @@ async fn each_agent_has_the_folder_it_works_in() {
     );
     let coder = ConversationId(2);
     let s = until(&h.core, "each in its folder", |s| {
-        s.conversations[&coder].folder.as_deref() == Some(Path::new("/code/api/.worktrees/fix"))
-            && s.conversations[&planner].folder.as_deref() == Some(Path::new("/code/web"))
+        // The coder may not be in the snapshot yet.
+        let folder = |id| s.conversations.get(&id).and_then(|c| c.folder.clone());
+        folder(coder).as_deref() == Some(Path::new("/code/api/.worktrees/fix"))
+            && folder(planner).as_deref() == Some(Path::new("/code/web"))
     })
     .await;
+    // Both shown, each with its agent, in the order Leon saw them.
+    let mut shown = s.flows[0].folders.clone();
+    shown.sort();
     assert_eq!(
-        s.flows[0].folders,
+        shown,
         [
-            PathBuf::from("/code/web"),
-            PathBuf::from("/code/api/.worktrees/fix")
+            PathBuf::from("/code/api/.worktrees/fix"),
+            PathBuf::from("/code/web")
         ]
     );
+    // Saved: it survives a restart (I20).
+    let saved = h.storage.conversations.lock().unwrap().clone();
+    let folder = |id: ConversationId| {
+        saved
+            .iter()
+            .find(|c| c.id == id)
+            .and_then(|c| c.folder.clone())
+    };
+    assert_eq!(
+        folder(coder),
+        Some(PathBuf::from("/code/api/.worktrees/fix"))
+    );
+}
+
+/// A checkout on its repository's default branch is where worktrees start
+/// from: the flow keeps it, but the folders it shows and its agents' folders
+/// leave it out (CTX-2).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_checkout_on_the_default_branch_is_not_shown() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::Codex).await;
+    let docs = PathBuf::from("/code/docs");
+    let worktree = PathBuf::from("/code/api/.worktrees/fix");
+    emit(
+        &h,
+        0,
+        BackendEvent::FilesChanged(vec![PathBuf::from("/code/docs/README.md")]),
+    );
+    until(&h.core, "the docs checkout read", |s| {
+        s.git.contains_key(&docs)
+    })
+    .await;
+    emit(
+        &h,
+        0,
+        BackendEvent::FilesChanged(vec![worktree.join("src/retry.rs")]),
+    );
+    let s = until(&h.core, "the worktree", |s| {
+        s.flows[0].folders == [worktree.clone()]
+    })
+    .await;
+    assert_eq!(s.conversations[&planner].folder, Some(worktree));
+    assert!(h.storage.flows.lock().unwrap()[0].folders.contains(&docs));
 }
 
 #[tokio::test(flavor = "multi_thread")]

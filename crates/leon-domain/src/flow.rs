@@ -135,6 +135,9 @@ pub struct Conversation {
     pub cli_session: Option<String>,
     /// Its last answer to the user is not read yet (NAV-4, FLOW-4).
     pub unread: bool,
+    /// The folder of its flow it last worked in: changed a file in, said it
+    /// moved to, or was started in (CTX-2, I20).
+    pub folder: Option<PathBuf>,
 }
 
 #[cfg(test)]

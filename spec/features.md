@@ -205,7 +205,12 @@ flow**: one item in the left pane (D5).
   creates or works on, and the flow keeps them all. Several agents can
   work in several folders at once: Where shows, under each folder, the
   agents working there, and on an agent's tab Changes and Branch show
-  that agent's folder unless another is picked on that tab. Info lists them all, each folder with its repository,
+  that agent's folder unless another is picked on that tab. The right pane
+  shows only the worktrees an agent works in now (a worktree its agents
+  left keeps its PR in Info); a checkout on its repository's default branch
+  (the main checkout worktrees start from) never shows there, nor in the
+  worktree chip above the tabs, which shows the branch of the folder
+  shown, to copy. Info lists them all, each folder with its repository,
   branch and what it started from, its PR and its path. Changes and Branch
   show one folder at a time, named by a row of chips (repository · branch ·
   PR) above them, picked there when there are several.

@@ -225,7 +225,7 @@ impl Workspace {
                     div()
                         .text_size(px(12.))
                         .text_color(theme::fg_faint())
-                        .child("No folder yet: one shows once an agent works in it."),
+                        .child("No worktree yet: one shows once an agent works in it."),
                 )
             })
             .children(view.folders.iter().map(folder))

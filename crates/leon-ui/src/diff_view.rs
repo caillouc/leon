@@ -55,6 +55,9 @@ pub(crate) struct DiffFiles {
 impl Workspace {
     /// The files of a diff, or why there is nothing to show.
     pub(crate) fn diff_files(&self, id: FlowId, source: DiffSource) -> Result<DiffFiles, String> {
+        if self.folder(id).is_none() {
+            return Err("No worktree yet: one shows once an agent works in it.".to_owned());
+        }
         let Some(git) = self.folder_git(id) else {
             return Err("Reading git…".to_owned());
         };

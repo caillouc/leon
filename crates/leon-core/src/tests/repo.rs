@@ -21,10 +21,13 @@ impl Git for FakeGit {
             checks: vec![],
         }
     }
+    /// `/code/docs` sits on its default branch, `main`.
     fn branch(&self, dir: &Path) -> Option<String> {
         Some(
             if dir.starts_with("/code/web") {
                 "web-fix"
+            } else if dir.starts_with("/code/docs") {
+                "main"
             } else {
                 "fix-retry"
             }
@@ -34,10 +37,15 @@ impl Git for FakeGit {
     /// `/code/api` and `/code/web` are repositories, `/code/api/.worktrees/fix`
     /// a worktree of the first.
     fn working_tree(&self, path: &Path) -> Option<PathBuf> {
-        ["/code/api/.worktrees/fix", "/code/api", "/code/web"]
-            .into_iter()
-            .find(|root| path.starts_with(root))
-            .map(PathBuf::from)
+        [
+            "/code/api/.worktrees/fix",
+            "/code/api",
+            "/code/web",
+            "/code/docs",
+        ]
+        .into_iter()
+        .find(|root| path.starts_with(root))
+        .map(PathBuf::from)
     }
     fn default_base(&self, _dir: &Path) -> Option<String> {
         Some("origin/main".into())

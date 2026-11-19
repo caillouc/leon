@@ -69,7 +69,7 @@ fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
     })
 }
 
-const CONVERSATION_COLUMNS: &str = "id, flow_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session, unread";
+const CONVERSATION_COLUMNS: &str = "id, flow_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session, unread, folder";
 
 fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
     let backend: String = row.get(3)?;
@@ -87,6 +87,7 @@ fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
         working_dir: PathBuf::from(row.get::<_, String>(8)?),
         cli_session: row.get(9)?,
         unread: row.get(10)?,
+        folder: row.get::<_, Option<String>>(11)?.map(PathBuf::from),
     })
 }
 
@@ -291,6 +292,7 @@ impl Storage for Store {
             working_dir: new.working_dir.clone(),
             cli_session: None,
             unread: false,
+            folder: None,
         })
     }
 
@@ -299,8 +301,19 @@ impl Storage for Store {
         self.lock()
             .execute(
                 "UPDATE conversations SET backend = ?2, agent = ?3, model = ?4, effort = ?5, permission = ?6,
-                 working_dir = ?7, cli_session = ?8, unread = ?9 WHERE id = ?1",
-                params![a.id.0, s.backend.id(), s.agent, s.model, s.effort, s.permission, path_text(&a.working_dir), a.cli_session, a.unread],
+                 working_dir = ?7, cli_session = ?8, unread = ?9, folder = ?10 WHERE id = ?1",
+                params![
+                    a.id.0,
+                    s.backend.id(),
+                    s.agent,
+                    s.model,
+                    s.effort,
+                    s.permission,
+                    path_text(&a.working_dir),
+                    a.cli_session,
+                    a.unread,
+                    a.folder.as_deref().map(path_text)
+                ],
             )
             .map(drop)
             .map_err(err("saving a conversation"))
@@ -451,6 +464,7 @@ mod tests {
             .unwrap();
         conversation.cli_session = Some("thread-1".into());
         conversation.unread = true;
+        conversation.folder = Some(PathBuf::from("/code/api/.worktrees/fix"));
         store.update_conversation(&conversation).unwrap();
         conv.pinned = true;
         conv.folders = vec![

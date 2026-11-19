@@ -66,40 +66,33 @@ impl Workspace {
             .whitespace_nowrap()
             .text_ellipsis()
             .child(c.title.clone());
-        let folder = view
-            .conversations
-            .first()
-            .and_then(|s| self.snapshot.conversations.get(s))
-            .map(|s| s.conversation.working_dir.clone());
-        let branch = self.folder_git(id).and_then(|g| g.branch.clone());
-        let chip_text: SharedString = branch
-            .clone()
-            .or_else(|| {
-                folder
-                    .as_ref()
-                    .and_then(|f| f.file_name())
-                    .map(|n| n.to_string_lossy().into_owned())
-            })
-            .unwrap_or_default()
-            .into();
-        let copy = chip_text.clone();
-        let chip = div()
-            .id("worktree-chip")
-            .px_2()
-            .py(px(2.))
-            .rounded_md()
-            .border_1()
-            .border_color(theme::border())
-            .bg(theme::surface())
-            .text_size(px(11.5))
-            .text_color(theme::fg_muted())
-            .cursor_pointer()
-            .hover(|s| s.text_color(theme::fg()))
-            .child(format!("⎇ {chip_text}"))
-            .on_click(move |_, _, cx| {
-                cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
-            });
-
+        // The worktree shown (the agent's on its tab), its branch to copy;
+        // none while the flow has only its default checkout (CTX-2).
+        let chip = self.folder(id).map(|folder| {
+            let chip_text: SharedString = self
+                .folder_git(id)
+                .and_then(|g| g.branch.clone())
+                .or_else(|| folder.file_name().map(|n| n.to_string_lossy().into_owned()))
+                .unwrap_or_default()
+                .into();
+            let copy = chip_text.clone();
+            div()
+                .id("worktree-chip")
+                .px_2()
+                .py(px(2.))
+                .rounded_md()
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::surface())
+                .text_size(px(11.5))
+                .text_color(theme::fg_muted())
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::fg()))
+                .child(format!("⎇ {chip_text}"))
+                .on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
+                })
+        });
         let current = self.current_conversation();
         let adding = self.tabs.get(&id) == Some(&Tab::New);
         // More tabs than the pane is wide scroll sideways, with a trackpad
@@ -171,7 +164,7 @@ impl Workspace {
                     .border_b_1()
                     .border_color(theme::border())
                     .child(div().flex_1().min_w_0().child(title))
-                    .child(chip)
+                    .children(chip)
                     // The right pane, closed: this opens it again.
                     .when(!self.panes.right_open, |d| {
                         d.child(

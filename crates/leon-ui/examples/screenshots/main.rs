@@ -59,6 +59,7 @@ fn conversation(
             cli_session: Some("s".to_owned()),
             // The reviewer's answer to the user is not read yet.
             unread: id == 4,
+            folder: None,
         },
         status,
         subagents: if id == 1 { (2, 1) } else { (0, 0) },
@@ -179,23 +180,7 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
             partial: Some("Editing the retry loop: the delay now".into()),
         }),
     );
-    transcripts.insert(
-        ConversationId(4),
-        Arc::new(TranscriptView {
-            entries: Arc::new(vec![
-                timed(Entry::FromAgent {
-                    from: ConversationId(1),
-                    text: "Review the retry change.".into(),
-                    answer: false,
-                }),
-                timed(Entry::Agent {
-                    text: "One finding: no test for attempt 0.".into(),
-                }),
-                timed(Entry::TurnEnd { usage: None }),
-            ]),
-            partial: None,
-        }),
-    );
+    transcripts.insert(ConversationId(4), review());
     transcripts.insert(
         ConversationId(2),
         Arc::new(TranscriptView {
@@ -230,6 +215,57 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
         }),
     );
     transcripts
+}
+
+/// The first reviewer: the planner's request, its review, then the user's
+/// question and its answer, for the README's conversation picture.
+fn review() -> Arc<TranscriptView> {
+    let read = |id: &str, path: &str| {
+        timed(Entry::Tool {
+            id: id.into(),
+            name: "Read".into(),
+            detail: path.into(),
+            output: Some("…".into()),
+            failed: false,
+        })
+    };
+    let usage = |input_tokens, output_tokens, cost| Entry::TurnEnd {
+        usage: Some(Usage {
+            input_tokens,
+            output_tokens,
+            cost_usd: Some(cost),
+        }),
+    };
+    Arc::new(TranscriptView {
+        entries: Arc::new(vec![
+            timed(Entry::FromAgent {
+                from: ConversationId(1),
+                text: "Review the retry change in `src/webhooks/retry.rs`: the window is now 15 minutes and each delay is capped at 2 minutes.".into(),
+                answer: false,
+            }),
+            read("r1", "src/webhooks/retry.rs"),
+            timed(Entry::Tool {
+                id: "r2".into(),
+                name: "Ran".into(),
+                detail: "cargo test webhook".into(),
+                output: Some("test result: ok. 6 passed".into()),
+                failed: false,
+            }),
+            timed(Entry::Agent {
+                text: "**Review of the retry change**\n\nThe window and the cap are right, and the 6 webhook tests pass. Two findings:\n\n1. **No test for attempt 0.** The first retry calls `next_delay(0)`, which waits 1 s; nothing checks it.\n2. **`MAX_DELAY` is hard-coded** in `src/webhooks/retry.rs:14`. Fine for now; worth a setting if ops want 5 minutes.\n\nI would block on the first one only.".into(),
+            }),
+            timed(usage(18_400, 620, 0.11)),
+            timed(Entry::User {
+                text: "Is attempt 0 really reachable? I thought retries start at 1.".into(),
+            }),
+            read("r3", "src/webhooks/mod.rs"),
+            timed(Entry::Agent {
+                text: "Yes. The first retry passes the number of failures so far, which is 0 (`src/webhooks/mod.rs:41`):\n\n```rust\nlet delay = next_delay(failures); // 0 on the first retry\n```\n\nSo the first retry waits 2⁰ = 1 second. A test that pins it down:\n\n```rust\n#[test]\nfn first_retry_waits_one_second() {\n    assert_eq!(next_delay(0), Duration::from_secs(1));\n}\n```".into(),
+            }),
+            timed(usage(21_900, 310, 0.06)),
+        ]),
+        partial: None,
+    })
 }
 
 /// The second coder and the tester of the first flow.
@@ -473,6 +509,11 @@ fn main() {
     let shots = vec![
         ("empty".to_owned(), Shot::Empty),
         ("conversation".to_owned(), Shot::Conversation(FlowId(1))),
+        // The README's conversation: you and the first reviewer.
+        (
+            "agent".to_owned(),
+            Shot::Agent(FlowId(1), ConversationId(4)),
+        ),
         ("question".to_owned(), Shot::Conversation(FlowId(2))),
         ("right-closed".to_owned(), Shot::RightClosed(FlowId(1))),
         ("slash-list".to_owned(), Shot::Typed(FlowId(1), "/dep")),

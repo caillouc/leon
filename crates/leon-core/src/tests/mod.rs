@@ -121,6 +121,7 @@ impl Storage for FakeStorage {
             working_dir: new.working_dir.clone(),
             cli_session: None,
             unread: false,
+            folder: None,
         };
         list.push(s.clone());
         Ok(s)

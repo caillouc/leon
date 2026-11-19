@@ -354,7 +354,9 @@ async fn an_agent_started_for_the_user_answers_the_user() {
     end_turn(&h, 1, "Plan for B.");
     let other = ConversationId(2);
     let s = until(&h.core, "the new planner to review", |s| {
-        s.conversations[&other].conversation.unread
+        s.conversations
+            .get(&other)
+            .is_some_and(|c| c.conversation.unread)
     })
     .await;
     assert_eq!(s.conversations[&planner].waiting_for, []);

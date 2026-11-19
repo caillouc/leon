@@ -26,6 +26,8 @@ pub enum Shot {
     Empty,
     /// A flow, on its first conversation.
     Conversation(FlowId),
+    /// A flow, on one agent's tab.
+    Agent(FlowId, leon_domain::ConversationId),
     /// A flow with one picker open (picker id, e.g. `conversation-model`).
     PickerOpen(FlowId, &'static str),
     /// A flow's Flow tab (its diagram).
@@ -94,6 +96,10 @@ impl Workspace {
             Shot::Conversation(id) => {
                 self.select(*id, cx);
                 self.open_first_conversation(*id);
+            }
+            Shot::Agent(id, conversation) => {
+                self.select(*id, cx);
+                self.tabs.insert(*id, Tab::Conversation(*conversation));
             }
             Shot::PickerOpen(id, picker) => {
                 self.select(*id, cx);
