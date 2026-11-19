@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, ClipboardItem, Context, IntoElement, SharedString, Window, div, prelude::*, px,
 };
 use leon_core::ConversationView;
-use leon_domain::{FlowId, Status};
+use leon_domain::{ConversationId, FlowId, Status};
 
 use crate::icons::{Icon, icon};
 use crate::spinner::status_mark;
@@ -109,23 +109,38 @@ impl Workspace {
             .flex()
             .gap_1()
             .overflow_x_scroll()
+            .track_scroll(&self.tab_scroll)
             .child(Self::tab_button(
                 "tab-flow",
                 "Flow".into(),
-                None,
+                // An answer not read yet waits on the diagram: a green dot
+                // (NAV-4).
+                view.flow.unread.then(|| {
+                    div()
+                        .size(px(7.))
+                        .rounded_full()
+                        .bg(theme::ok())
+                        .into_any_element()
+                }),
                 current.is_none() && !adding,
                 id,
                 Tab::Flow,
                 cx,
             ));
-        for sid in &view.conversations {
+        let recent = self.recent.get(&id).map_or(&[][..], Vec::as_slice);
+        for sid in &tab_order(&view.conversations, recent) {
             if let Some(s) = self.snapshot.conversations.get(sid).cloned() {
                 let selected = current == Some(*sid);
-                let name = self.conversation_name(&s);
-                let text: SharedString = format!(
-                    "{name} · {}",
-                    s.conversation.settings.backend.display_name()
-                )
+                // Its CLI after its agent; a conversation without an agent
+                // is named after its CLI already.
+                let text: SharedString = match s.conversation.settings.agent {
+                    Some(_) => format!(
+                        "{} · {}",
+                        s.name,
+                        s.conversation.settings.backend.display_name()
+                    ),
+                    None => s.name.clone(),
+                }
                 .into();
                 tabs = tabs.child(Self::tab_button(
                     &format!("tab-{}", sid.0),
@@ -227,28 +242,6 @@ impl Workspace {
             .into_any_element()
     }
 
-    pub(crate) fn conversation_name(&self, s: &ConversationView) -> String {
-        let name = s
-            .conversation
-            .settings
-            .agent
-            .clone()
-            .unwrap_or_else(|| "Agent".to_owned());
-        let flow = self.snapshot.flow(s.conversation.flow);
-        let same: Vec<_> = flow.map_or_default(|c| {
-            c.conversations
-                .iter()
-                .filter_map(|id| self.snapshot.conversations.get(id))
-                .filter(|o| o.conversation.settings.agent == s.conversation.settings.agent)
-                .map(|o| o.conversation.id)
-                .collect()
-        });
-        match same.iter().position(|id| *id == s.conversation.id) {
-            Some(ix) if same.len() > 1 => format!("{name} {}", ix + 1),
-            _ => name,
-        }
-    }
-
     pub(crate) fn status_line(s: &ConversationView) -> Option<String> {
         let (started, running) = s.subagents;
         let sub = (started > 0).then(|| format!("Subagents: {started} started, {running} running"));
@@ -261,6 +254,37 @@ impl Workspace {
         match (state, sub) {
             (Some(a), Some(b)) => Some(format!("{a} · {b}")),
             (a, b) => a.or(b),
+        }
+    }
+}
+
+/// The agent tabs' order after Flow (FLOW-3): those opened, the last one
+/// (the one shown) first, then the others in start order.
+fn tab_order(all: &[ConversationId], recent: &[ConversationId]) -> Vec<ConversationId> {
+    let mut order: Vec<ConversationId> =
+        recent.iter().filter(|c| all.contains(c)).copied().collect();
+    order.extend(all.iter().filter(|c| !recent.contains(c)));
+    order
+}
+
+#[cfg(test)]
+mod tests {
+    use leon_domain::ConversationId;
+
+    use super::tab_order;
+
+    #[test]
+    fn the_tab_shown_comes_first_then_the_last_opened() {
+        let ids = |list: &[i64]| list.iter().map(|i| ConversationId(*i)).collect::<Vec<_>>();
+        let all = ids(&[1, 2, 3, 4]);
+        let cases: [(&[i64], &[i64]); 3] = [
+            (&[], &[1, 2, 3, 4]),
+            (&[3, 1], &[3, 1, 2, 4]),
+            // One no longer in the flow is skipped.
+            (&[9, 4], &[4, 1, 2, 3]),
+        ];
+        for (recent, expected) in cases {
+            assert_eq!(tab_order(&all, &ids(recent)), ids(expected), "{recent:?}");
         }
     }
 }

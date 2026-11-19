@@ -83,18 +83,22 @@ async fn each_tool_call_reaches_the_core_with_the_conversation() {
     let cases = [
         (
             "start_agent",
-            json!({ "agent": "coder", "prompt": "Fix it", "working_directory": "/w/tree" }),
+            json!({
+                "agent": "coder", "prompt": "Fix it", "working_directory": "/w/tree",
+                "for_user": true,
+            }),
             AppToolCall::StartAgent {
                 agent: "coder".to_owned(),
                 prompt: "Fix it".to_owned(),
                 working_directory: Some(PathBuf::from("/w/tree")),
+                for_user: true,
             },
         ),
         (
             "message_agent",
             json!({ "conversation": 12, "text": "And the tests?" }),
             AppToolCall::MessageAgent {
-                conversation: ConversationId(12),
+                conversation: "12".to_owned(),
                 text: "And the tests?".to_owned(),
             },
         ),

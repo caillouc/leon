@@ -83,6 +83,27 @@ fn conversation(
         } else {
             Vec::new()
         },
+        // Numbered as the core names them: two coders, two reviewers in
+        // the first flow.
+        name: match id {
+            2 => "coder 1".into(),
+            4 => "reviewer 1".into(),
+            5 => "coder 2".into(),
+            6 => "reviewer 2".into(),
+            _ => agent.into(),
+        },
+        // The second coder and reviewer work on the web dashboard (CTX-2).
+        folder: match id {
+            1 | 2 | 4 => Some(repo::API.into()),
+            5 | 6 => Some(repo::WEB.into()),
+            _ => None,
+        },
+        // The planner waits for the second reviewer's report.
+        waiting_for: if id == 1 {
+            vec![ConversationId(6)]
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -102,7 +123,11 @@ fn flow(id: i64, project: i64, title: &str, unread: bool, pinned: bool) -> Flow 
             Vec::new()
         },
         // The first flow was started for issue #401.
-        issue: (id == 1).then(|| leon_domain::GhRef::issue("acme/payments-api", 401)),
+        links: if id == 1 {
+            vec![leon_domain::GhRef::issue("acme/payments-api", 401)]
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -285,7 +310,8 @@ fn options() -> HashMap<BackendKind, BackendOptions> {
 fn sample() -> Snapshot {
     let flows = vec![
         FlowView {
-            flow: flow(1, 1, "Fix webhook retry timeout", false, false),
+            // Unread: the reviewer's answer is not read yet.
+            flow: flow(1, 1, "Fix webhook retry timeout", true, false),
             status: Status::Running,
             conversations: vec![
                 ConversationId(1),

@@ -1,5 +1,5 @@
 fragment pr on PullRequest {
-  number title url state isDraft headRefName baseRefName additions deletions
+  number title url state isDraft headRefName baseRefName additions deletions mergeable
   author { login }
   repository { nameWithOwner }
   labels(first: 20) { nodes { name color } }

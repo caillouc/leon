@@ -48,7 +48,7 @@ impl Workspace {
             self.snapshot
                 .conversations
                 .values()
-                .map(|s| (s.conversation.id, self.conversation_name(s)))
+                .map(|s| (s.conversation.id, s.name.clone()))
                 .collect(),
         );
         let expanded = self.expanded.clone();
@@ -147,6 +147,37 @@ fn entry_view(
     names: &HashMap<ConversationId, String>,
 ) -> AnyElement {
     let id = |kind: &str| ElementId::Name(format!("{kind}-{}-{ix}", conversation.0).into());
+    // A message from another conversation, under who sent it.
+    let from_agent = |what: &str, from: &ConversationId, text: &str| {
+        let name = names
+            .get(from)
+            .cloned()
+            .unwrap_or_else(|| format!("conversation {}", from.0));
+        div()
+            .my_1()
+            .px_3()
+            .py_2()
+            .rounded_lg()
+            .border_1()
+            .border_l_2()
+            .border_color(theme::border())
+            .bg(theme::surface())
+            .child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(theme::accent())
+                    .child(format!("{what} {name}")),
+            )
+            .child(long_text(
+                conversation,
+                ix,
+                id("from-agent"),
+                text,
+                expanded,
+                view,
+            ))
+            .into_any_element()
+    };
     match &timed.entry {
         Entry::User { text } => {
             let (view_edit, text_edit) = (view.clone(), text.clone());
@@ -208,41 +239,17 @@ fn entry_view(
                 )
                 .into_any_element()
         }
-        Entry::FromAgent { from, text, answer } => {
-            let name = names
-                .get(from)
-                .cloned()
-                .unwrap_or_else(|| format!("conversation {}", from.0));
-            let what = if *answer {
+        Entry::FromAgent { from, text, answer } => from_agent(
+            if *answer {
                 "Answer from"
             } else {
                 "Message from"
-            };
-            div()
-                .my_1()
-                .px_3()
-                .py_2()
-                .rounded_lg()
-                .border_1()
-                .border_l_2()
-                .border_color(theme::border())
-                .bg(theme::surface())
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(theme::accent())
-                        .child(format!("{what} {name}")),
-                )
-                .child(long_text(
-                    conversation,
-                    ix,
-                    id("from-agent"),
-                    text,
-                    expanded,
-                    view,
-                ))
-                .into_any_element()
-        }
+            },
+            from,
+            text,
+        ),
+        // Started for the user: its answers go to them (FLOW-1).
+        Entry::ForYou { from, text } => from_agent("For you, from", from, text),
         Entry::Agent { text } => div()
             .my_1()
             .child(markdown(id("agent"), text))

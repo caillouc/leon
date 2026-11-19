@@ -473,12 +473,16 @@ pub enum AppToolCall {
         prompt: String,
         /// Where it runs; the caller's working directory when `None`.
         working_directory: Option<PathBuf>,
+        /// Started for the user: its answers go to the user, who reviews
+        /// and continues it, not back to the caller.
+        for_user: bool,
     },
     /// Send a follow-up to another conversation of the flow
     /// (FLOW-2). Returns at once; the answer comes back as a message.
     MessageAgent {
-        /// Target conversation.
-        conversation: ConversationId,
+        /// Target conversation: its name as the user sees it ("coder 2") or
+        /// its id.
+        conversation: String,
         /// Message text.
         text: String,
     },
@@ -491,6 +495,12 @@ pub enum AppToolCall {
     SetWorkingDirectory {
         /// Absolute path.
         path: PathBuf,
+    },
+    /// Link an issue or a pull request to the flow (CTX-2).
+    LinkGithub {
+        /// Its GitHub link: `https://github.com/owner/name/issues/12` or
+        /// `…/pull/12`.
+        url: String,
     },
 }
 

@@ -30,6 +30,7 @@ mod gh_detail;
 mod github;
 mod icons;
 mod info_now;
+mod info_refs;
 mod left;
 mod markdown;
 mod message_input;

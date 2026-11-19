@@ -129,12 +129,12 @@ impl Workspace {
         if !s.plan.is_empty() {
             column = column.child(plan_card(&s.plan));
         }
-        // While it works, what it is doing this moment, live; else what it
-        // waits for or why it stopped.
+        // While it works, what it is doing this moment, live, and the agents
+        // it waits for; else those agents, or why it stopped.
         let live = if running {
             self.live_lines("composer", &s)
         } else {
-            Vec::new()
+            self.waiting_lines("composer", &s)
         };
         if !live.is_empty() {
             column = column.child(div().flex().flex_col().gap(px(4.)).children(live));
@@ -160,7 +160,7 @@ impl Workspace {
                 });
             },
         );
-        let agent = self.conversation_name(&s);
+        let agent = s.name.clone();
         let action = if running {
             button(
                 "stop",

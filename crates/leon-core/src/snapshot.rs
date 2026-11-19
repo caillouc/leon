@@ -42,6 +42,10 @@ pub struct Snapshot {
     pub git: Arc<HashMap<PathBuf, GitView>>,
     /// Pull request of each folder's branch (NAV-6, GH-1, CTX-2).
     pub prs: Arc<HashMap<PathBuf, PullRequest>>,
+    /// Issues linked to flows, as GitHub last gave them (CTX-2).
+    pub linked_issues: Arc<HashMap<GhRef, Issue>>,
+    /// Pull requests linked to flows, as GitHub last gave them (CTX-2).
+    pub linked_prs: Arc<HashMap<GhRef, PullRequest>>,
     /// My open issues (GH-2).
     pub my_issues: Arc<Vec<Issue>>,
     /// My open pull requests (GH-3).
@@ -86,11 +90,17 @@ impl Snapshot {
         self.flows.iter().find(|c| c.flow.id == id)
     }
 
-    /// A flow's pull requests, one per folder in folder order, each
-    /// once (CTX-2).
+    /// A flow's pull requests, each once: its folders' in folder order,
+    /// then those linked to it (CTX-2).
     pub fn prs_of(&self, c: &FlowView) -> Vec<&PullRequest> {
         let mut prs: Vec<&PullRequest> = Vec::new();
-        for pr in c.folders.iter().filter_map(|f| self.prs.get(f)) {
+        let linked = c.flow.links.iter().filter_map(|l| self.linked_prs.get(l));
+        for pr in c
+            .folders
+            .iter()
+            .filter_map(|f| self.prs.get(f))
+            .chain(linked)
+        {
             if !prs
                 .iter()
                 .any(|p| p.repo == pr.repo && p.number == pr.number)
@@ -133,6 +143,13 @@ pub struct ConversationView {
     pub question: Option<Question>,
     /// Replies the CLI suggests after its answer (CONV-10).
     pub suggestions: Vec<String>,
+    /// The conversations that owe it an answer: working on its request, or
+    /// with the request queued (FLOW-1, CONV-16).
+    pub waiting_for: Vec<ConversationId>,
+    /// Its name, the same for the user and the agents: "coder 2".
+    pub name: String,
+    /// The folder of its flow it works in (CTX-2), if known.
+    pub folder: Option<PathBuf>,
 }
 
 /// A question from the CLI, shown as a card (CONV-9).

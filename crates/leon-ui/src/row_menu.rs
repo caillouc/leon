@@ -1,6 +1,7 @@
-//! Right-click menus of the left pane: a flow's (NAV-3, NAV-4,
-//! NAV-8: rename in place, pin, mark as unread, archive, delete) and a
-//! project's (remove it from Leon). Deleting and removing ask first.
+//! Right-click menus: a flow's in the left pane (NAV-3, NAV-4, NAV-8:
+//! rename in place, pin, mark as unread, archive, delete), a project's
+//! (remove it from Leon), and a conversation's on its Flow box (NAV-4: mark
+//! it as unread). Deleting and removing ask first.
 
 use gpui::{
     AnyElement, Context, IntoElement, PromptLevel, Stateful, Window, anchored, deferred, div,
@@ -8,7 +9,7 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, InputState};
 use leon_core::Intent;
-use leon_domain::{FlowId, ProjectId};
+use leon_domain::{ConversationId, FlowId, ProjectId};
 
 use crate::theme;
 use crate::workspace::{Workspace, value_of};
@@ -18,6 +19,7 @@ use crate::workspace::{Workspace, value_of};
 pub(crate) enum MenuFor {
     Flow(FlowId),
     Project(ProjectId),
+    Conversation(ConversationId),
 }
 
 impl Workspace {
@@ -32,6 +34,13 @@ impl Workspace {
                 true,
                 cx,
                 move |this, window, cx| this.confirm_remove_project(id, window, cx),
+            )],
+            MenuFor::Conversation(id) => vec![menu_item(
+                "unread-conversation",
+                "Mark as unread",
+                false,
+                cx,
+                move |this, _, _| this.core.send(Intent::MarkConversationUnread(id)),
             )],
         };
         let menu = div()

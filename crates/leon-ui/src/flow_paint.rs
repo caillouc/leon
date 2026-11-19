@@ -47,6 +47,8 @@ pub(crate) fn legend() -> AnyElement {
 /// How to draw one arrow.
 pub(crate) struct Arrow {
     pub kind: EdgeKind,
+    /// It goes both ways: a head at each end.
+    pub both: bool,
     /// Its messages are open in the inspector.
     pub wide: bool,
     pub scale: f32,
@@ -55,33 +57,35 @@ pub(crate) struct Arrow {
 impl Arrow {
     /// The arrow along `points` (an orthogonal route, screen units from
     /// `origin`): straight segments with rounded bends, or one smooth curve;
-    /// dashed for reports; with its head.
+    /// dashed for reports; with its head, and one at its start too when it
+    /// goes both ways.
     pub(crate) fn paint(&self, window: &mut Window, origin: Point<Pixels>, points: &[Pt]) {
-        let Self { kind, wide, scale } = *self;
+        let Self {
+            kind,
+            both,
+            wide,
+            scale,
+        } = *self;
         let at = |p: Pt| point(origin.x + px(p.x), origin.y + px(p.y));
-        let (Some(last), Some(before)) = (
-            points.last(),
-            points.len().checked_sub(2).and_then(|i| points.get(i)),
-        ) else {
+        let n = points.len();
+        if n < 2 {
             return;
-        };
-        let (dx, dy) = (last.x - before.x, last.y - before.y);
-        let len = (dx * dx + dy * dy).sqrt().max(1.);
-        let (ux, uy) = (dx / len, dy / len);
+        }
         let head = 9. * scale.max(0.6);
-        let tip_base = Pt {
-            x: last.x - ux * head,
-            y: last.y - uy * head,
+        let c = color(kind);
+        let tip_base = arrowhead(window, &at, points[n - 1], points[n - 2], head, c);
+        let start = if both {
+            arrowhead(window, &at, points[0], points[1], head, c)
+        } else {
+            points[0]
         };
         let width = if wide { 2.8 } else { 1.6 };
         let mut line = PathBuilder::stroke(px(width));
         if kind == EdgeKind::Report {
             line = line.dash_array(&[px(5.), px(4.)]);
         }
-        let body: Vec<Pt> = points
-            .iter()
-            .take(points.len() - 1)
-            .copied()
+        let body: Vec<Pt> = std::iter::once(start)
+            .chain(points[1..n - 1].iter().copied())
             .chain(std::iter::once(tip_base))
             .collect();
         line.move_to(at(body[0]));
@@ -91,26 +95,45 @@ impl Arrow {
                 Step::Curve { to, ctrl } => line.curve_to(at(to), at(ctrl)),
             }
         }
-        let c = color(kind);
         if let Ok(path) = line.build() {
             window.paint_path(path, c);
         }
-        let (nx, ny) = (-uy * head / 2., ux * head / 2.);
-        let mut arrow = PathBuilder::fill();
-        arrow.move_to(at(*last));
-        arrow.line_to(at(Pt {
-            x: tip_base.x + nx,
-            y: tip_base.y + ny,
-        }));
-        arrow.line_to(at(Pt {
-            x: tip_base.x - nx,
-            y: tip_base.y - ny,
-        }));
-        arrow.close();
-        if let Ok(path) = arrow.build() {
-            window.paint_path(path, c);
-        }
     }
+}
+
+/// Paints a head of `size` at `tip`, coming from `before`; returns where
+/// the line meets its base.
+fn arrowhead(
+    window: &mut Window,
+    at: &impl Fn(Pt) -> Point<Pixels>,
+    tip: Pt,
+    before: Pt,
+    size: f32,
+    c: Rgba,
+) -> Pt {
+    let (dx, dy) = (tip.x - before.x, tip.y - before.y);
+    let len = (dx * dx + dy * dy).sqrt().max(1.);
+    let (ux, uy) = (dx / len, dy / len);
+    let base = Pt {
+        x: tip.x - ux * size,
+        y: tip.y - uy * size,
+    };
+    let (nx, ny) = (-uy * size / 2., ux * size / 2.);
+    let mut arrow = PathBuilder::fill();
+    arrow.move_to(at(tip));
+    arrow.line_to(at(Pt {
+        x: base.x + nx,
+        y: base.y + ny,
+    }));
+    arrow.line_to(at(Pt {
+        x: base.x - nx,
+        y: base.y - ny,
+    }));
+    arrow.close();
+    if let Ok(path) = arrow.build() {
+        window.paint_path(path, c);
+    }
+    base
 }
 
 /// One lap of a working box's agent colour around its border.

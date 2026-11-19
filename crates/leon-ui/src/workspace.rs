@@ -101,6 +101,11 @@ pub struct Workspace {
     pub(crate) pending_conversation: Option<(FlowId, usize)>,
     /// The flow last said to be read (an agent's tab on screen).
     pub(crate) reading: Option<ConversationId>,
+    /// Each flow's agent tabs opened, the last one first: the tabs' order
+    /// (FLOW-3).
+    pub(crate) recent: HashMap<FlowId, Vec<ConversationId>>,
+    /// The tab row's scroll, back to its start when another tab opens.
+    pub(crate) tab_scroll: gpui::ScrollHandle,
     shown_notifications: u64,
     started: Option<Instant>,
     _updates: Task<()>,
@@ -219,6 +224,8 @@ impl Workspace {
             pending_open: false,
             pending_conversation: None,
             reading: None,
+            recent: HashMap::new(),
+            tab_scroll: gpui::ScrollHandle::new(),
             shown_notifications: 0,
             started: Some(started),
             _updates: updates,
@@ -409,6 +416,13 @@ impl Render for Workspace {
         if reading != self.reading {
             self.reading = reading;
             self.core.send(Intent::Read(reading));
+            // The tab opened goes first after Flow, in view.
+            if let (Screen::Flow(id), Some(c)) = (self.screen, reading) {
+                let recent = self.recent.entry(id).or_default();
+                recent.retain(|r| *r != c);
+                recent.insert(0, c);
+                self.tab_scroll.set_offset(gpui::point(px(0.), px(0.)));
+            }
         }
         let main: AnyElement = match self.screen {
             Screen::Nothing => crate::widgets::empty("Select a flow, or start a new one."),
@@ -452,6 +466,7 @@ impl Render for Workspace {
             })
             .children(self.render_drawer(window, cx))
             .children(self.render_detail(cx))
+            .children(self.render_row_menu(cx))
             .children(self.render_flash())
     }
 }

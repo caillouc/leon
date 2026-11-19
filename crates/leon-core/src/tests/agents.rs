@@ -1,6 +1,6 @@
 //! Agents starting and messaging other agents (FLOW-1, FLOW-2, P15).
 
-use leon_domain::McpServer;
+use leon_domain::{GhRef, McpServer};
 use tokio::sync::oneshot;
 
 use super::*;
@@ -73,10 +73,11 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
         agent: "coder".into(),
         prompt: "Implement step 1".into(),
         working_directory: None,
+        for_user: false,
     };
     let reply = call(&h, planner, start).await.unwrap();
     assert!(
-        reply.starts_with("Started coder as conversation 2."),
+        reply.starts_with("Started coder (conversation 2)."),
         "{reply}"
     );
     started(&h, 2).await;
@@ -128,6 +129,7 @@ async fn bad_tool_calls_explain_what_is_wrong() {
                 agent: "reviewer".into(),
                 prompt: "Review".into(),
                 working_directory: None,
+                for_user: false,
             },
             "No agent named \"reviewer\". Agents: planner, coder.",
         ),
@@ -136,19 +138,21 @@ async fn bad_tool_calls_explain_what_is_wrong() {
                 agent: "coder".into(),
                 prompt: "Go".into(),
                 working_directory: Some(PathBuf::from("relative/dir")),
+                for_user: false,
             },
             "relative/dir is not an absolute path.",
         ),
         (
             AppToolCall::MessageAgent {
-                conversation: ConversationId(99),
+                conversation: "99".into(),
                 text: "hi".into(),
             },
-            "Conversation 99 is not in this flow.",
+            "No conversation of this flow is called \"99\". Its conversations: planner (1).",
         ),
         (
             AppToolCall::MessageAgent {
-                conversation: planner,
+                // By its name, any case.
+                conversation: "Planner".into(),
                 text: "hi".into(),
             },
             "A conversation cannot message itself.",
@@ -186,6 +190,7 @@ async fn only_the_agent_that_answered_you_is_to_review() {
         agent: "coder".into(),
         prompt: "Implement step 1".into(),
         working_directory: None,
+        for_user: false,
     };
     call(&h, planner, start).await.unwrap();
     started(&h, 2).await;
@@ -218,8 +223,9 @@ async fn only_the_agent_that_answered_you_is_to_review() {
     assert!(!s.conversations[&coder].conversation.unread);
 }
 
-/// An agent waiting for the agents it asked is not to review, and does not
-/// notify: only its turn after the last report is (NAV-4, FLOW-4, NOTIF-1).
+/// An agent waiting for the agents it asked says which, is not to review and
+/// does not notify: only its turn after the last report is (NAV-4, FLOW-4,
+/// NOTIF-1, CONV-16).
 #[tokio::test(flavor = "multi_thread")]
 async fn an_agent_is_to_review_once_every_report_is_back() {
     let h = harness();
@@ -230,11 +236,16 @@ async fn an_agent_is_to_review_once_every_report_is_back() {
             agent: "coder".into(),
             prompt: prompt.into(),
             working_directory: None,
+            for_user: false,
         };
         call(&h, planner, start).await.unwrap();
         started(&h, count).await;
         next_command(&h, count - 1).await;
     }
+    until(&h.core, "planner waits for both coders", |s| {
+        s.conversations[&planner].waiting_for == [ConversationId(2), ConversationId(3)]
+    })
+    .await;
     let not_to_review = |s: &Snapshot| {
         !s.conversations[&planner].conversation.unread
             && !s.flows[0].flow.unread
@@ -261,6 +272,7 @@ async fn an_agent_is_to_review_once_every_report_is_back() {
     })
     .await;
     assert!(not_to_review(&s));
+    assert_eq!(s.conversations[&planner].waiting_for, [ConversationId(3)]);
     // Its report is the last one: the planner's next answer is to review.
     end_turn(&h, 2, "Step 2 done.");
     next_command(&h, 0).await;
@@ -271,6 +283,167 @@ async fn an_agent_is_to_review_once_every_report_is_back() {
     .await;
     assert!(s.flows[0].flow.unread);
     assert_eq!(s.notifications.len(), 1);
+    assert_eq!(s.conversations[&planner].waiting_for, []);
+}
+
+/// The agents name conversations as the user sees them: a second coder
+/// makes "coder 1" and "coder 2", and `message_agent` takes those names.
+#[tokio::test(flavor = "multi_thread")]
+async fn agents_use_the_names_the_user_sees() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    let start = || AppToolCall::StartAgent {
+        agent: "coder".into(),
+        prompt: "Implement a step".into(),
+        working_directory: None,
+        for_user: false,
+    };
+    call(&h, planner, start()).await.unwrap();
+    started(&h, 2).await;
+    let reply = call(&h, planner, start()).await.unwrap();
+    assert!(
+        reply.starts_with("Started coder 2 (conversation 3).")
+            && reply.ends_with("The flow's conversations: planner (1), coder 1 (2), coder 2 (3)."),
+        "{reply}"
+    );
+    let s = until(&h.core, "three conversations", |s| {
+        s.conversations.len() == 3
+    })
+    .await;
+    let names: Vec<&str> = (1..=3)
+        .map(|id| s.conversations[&ConversationId(id)].name.as_str())
+        .collect();
+    assert_eq!(names, ["planner", "coder 1", "coder 2"]);
+    let to_first = AppToolCall::MessageAgent {
+        conversation: "coder 1".into(),
+        text: "Also the tests".into(),
+    };
+    let reply = call(&h, planner, to_first).await.unwrap();
+    assert!(reply.starts_with("coder 1 (conversation 2)"), "{reply}");
+}
+
+/// An agent starts another for the user: its answers go to the user, who
+/// reviews and continues it; nothing goes back to the agent that started it
+/// (FLOW-1).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_agent_started_for_the_user_answers_the_user() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    let start = AppToolCall::StartAgent {
+        agent: "planner".into(),
+        prompt: "Plan task B".into(),
+        working_directory: None,
+        for_user: true,
+    };
+    let reply = call(&h, planner, start).await.unwrap();
+    assert!(
+        reply.starts_with("Started planner 2 (conversation 2) for the user"),
+        "{reply}"
+    );
+    started(&h, 2).await;
+    let BackendCommand::Send(first) = next_command(&h, 1).await else {
+        panic!("no first message");
+    };
+    assert!(
+        first.starts_with("[From planner 1 · conversation 1 · for the user"),
+        "{first}"
+    );
+    end_turn(&h, 0, "Started a planner for task B.");
+    end_turn(&h, 1, "Plan for B.");
+    let other = ConversationId(2);
+    let s = until(&h.core, "the new planner to review", |s| {
+        s.conversations[&other].conversation.unread
+    })
+    .await;
+    assert_eq!(s.conversations[&planner].waiting_for, []);
+    assert!(
+        !entries(&s, planner)
+            .iter()
+            .any(|e| matches!(e, Entry::FromAgent { .. }))
+    );
+    assert_eq!(
+        entries(&s, other)[0],
+        Entry::ForYou {
+            from: planner,
+            text: "Plan task B".into(),
+        }
+    );
+}
+
+/// An agent links the issues and pull requests it creates or works on:
+/// they show with the flow, read from GitHub (CTX-2).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_agent_links_issues_and_pull_requests() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    let link = |url: &str| AppToolCall::LinkGithub { url: url.into() };
+    let reply = call(&h, planner, link("https://github.com/acme/api/pull/7"))
+        .await
+        .unwrap();
+    assert_eq!(
+        reply,
+        "Linked acme/api#7 to the flow: Leon shows it in Info."
+    );
+    call(
+        &h,
+        planner,
+        link("https://github.com/acme/api/issues/30#issuecomment-1"),
+    )
+    .await
+    .unwrap();
+    // Twice is once.
+    call(&h, planner, link("https://github.com/acme/api/issues/30"))
+        .await
+        .unwrap();
+    assert!(call(&h, planner, link("acme/api#30")).await.is_err());
+    let s = until(&h.core, "linked items read", |s| {
+        s.linked_prs.len() == 1 && s.linked_issues.len() == 1
+    })
+    .await;
+    let flow = &s.flows[0];
+    assert_eq!(
+        flow.flow.links,
+        [
+            GhRef::issue("acme/api", 12),
+            GhRef::pull_request("acme/api", 7),
+            GhRef::issue("acme/api", 30),
+        ]
+    );
+    // Its issues: the one it was started for, then the one linked.
+    assert_eq!(
+        flow.issues,
+        [GhRef::issue("acme/api", 12), GhRef::issue("acme/api", 30)]
+    );
+    let prs: Vec<u64> = s.prs_of(flow).iter().map(|pr| pr.number).collect();
+    assert_eq!(prs, [7]);
+}
+
+/// The user marks one agent unread: it is to review, and so is its flow,
+/// until they open its tab (NAV-4).
+#[tokio::test(flavor = "multi_thread")]
+async fn the_user_marks_one_agent_unread() {
+    let h = harness();
+    // The user reads the planner's tab (intents reach the core in order).
+    h.core.send(Intent::Read(Some(ConversationId(1))));
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    end_turn(&h, 0, "Done.");
+    until(&h.core, "planner idle", |s| {
+        s.conversations[&planner].status == Status::Idle
+    })
+    .await;
+    h.core.send(Intent::Read(None));
+    h.core.send(Intent::MarkConversationUnread(planner));
+    let s = until(&h.core, "planner unread", |s| {
+        s.conversations[&planner].conversation.unread
+    })
+    .await;
+    assert!(s.flows[0].flow.unread);
+    h.core.send(Intent::Read(Some(planner)));
+    let s = until(&h.core, "read", |s| !s.flows[0].flow.unread).await;
+    assert!(!s.conversations[&planner].conversation.unread);
 }
 
 /// The user starts a second conversation in the same flow, in the folder

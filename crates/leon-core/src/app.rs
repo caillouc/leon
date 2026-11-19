@@ -191,6 +191,7 @@ impl Core {
         self.load();
         self.publish();
         self.refresh_all_git();
+        self.refresh_links();
         self.refresh_lists();
         self.run_doctor();
         loop {
@@ -343,6 +344,7 @@ impl Core {
             Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
+            Intent::MarkConversationUnread(id) => self.mark_unread(id),
             Intent::WindowActive(active) => self.window_active = active,
             Intent::Read(id) => self.read(id),
             Intent::Delete(id) => self.delete(id),
@@ -394,6 +396,18 @@ impl Core {
         if let Some(id) = id {
             self.mark_read(id);
         }
+    }
+
+    /// The user marks conversation `id` unread: it is to review, and so is
+    /// its flow, until they open its tab (NAV-4).
+    fn mark_unread(&mut self, id: ConversationId) {
+        let Some(s) = self.state.conversations.get_mut(&id) else {
+            return;
+        };
+        let flow = s.conversation.flow;
+        s.conversation.unread = true;
+        self.save_conversation(id);
+        self.edit(flow, |c| c.unread = true);
     }
 
     /// The user saw conversation `id`'s answer: it is read, and so is its
@@ -493,8 +507,8 @@ impl Core {
         else {
             return;
         };
-        if issue.is_some() {
-            flow.issue = issue;
+        if let Some(issue) = issue {
+            flow.links.push(issue);
             Self::report(blocking(|| storage.update_flow(&flow)));
         }
         let new = NewConversation {
@@ -968,7 +982,7 @@ fn with_context(s: &ConversationState, text: &str) -> String {
     {
         match &e.entry {
             Entry::User { text } => lines.push(format!("User: {text}")),
-            Entry::FromAgent { from, text, .. } => {
+            Entry::FromAgent { from, text, .. } | Entry::ForYou { from, text } => {
                 lines.push(format!("Conversation {}: {text}", from.0));
             }
             Entry::Agent { text } => lines.push(format!("Assistant: {text}")),

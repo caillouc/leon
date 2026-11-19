@@ -17,12 +17,16 @@ use leon_domain::{ConversationId, FlowId};
 
 use crate::flow_model::{self, Edge, EdgeKind, Node, Pt, Rect, View, rect, status_text};
 use crate::flow_paint::{Arrow, legend};
+use crate::row_menu::MenuFor;
 use crate::spinner::status_mark;
 use crate::theme;
 use crate::widgets::{button, primary};
 use crate::workspace::{Tab, Workspace};
 
 /// What the flow tab remembers per flow.
+/// A line of arrows, by its flow and its first arrow: from, to, kind.
+type LineKey = (FlowId, Node, Node, EdgeKind);
+
 #[derive(Default)]
 pub(crate) struct FlowState {
     /// Pan and zoom, and whether the user changed it (else it fits).
@@ -31,8 +35,8 @@ pub(crate) struct FlowState {
     sims: HashMap<FlowId, flow_model::Sim>,
     /// The box being dragged and where its corner is, in diagram units.
     held: Option<(FlowId, Node, Pt)>,
-    /// The arrow whose messages are shown.
-    selected: Option<(FlowId, Node, Node, EdgeKind)>,
+    /// The line whose messages are shown.
+    selected: Option<LineKey>,
     drag: Option<Drag>,
     /// Where the canvas was last painted, in window coordinates.
     area: Rc<Cell<Option<Bounds<Pixels>>>>,
@@ -130,14 +134,23 @@ impl Workspace {
             self.flow.views.insert(id, (fitted, false));
             fitted
         };
-        // The arrows between two boxes go as one bundle, under one label.
+        // The arrows between two boxes go as one bundle, under one label;
+        // those of one kind going both ways share one line.
         let drawing = flow_model::draw(&model, &rects);
-        let routes: Vec<(Edge, Vec<Pt>)> = drawing
-            .arrows
+        let carried = |line: &flow_model::Line| -> Vec<&Edge> {
+            line.edges.iter().map(|e| &model.edges[*e]).collect()
+        };
+        // A line is picked by its first arrow.
+        let key = |line: &flow_model::Line| {
+            let first = &model.edges[line.edges[0]];
+            (id, first.from, first.to, first.kind)
+        };
+        let routes: Vec<(LineKey, bool, Vec<Pt>)> = drawing
+            .lines
             .iter()
-            .map(|(e, world)| {
-                let points = world.iter().map(|p| view.to_screen(*p)).collect();
-                (model.edges[*e].clone(), points)
+            .map(|line| {
+                let points = line.points.iter().map(|p| view.to_screen(*p)).collect();
+                (key(line), line.both(), points)
             })
             .collect();
         let selected = self.flow.selected.filter(|s| s.0 == id);
@@ -151,11 +164,11 @@ impl Workspace {
                         store.set(Some(bounds));
                         window.refresh();
                     }
-                    for (edge, points) in &routes {
-                        let wide = selected == Some((id, edge.from, edge.to, edge.kind));
+                    for (key, both, points) in &routes {
                         let arrow = Arrow {
-                            kind: edge.kind,
-                            wide,
+                            kind: key.3,
+                            both: *both,
+                            wide: selected == Some(*key),
                             scale: view.scale,
                         };
                         arrow.paint(window, bounds.origin, points);
@@ -165,23 +178,23 @@ impl Workspace {
             .absolute()
             .size_full()
         };
-        // One label per bundle: a chip per arrow, in its colour, each
-        // opening its messages.
+        // One small label per bundle: a count per line, in its colour (the
+        // legend says which), each opening its messages.
         let s = view.scale.max(0.7);
         let labels = drawing
             .labels
             .iter()
             .enumerate()
-            .map(|(ix, (spot, edges))| {
+            .map(|(ix, (spot, lines))| {
                 let at = view.to_screen(*spot);
-                let chips = edges.iter().map(|e| {
-                    let edge = &model.edges[*e];
-                    let key = (id, edge.from, edge.to, edge.kind);
+                let chips = lines.iter().map(|l| {
+                    let line = &drawing.lines[*l];
+                    let key = key(line);
                     let on = selected == Some(key);
-                    let c = color(edge.kind);
+                    let c = color(key.3);
                     div()
-                        .id(SharedString::from(format!("flow-label-{ix}-{e}")))
-                        .px(px(6. * s))
+                        .id(SharedString::from(format!("flow-label-{ix}-{l}")))
+                        .px(px(4. * s))
                         .rounded_full()
                         .bg(if on {
                             c
@@ -191,7 +204,7 @@ impl Workspace {
                         .text_color(if on { theme::window() } else { c })
                         .cursor_pointer()
                         .hover(|st| st.bg(theme::surface_2()))
-                        .child(edge.label())
+                        .child(flow_model::count(&carried(line)).to_string())
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.flow.selected = if this.flow.selected == Some(key) {
@@ -205,7 +218,7 @@ impl Workspace {
                 div()
                     .absolute()
                     .left(px(at.x - 140.))
-                    .top(px(at.y - 10. * s))
+                    .top(px(at.y - 8. * s))
                     .w(px(280.))
                     .flex()
                     .justify_center()
@@ -213,14 +226,14 @@ impl Workspace {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(2. * s))
-                            .px(px(2. * s))
-                            .py(px(1.5 * s))
+                            .gap(px(1. * s))
+                            .px(px(1. * s))
+                            .py(px(0.5 * s))
                             .rounded_full()
                             .border_1()
                             .border_color(theme::border_strong())
                             .bg(theme::surface())
-                            .text_size(px(11. * s))
+                            .text_size(px(10. * s))
                             .whitespace_nowrap()
                             .children(chips),
                     )
@@ -236,12 +249,14 @@ impl Workspace {
                 Some(self.flow_box(id, *node, *r, view, (&conversations, review), cx))
             })
             .collect();
-        let inspector = selected.and_then(|key| {
-            let edge = model
+        // The picked line's arrows: one way, or both.
+        let inspector = selected.and_then(|(_, a, b, kind)| {
+            let edges: Vec<&Edge> = model
                 .edges
                 .iter()
-                .find(|e| (id, e.from, e.to, e.kind) == key)?;
-            Some(self.flow_inspector(id, edge, cx))
+                .filter(|e| e.kind == kind && [(a, b), (b, a)].contains(&(e.from, e.to)))
+                .collect();
+            (!edges.is_empty()).then(|| self.flow_inspector(id, &edges, cx))
         });
         div()
             .id("flow")
@@ -369,12 +384,7 @@ impl Workspace {
             return shell.into_any_element();
         };
         let settings = &conversation.conversation.settings;
-        let waiting_for = conversations
-            .iter()
-            .find(|x| {
-                x.conversation.started_by == Some(sid) && x.status == leon_domain::Status::Running
-            })
-            .map(|x| self.conversation_name(x));
+        let waiting_for: Vec<String> = self.waited(conversation).map(|x| x.name.clone()).collect();
         // What it asks of the user, as the left pane shows it (NAV-5).
         let attention = leon_domain::Attention::of(conversation.status, review);
         let (messages, tools) = self
@@ -386,7 +396,19 @@ impl Workspace {
         let model = format!("{model} · effort {effort}");
         let agent = crate::agent_color::agent_color(conversations, conversation);
         let circles = conversation.status == leon_domain::Status::Running && !cx.reduce_motion();
+        let unread = conversation.conversation.unread;
         shell
+            // Its right-click menu: mark it unread (NAV-4).
+            .when(!unread, |d| {
+                d.on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.row_menu = Some((MenuFor::Conversation(sid), e.position));
+                        cx.notify();
+                    }),
+                )
+            })
             .rounded(px(10. * s))
             .line_height(gpui::relative(1.25))
             .bg(theme::surface())
@@ -458,7 +480,7 @@ impl Workspace {
                             .whitespace_nowrap()
                             .text_ellipsis()
                             .text_color(agent)
-                            .child(self.conversation_name(conversation)),
+                            .child(conversation.name.clone()),
                     )
                     .child(
                         div()
@@ -498,7 +520,7 @@ impl Workspace {
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .child(status_text(conversation, waiting_for.as_deref())),
+                            .child(status_text(conversation, &waiting_for)),
                     )
                     // Which agent has an answer or a question for the user,
                     // as the left pane says it of the flow (NAV-5).
@@ -738,20 +760,33 @@ impl Workspace {
             .into_any_element()
     }
 
-    fn flow_inspector(&self, id: FlowId, edge: &Edge, cx: &mut Context<Self>) -> AnyElement {
+    fn flow_inspector(&self, id: FlowId, edges: &[&Edge], cx: &mut Context<Self>) -> AnyElement {
+        let edge = edges[0];
+        let both = edges.len() > 1;
         let name = |node: Node| match node {
             Node::You => "You".to_owned(),
             Node::Conversation(s) => self
                 .snapshot
                 .conversations
                 .get(&s)
-                .map_or_default(|v| self.conversation_name(v)),
+                .map_or_default(|v| v.name.clone()),
         };
         let agent: Option<ConversationId> = match (edge.kind, edge.from, edge.to) {
             (EdgeKind::Prompt, _, Node::Conversation(s)) | (_, Node::Conversation(s), _) => Some(s),
             _ => None,
         };
-        let items = edge.items.iter().enumerate().map(|(ix, item)| {
+        // Every message, in order; who sent it when they go both ways.
+        let mut messages: Vec<(&Edge, &flow_model::Item)> = edges
+            .iter()
+            .flat_map(|e| e.items.iter().map(move |item| (*e, item)))
+            .collect();
+        messages.sort_by_key(|(_, item)| item.at);
+        let items = messages.into_iter().enumerate().map(|(ix, (by, item))| {
+            let sent = if both {
+                format!("{} → {} · ", name(by.from), name(by.to))
+            } else {
+                String::new()
+            };
             div()
                 .flex()
                 .flex_col()
@@ -764,7 +799,7 @@ impl Workspace {
                         .text_size(px(11.))
                         .text_color(theme::fg_faint())
                         .child(format!(
-                            "{} · {} ago",
+                            "{sent}{} · {} ago",
                             item.label,
                             crate::left::ago(item.at)
                         )),
@@ -798,11 +833,16 @@ impl Workspace {
                     .flex()
                     .gap_2()
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(format!(
-                        "{} → {}",
+                        "{} {} {}",
                         name(edge.from),
+                        if both { "⇄" } else { "→" },
                         name(edge.to)
                     )))
-                    .child(div().text_color(theme::fg_muted()).child(edge.label()))
+                    .child(
+                        div()
+                            .text_color(theme::fg_muted())
+                            .child(flow_model::label(edges)),
+                    )
                     .child(div().flex_1())
                     .child(
                         div()

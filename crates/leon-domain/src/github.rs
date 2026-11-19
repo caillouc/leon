@@ -195,6 +195,9 @@ pub struct PullRequest {
     pub closes: Vec<GhRef>,
     /// Lines added and removed, when GitHub gave them.
     pub lines: Option<(u32, u32)>,
+    /// GitHub says its branch conflicts with its base: it cannot be merged
+    /// until they are resolved (GH-3).
+    pub conflicts: bool,
 }
 
 /// A review thread on a pull request's code, not resolved yet.
@@ -363,6 +366,7 @@ mod tests {
             author: String::new(),
             closes: vec![],
             lines: None,
+            conflicts: false,
         }
     }
 

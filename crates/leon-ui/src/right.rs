@@ -9,12 +9,11 @@ use gpui::{
 };
 use gpui_component::input::{InputEvent, TextareaState};
 use leon_core::Intent;
-use leon_domain::{ConversationId, FlowId, GhRef, ReviewComment, review_message};
+use leon_domain::{ConversationId, FlowId, ReviewComment, review_message};
 
 use crate::diff_drawer::Drawer;
 use crate::diff_rows::{DiffList, counts};
 use crate::diff_view::{DiffSource, DraftAt};
-use crate::github::pr_icon;
 use crate::icons::{Icon, icon};
 
 use crate::theme;
@@ -42,8 +41,9 @@ pub(crate) struct Pending {
 pub(crate) struct RightState {
     /// The tab picked by hand, per flow; else Info.
     pub tabs: HashMap<FlowId, RightTab>,
-    /// The folder picked, per flow working in several (CTX-2).
-    pub folder: HashMap<FlowId, std::path::PathBuf>,
+    /// The folder picked by hand, per flow working in several and per tab
+    /// (the Flow's, or an agent's) (CTX-2).
+    pub folder: HashMap<(FlowId, Option<ConversationId>), std::path::PathBuf>,
     /// Files the user opened or closed by hand, overriding `diff.fold`.
     pub open: HashMap<(FlowId, DiffSource, String), bool>,
     /// Pending review per flow (GIT-5).
@@ -269,95 +269,6 @@ impl Workspace {
             .filter_map(|s| self.snapshot.conversations.get(s))
             .collect();
         let place = self.folders_card(view, project, cx);
-        // The issues it works on and its pull requests: each opens in
-        // Leon's details drawer first, GitHub from there (CTX-1, CTX-2).
-        // Each issue and pull request with its title and labels, when
-        // known (an issue of mine is; a pull request always is).
-        let issues = view.issues.iter().map(|item| {
-            let known = self
-                .snapshot
-                .my_issues
-                .iter()
-                .find(|i| i.repo == item.repo && i.number == item.number);
-            (
-                item.clone(),
-                icon(Icon::Issue, theme::fg_muted(), 14.),
-                "Issue",
-                known.map(|i| i.title.clone()),
-                known.map_or_default(|i| i.labels.clone()),
-                Vec::new(),
-            )
-        });
-        let prs = self.snapshot.prs_of(view).into_iter().map(|pr| {
-            (
-                GhRef::pull_request(&pr.repo, pr.number),
-                pr_icon(pr.state, 14.),
-                "Pull request",
-                Some(pr.title.clone()),
-                pr.labels.clone(),
-                // Its checks that did not pass, each opening its run.
-                pr.checks
-                    .iter()
-                    .filter(|c| c.state != leon_domain::CheckState::Pass)
-                    .cloned()
-                    .collect::<Vec<_>>(),
-            )
-        });
-        let links = issues.chain(prs).enumerate().map(
-            |(ix, (item, glyph, what, title, labels, checks))| {
-                let text = item.text();
-                div()
-                    .id(("info-link", ix))
-                    .mx_3()
-                    .px_3()
-                    .py_2()
-                    .flex()
-                    .flex_col()
-                    .gap(px(5.))
-                    .rounded_lg()
-                    .border_1()
-                    .border_color(theme::border())
-                    .bg(theme::window())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(glyph)
-                            .child(div().text_size(px(12.5)).child(what))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .font_family(theme::MONO)
-                                    .text_size(px(12.))
-                                    .text_color(theme::fg_muted())
-                                    .child(text),
-                            ),
-                    )
-                    .children(title.map(|t| {
-                        div()
-                            .text_size(px(12.5))
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(t)
-                    }))
-                    .when(!labels.is_empty(), |d| {
-                        d.child(crate::pr_view::labels(&labels))
-                    })
-                    .children(
-                        checks
-                            .iter()
-                            .enumerate()
-                            .map(|(k, c)| crate::pr_page::check_row(ix * 100 + k, c)),
-                    )
-                    .on_click(cx.listener(move |this, _, _, _| {
-                        this.core.send(Intent::ShowDetail(Some(item.clone())));
-                    }))
-            },
-        );
         div()
             .id("right-info")
             .flex_1()
@@ -366,9 +277,11 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_3()
+            // Its pull requests first, its issues last (CTX-1).
+            .children(self.pr_cards(view, cx))
             .child(self.now_card(&conversations))
             .child(place)
-            .children(links)
+            .children(self.issue_cards(view, cx))
             .into_any_element()
     }
 
@@ -388,13 +301,13 @@ impl Workspace {
             .conversations
             .iter()
             .filter_map(|s| self.snapshot.conversations.get(s))
-            .map(|s| (s.conversation.id.0.to_string(), self.conversation_name(s)))
+            .map(|s| (s.conversation.id.0.to_string(), s.name.clone()))
             .collect();
         let current = self
             .snapshot
             .conversations
             .get(&target)
-            .map_or_default(|s| self.conversation_name(s));
+            .map_or_default(|s| s.name.clone());
         let to = self.picker(
             "review-to",
             &current,

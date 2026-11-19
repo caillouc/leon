@@ -95,7 +95,7 @@ impl Storage for FakeStorage {
             unread: false,
             updated_at: now,
             folders: Vec::new(),
-            issue: None,
+            links: Vec::new(),
         };
         list.push(c.clone());
         Ok(c)
@@ -403,8 +403,8 @@ async fn new_flow(h: &Harness, backend: BackendKind) -> ConversationId {
     let s = until(&h.core, "conversation", |s| !s.flows.is_empty()).await;
     // The issue it was started for is kept with it (GH-2).
     assert_eq!(
-        s.flows[0].flow.issue,
-        Some(leon_domain::GhRef::issue("acme/api", 12))
+        s.flows[0].flow.links,
+        [leon_domain::GhRef::issue("acme/api", 12)]
     );
     started(h, 1).await;
     s.flows[0].conversations[0]

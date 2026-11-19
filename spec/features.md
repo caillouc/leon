@@ -44,10 +44,12 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **NAV-3** Pinned flows sit at the top of the left pane, above the
   projects.
 - **NAV-4** Unread indicator per flow; the user can also mark one as
-  unread. An answer that arrives while the user is not looking — another
+  unread, from its row's right-click menu, or mark one agent as unread, from
+  its Flow box's right-click menu, which makes its flow unread too. An answer that arrives while the user is not looking — another
   flow shown, its Flow or another agent's tab, or Leon behind
   another app — is unread until the user opens that agent's tab or replies to
-  it; the flow stays unread while one of its agents' answers is. An agent
+  it; the flow stays unread while one of its agents' answers is, and its
+  Flow tab then shows a green dot. An agent
   that started others answers only once it has every report back: while one
   of them still works, or a report waits to reach it, its turns are not
   unread and do not notify.
@@ -109,7 +111,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **CONV-16** While an agent works, the bottom of its conversation, just
   above the message box, shows live what it does this moment, as Info's
   "Now" does: each command or edit it runs and for how long, its running
-  subagents, or "Thinking…"; under its plan when it keeps one.
+  subagents, or "Thinking…"; under its plan when it keeps one. Below, and
+  also while it does nothing itself, each agent it waits for — one it asked
+  that has not answered yet — with that agent's state ("Waiting for coder 1 ·
+  Working"), here, in "Now" and on its Flow box.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the
@@ -124,9 +129,13 @@ conversations that come from the user's first message belong to the **same
 flow**: one item in the left pane (D5).
 
 - **FLOW-1** An agent starts another agent in a new conversation, with a
-  prompt, and gets its answer back.
+  prompt, and gets its answer back. Or, when the user asks, it starts one
+  for the user: that conversation's answers go to the user, who reviews and
+  continues it, and nothing goes back to the agent that started it.
 - **FLOW-2** An agent can send a follow-up to a conversation it started (e.g.
-  the same coder fixes the reviewer's findings).
+  the same coder fixes the reviewer's findings). Agents name the flow's
+  conversations as the user sees them (planner, coder 1, coder 2…), so
+  when the user names one, the agent reaches it by that name.
 - **FLOW-3** Switch between the conversations of a flow and talk to any of
   them directly.
 - **FLOW-4** A flow diagram is the flow's main tab: one box per conversation
@@ -153,7 +162,11 @@ flow**: one item in the left pane (D5).
   one pushes it into a curve round its other side, as CS Academy bends an
   edge a node sits on. Those between the
   same two boxes (prompts one way, reports back) run side by side as one
-  bundle under one label, put where it covers no box and no other label. A
+  bundle under one small label, put where it covers no box and no other
+  label; arrows of one kind going both ways (two agents that asked each
+  other) share one line with a head at each end. The label shows only how
+  many messages each line carries, in the line's colour, which the legend
+  explains. A
   bar sums up the whole flow: its conversations, how many work, their
   messages, tool calls and usage.
 - **FLOW-5** Nothing hardcoded: the flow diagram is built from what the agents
@@ -170,9 +183,9 @@ flow**: one item in the left pane (D5).
 
 ### Right pane
 
-- **CTX-1** Information about the current flow, its issue and pull
-  request (each opening Leon's view of it, GitHub from there), and
-  first what each agent is doing now, in its colour from the diagram: its
+- **CTX-1** Information about the current flow: its pull requests at the
+  top, its issues at the bottom (each opening Leon's view of it, GitHub from
+  there), and between them what each agent is doing now, in its colour from the diagram: its
   CLI and model, working on which commands and for how long, how many
   subagents run, the answer it waits for, or idle. The right pane's tabs
   are Info, Changes, Branch; a flow opens it on Info, and a tab picked by
@@ -180,18 +193,26 @@ flow**: one item in the left pane (D5).
   request opens in the details drawer, not in a tab of its own. Each issue
   and pull request shows its title and labels; a pull request also lists
   its CI checks that failed or still run, each opening its job on GitHub.
+  A pull request stands apart from an issue: its state's colour along its
+  left side, its state (Open, Draft, Merged, Closed), its title in bold and
+  the lines it adds and removes.
 - **CTX-2** One flow can edit several repositories, in several
   worktrees, with several PRs, linked to several issues, and Leon follows
   what the agents do: a folder joins the flow when an agent edits a
-  file in it or tells Leon it moved there; each folder's branch brings its
+  file in it, tells Leon it moved there, or is started in it; each folder's branch brings its
   PR; each PR brings the issues it closes, after the issue the flow
-  was started for. Info lists them all, each folder with its repository,
+  was started for. An agent also links to the flow each issue or PR it
+  creates or works on, and the flow keeps them all. Several agents can
+  work in several folders at once: Where shows, under each folder, the
+  agents working there, and on an agent's tab Changes and Branch show
+  that agent's folder unless another is picked on that tab. Info lists them all, each folder with its repository,
   branch and what it started from, its PR and its path. Changes and Branch
   show one folder at a time, named by a row of chips (repository · branch ·
   PR) above them, picked there when there are several.
 - **CTX-3** Leon tells every agent conversation, in every CLI, to keep it up to
   date with its tools each time it is needed (moving to another folder,
-  naming the flow), so the app always shows the current work.
+  naming the flow, linking an issue or PR it creates or works on), so the
+  app always shows the current work.
 - **GIT-1** Uncommitted files of the flow's folder (CTX-2).
 - **GIT-2** Diff of each uncommitted file. Changes and Branch list the files
   (with lines added and removed on the tab); clicking one opens a large drawer
@@ -225,7 +246,10 @@ flow**: one item in the left pane (D5).
 - **GH-3** My open PRs, grouped by repository (each group foldable), with
   their state icon and checks. Clicking one opens its details in a drawer,
   laid out like its GitHub page: title and state pill, who wants to merge
-  which branch into which with its labels on the right of that line, the checks box (how they went, the failing ones
+  which branch into which with its labels on the right of that line, while
+  it is open and GitHub says its branch conflicts with its base the box
+  "This branch has conflicts that must be resolved" (also a "Conflicts with
+  <base>" line on its card in Info), the checks box (how they went, the failing ones
   named), its description (GitHub's folded sections stay folded) and each
   review thread still open with the code it is on, people as coloured
   avatars, a box to comment. Its actions (Copilot review, then ready or
@@ -350,11 +374,14 @@ flow**: one item in the left pane (D5).
 - **PR badge** (NAV-6): draft · open + checks (pending / passing / failing) ·
   merged · closed. One per folder of the flow (CTX-2): the PR whose
   head is that folder's branch, or one bound explicitly.
-- **Tabs** (FLOW-3, FLOW-4): Flow first, then one tab per conversation. Flow is
-  the default tab when the flow has more than one conversation.
+- **Tabs** (FLOW-3, FLOW-4): Flow first, then one tab per conversation: the
+  one shown, then the others from the one opened last, then those never
+  opened in start order; opening a tab brings the row back to its start.
+  Flow is the default tab when the flow has more than one conversation.
 - **Flow diagram** (FLOW-4, FLOW-6): laid out by forces from columns of who
-  started whom; straight arrows, bundled by pair of boxes. One arrow per direction between two boxes, labelled with a count
-  ("2 prompts"); the arrow panel lists each one with its time. Prompt arrows are
+  started whom; straight arrows, bundled by pair of boxes. One line per kind between two boxes, both ways sharing it,
+  labelled with its count ("2"); the arrow panel lists each message with its
+  time and, on a line going both ways, who sent it. Prompt arrows are
   solid, report arrows dashed, a question to you is amber, a prompt still being
   worked on is animated. The view refits on its own until you pan, zoom or move
   a box.

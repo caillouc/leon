@@ -2,6 +2,8 @@
 //! as in a force layout. Every arrow between the same two boxes — the
 //! prompts one way, the reports back — runs alongside the others as one
 //! bundle under one label, put where it covers no box and no other label.
+//! Arrows of one kind going both ways — two agents that asked each other —
+//! share one line, with a head at each end.
 //! A box sitting on a bundle pushes it into a curve that goes round it, on
 //! the other side, as CS Academy's graph editor bends an edge a node sits
 //! on (a quadratic curve, its middle moved sideways; `getPathString` and
@@ -21,11 +23,27 @@ const ROUND: f32 = 24.;
 /// Points drawn along a curve.
 const SAMPLES: usize = 20;
 
-/// What to draw, in the diagram's units: each arrow (by its index in the
-/// model's edges) with its points, and each bundle's label with its arrows.
+/// What to draw, in the diagram's units: each line, and each bundle's
+/// label with its lines (by their index in `lines`).
 pub(crate) struct Drawing {
-    pub arrows: Vec<(usize, Vec<Pt>)>,
+    pub lines: Vec<Line>,
     pub labels: Vec<(Pt, Vec<usize>)>,
+}
+
+/// The arrows of one kind between two boxes: one way, or both ways with a
+/// head at each end.
+pub(crate) struct Line {
+    /// Its arrows, by their index in the model's edges; the first one's
+    /// start is where `points` start.
+    pub edges: Vec<usize>,
+    pub points: Vec<Pt>,
+}
+
+impl Line {
+    /// It goes both ways: a head at each end.
+    pub(crate) fn both(&self) -> bool {
+        self.edges.len() > 1
+    }
 }
 
 /// The arrows between two boxes, those leaving `from` first.
@@ -40,7 +58,7 @@ struct Bundle {
 #[allow(clippy::cast_precision_loss, reason = "a handful of arrows")]
 pub(crate) fn draw(model: &FlowModel, rects: &HashMap<Node, Rect>) -> Drawing {
     let mut drawing = Drawing {
-        arrows: Vec::new(),
+        lines: Vec::new(),
         labels: Vec::new(),
     };
     let mut taken: Vec<Rect> = rects.values().copied().collect();
@@ -48,29 +66,41 @@ pub(crate) fn draw(model: &FlowModel, rects: &HashMap<Node, Rect>) -> Drawing {
         let (Some(a), Some(b)) = (rects.get(&bundle.from), rects.get(&bundle.to)) else {
             continue;
         };
-        let n = bundle.edges.len() as f32;
+        // One line per kind: its arrows, both ways when there are.
+        let mut kinds: Vec<Vec<usize>> = Vec::new();
+        for &e in &bundle.edges {
+            match kinds
+                .iter_mut()
+                .find(|k| model.edges[k[0]].kind == model.edges[e].kind)
+            {
+                Some(k) => k.push(e),
+                None => kinds.push(vec![e]),
+            }
+        }
+        let n = kinds.len() as f32;
         let others: Vec<Rect> = rects
             .iter()
             .filter(|(node, _)| **node != bundle.from && **node != bundle.to)
             .map(|(_, r)| *r)
             .collect();
         let bend = bulge(*a, *b, &others);
-        for (k, &e) in bundle.edges.iter().enumerate() {
+        let first = drawing.lines.len();
+        let mut width = 0.;
+        for (k, edges) in kinds.into_iter().enumerate() {
             let shift = (k as f32 - (n - 1.) / 2.) * SPACING;
             let mut points = path(*a, *b, shift, bend);
-            if model.edges[e].from != bundle.from {
+            if model.edges[edges[0]].from != bundle.from {
                 points.reverse();
             }
-            drawing.arrows.push((e, points));
+            let carried: Vec<&super::Edge> = edges.iter().map(|e| &model.edges[*e]).collect();
+            width += super::count(&carried).to_string().len() as f32 * 6. + 12.;
+            drawing.lines.push(Line { edges, points });
         }
-        let width: f32 = bundle
-            .edges
-            .iter()
-            .map(|e| model.edges[*e].label().len() as f32 * 7. + 18.)
-            .sum();
         let spot = label_spot(&path(*a, *b, 0., bend), width, &taken);
         taken.push(label_rect(spot, width));
-        drawing.labels.push((spot, bundle.edges.clone()));
+        drawing
+            .labels
+            .push((spot, (first..drawing.lines.len()).collect()));
     }
     drawing
 }

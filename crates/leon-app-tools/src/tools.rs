@@ -1,16 +1,16 @@
-//! The four tools: what `tools/list` shows agents, and how `tools/call`
+//! The five tools: what `tools/list` shows agents, and how `tools/call`
 //! arguments become an [`AppToolCall`].
 
 use std::path::PathBuf;
 
 use leon_core::ports::AppToolCall;
-use leon_domain::ConversationId;
 use serde_json::{Value, json};
 
 const START_AGENT: &str = "start_agent";
 const MESSAGE_AGENT: &str = "message_agent";
 const RENAME_FLOW: &str = "rename_flow";
 const SET_WORKING_DIRECTORY: &str = "set_working_directory";
+const LINK_GITHUB: &str = "link_github";
 
 /// What every conversation is told (CTX-3): Leon shows the user the
 /// agents' work only as well as they keep it up to date.
@@ -21,7 +21,15 @@ what every agent of this flow is doing. Keep it up to date with the tools of its
 another repository), call `set_working_directory` with its absolute path, before you work \
 there.
 - Once the subject of the flow is clear, and when it changes, call `rename_flow` \
-with a short title.";
+with a short title.
+- Each time you create a GitHub issue or pull request, or start working on one, call \
+`link_github` with its link.
+- When the user asks you to start an agent for them (they will review and continue it \
+themselves), call `start_agent` with `for_user: true`: its answers go to the user, not \
+back to you.
+- Leon names this flow's conversations for the user as `[From …]` messages show them \
+(`planner`, `coder 1`, `coder 2`…): when the user names one, pass that name to \
+`message_agent`.";
 
 /// Why a `tools/call` could not become an [`AppToolCall`].
 #[derive(Debug, PartialEq, Eq)]
@@ -35,49 +43,23 @@ pub(crate) enum ToolError {
 /// The `tools/list` result.
 pub(crate) fn list() -> Value {
     json!({ "tools": [
-        {
-            "name": START_AGENT,
-            "description": "Start another agent in a new conversation of this flow and send it \
-                a first message. Returns at once with the new conversation's id: do not wait \
-                for it. When that agent finishes its answer, the answer arrives in this \
-                conversation as a new message starting with `[From <agent> · conversation \
-                <id>]`. Meanwhile, keep working or end your turn. Send it follow-ups with \
-                message_agent.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "agent": {
-                        "type": "string",
-                        "description": "Name of the agent to start, as in its agent file.",
-                    },
-                    "prompt": {
-                        "type": "string",
-                        "description": "First message to the agent. It starts a new \
-                            conversation and does not see this one, so give it everything it \
-                            needs.",
-                    },
-                    "working_directory": {
-                        "type": "string",
-                        "description": "Absolute path of the folder it works in, e.g. a git \
-                            worktree. Defaults to this conversation's working directory.",
-                    },
-                },
-                "required": ["agent", "prompt"],
-            },
-        },
+        start_agent_tool(),
         {
             "name": MESSAGE_AGENT,
             "description": "Send a follow-up message to another conversation of this flow. \
                 Returns at once: do not wait for it. When that agent finishes its answer, the \
                 answer arrives in this conversation as a new message starting with `[From \
-                <agent> · conversation <id>]`.",
+                <name> · conversation <id>]`.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "conversation": {
-                        "type": "integer",
-                        "description": "Id of the conversation, as start_agent returned it \
-                            or as a `[From <agent> · conversation <id>]` message shows it.",
+                        "type": "string",
+                        "description": "The conversation: its name as Leon shows it to the \
+                            user (`coder 2`; a name gains a number when another conversation \
+                            of the same agent starts), or its id (`14`), as start_agent \
+                            returned them or a `[From <name> · conversation <id>]` message \
+                            shows them.",
                     },
                     "text": { "type": "string", "description": "The message." },
                 },
@@ -110,7 +92,64 @@ pub(crate) fn list() -> Value {
                 "required": ["path"],
             },
         },
+        {
+            "name": LINK_GITHUB,
+            "description": "Link a GitHub issue or pull request to this flow: Leon then shows \
+                it in the flow's Info, with its state, labels and checks. Call it each time \
+                you create an issue or a pull request, or start working on one.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Its link: https://github.com/<owner>/<repo>/issues/<n> \
+                            or …/pull/<n>.",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
     ] })
+}
+
+/// `start_agent` in `tools/list`.
+fn start_agent_tool() -> Value {
+    json!({
+        "name": START_AGENT,
+        "description": "Start another agent in a new conversation of this flow and send it \
+            a first message. Returns at once with the new conversation's name and id: do \
+            not wait for it. When that agent finishes its answer, the answer arrives in \
+            this conversation as a new message starting with `[From <name> · \
+            conversation <id>]`. Meanwhile, keep working or end your turn. Send it \
+            follow-ups with message_agent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "Name of the agent to start, as in its agent file.",
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "First message to the agent. It starts a new \
+                        conversation and does not see this one, so give it everything it \
+                        needs.",
+                },
+                "working_directory": {
+                    "type": "string",
+                    "description": "Absolute path of the folder it works in, e.g. a git \
+                        worktree. Defaults to this conversation's working directory.",
+                },
+                "for_user": {
+                    "type": "boolean",
+                    "description": "true when the user will review and continue this \
+                        conversation themselves: its answers go to the user, never back \
+                        to you. Defaults to false: its answer comes back to you.",
+                },
+            },
+            "required": ["agent", "prompt"],
+        },
+    })
 }
 
 /// Turns a `tools/call`'s `name` and `arguments` into a call to the core.
@@ -124,19 +163,17 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolEr
                 .filter(|value| !value.is_null() && *value != "")
                 .map(|_| path(arguments, "working_directory"))
                 .transpose()?,
+            for_user: arguments
+                .get("for_user")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         },
         MESSAGE_AGENT => AppToolCall::MessageAgent {
-            conversation: ConversationId(
-                arguments
-                    .get("conversation")
-                    .and_then(Value::as_i64)
-                    .ok_or_else(|| {
-                        ToolError::Arguments(
-                            "`conversation` must be an integer: the id of a conversation"
-                                .to_owned(),
-                        )
-                    })?,
-            ),
+            // An id given as a number is taken too.
+            conversation: match arguments.get("conversation").and_then(Value::as_i64) {
+                Some(id) => id.to_string(),
+                None => text(arguments, "conversation")?,
+            },
             text: text(arguments, "text")?,
         },
         RENAME_FLOW => AppToolCall::RenameFlow {
@@ -144,6 +181,9 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolEr
         },
         SET_WORKING_DIRECTORY => AppToolCall::SetWorkingDirectory {
             path: path(arguments, "path")?,
+        },
+        LINK_GITHUB => AppToolCall::LinkGithub {
+            url: text(arguments, "url")?,
         },
         _ => return Err(ToolError::Unknown),
     })
@@ -182,10 +222,10 @@ mod tests {
     fn every_listed_tool_parses_its_required_arguments() {
         let samples = json!({
             "agent": "coder", "prompt": "do it", "conversation": 3, "text": "more",
-            "title": "Title", "path": "/repo",
+            "title": "Title", "path": "/repo", "url": "https://github.com/acme/api/issues/1",
         });
         let tools = list()["tools"].as_array().cloned().unwrap_or_default();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
         for tool in tools {
             let name = tool["name"].as_str().unwrap_or_default();
             let mut arguments = json!({});
@@ -222,9 +262,10 @@ mod tests {
             ),
             (
                 "message_agent",
-                json!({ "conversation": "3", "text": "t" }),
-                "`conversation` must be an integer",
+                json!({ "conversation": " ", "text": "t" }),
+                "`conversation` is required",
             ),
+            ("link_github", json!({}), "`url` is required"),
             (
                 "message_agent",
                 json!({ "conversation": 3 }),
@@ -260,6 +301,7 @@ mod tests {
                     agent: "a".to_owned(),
                     prompt: "p".to_owned(),
                     working_directory: None,
+                    for_user: false,
                 })
             );
         }

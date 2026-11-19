@@ -23,6 +23,15 @@ pub enum Entry {
         /// request, whose answer goes back to `from`.
         answer: bool,
     },
+    /// The first message of a conversation another one started for the
+    /// user: its answers go to the user, who reviews and continues it, not
+    /// back to `from` (FLOW-1).
+    ForYou {
+        /// The conversation that started it.
+        from: ConversationId,
+        /// Message text.
+        text: String,
+    },
     /// A complete message from the agent.
     Agent {
         /// Markdown text.
@@ -108,9 +117,10 @@ pub fn activity(entries: &[TimedEntry]) -> (usize, usize) {
         .iter()
         .fold((0, 0), |(messages, tools), e| match e.entry {
             Entry::Tool { .. } => (messages, tools + 1),
-            Entry::User { .. } | Entry::Agent { .. } | Entry::FromAgent { .. } => {
-                (messages + 1, tools)
-            }
+            Entry::User { .. }
+            | Entry::Agent { .. }
+            | Entry::FromAgent { .. }
+            | Entry::ForYou { .. } => (messages + 1, tools),
             Entry::Notice { .. } | Entry::Error { .. } | Entry::TurnEnd { .. } => (messages, tools),
         })
 }
@@ -230,6 +240,21 @@ mod tests {
         assert_eq!(
             json,
             r#"{"kind":"tool","id":"t1","name":"Ran","detail":"ls","output":null,"failed":false}"#
+        );
+        let back: Entry = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, entry);
+    }
+
+    #[test]
+    fn a_message_for_you_round_trips() {
+        let entry = Entry::ForYou {
+            from: crate::ConversationId(1),
+            text: "Plan the retry fix".into(),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert_eq!(
+            json,
+            r#"{"kind":"for_you","from":1,"text":"Plan the retry fix"}"#
         );
         let back: Entry = serde_json::from_str(&json).unwrap();
         assert_eq!(back, entry);

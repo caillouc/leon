@@ -4,11 +4,11 @@
 
 use std::path::{Path, PathBuf};
 
-use leon_domain::{ConversationId, Entry, FlowId, Status};
+use leon_domain::{ConversationId, Entry, FlowId, GhRef, Status};
 
 use crate::app::Core;
 use crate::ports::{AppToolCall, AppToolRequest, NewConversation};
-use crate::state::{ConversationState, Waiting};
+use crate::state::{ConversationState, Sent, Waiting};
 
 impl Core {
     pub(crate) fn on_tool(&mut self, request: AppToolRequest) {
@@ -38,9 +38,27 @@ impl Core {
                 agent,
                 prompt,
                 working_directory,
-            } => self.start_agent(caller, flow, &agent, &prompt, working_directory),
+                for_user,
+            } => {
+                let sent = if for_user {
+                    Sent::ForUser
+                } else {
+                    Sent::Request
+                };
+                self.start_agent(caller, flow, &agent, &prompt, working_directory, sent)
+            }
             AppToolCall::MessageAgent { conversation, text } => {
-                self.message_agent(caller, flow, conversation, &text)
+                let target = self
+                    .state
+                    .find_conversation(flow, &conversation)
+                    .ok_or_else(|| {
+                        format!(
+                            "No conversation of this flow is called \"{conversation}\". Its \
+                         conversations: {}.",
+                            self.state.roll_call(flow)
+                        )
+                    })?;
+                self.message_agent(caller, flow, target, &text)
             }
             AppToolCall::RenameFlow { title } => {
                 let title = title.trim().to_owned();
@@ -53,8 +71,19 @@ impl Core {
             AppToolCall::SetWorkingDirectory { path } => {
                 check_dir(&path)?;
                 let shown = path.display().to_string();
-                self.find_working_tree(flow, path, true);
+                self.find_working_tree(caller, flow, path, true);
                 Ok(format!("Leon now shows the changes in {shown}."))
+            }
+            AppToolCall::LinkGithub { url } => {
+                let item = GhRef::from_url(url.trim()).ok_or_else(|| {
+                    format!(
+                        "{url} is not the link of a GitHub issue or pull request, like \
+                         https://github.com/owner/name/issues/12 or …/pull/12."
+                    )
+                })?;
+                let text = item.text();
+                self.link(flow, item);
+                Ok(format!("Linked {text} to the flow: Leon shows it in Info."))
             }
         }
     }
@@ -66,6 +95,7 @@ impl Core {
         agent: &str,
         prompt: &str,
         working_directory: Option<PathBuf>,
+        sent: Sent,
     ) -> Result<String, String> {
         if prompt.trim().is_empty() {
             return Err("The prompt is empty.".to_owned());
@@ -89,6 +119,7 @@ impl Core {
                 format!("No agent named \"{agent}\". Agents: {}.", names.join(", "))
             });
         }
+        let given = working_directory.is_some();
         let working_dir = match working_directory {
             Some(path) => {
                 check_dir(&path)?;
@@ -130,12 +161,27 @@ impl Core {
             working_dir,
         };
         let id = self.add_conversation(&new).map_err(|e| e.to_string())?;
-        self.message(caller, id, prompt.to_owned(), true);
+        // Started in a folder of its own: the folder joins the flow at once.
+        if given {
+            self.find_working_tree(id, flow, new.working_dir.clone(), true);
+        }
+        self.message(caller, id, prompt.to_owned(), sent);
+        let name = self.state.conversation_name(id);
+        if sent == Sent::ForUser {
+            return Ok(format!(
+                "Started {name} (conversation {n}) for the user: its answers go to the user, \
+                 who reviews and continues it; nothing comes back here. The flow's \
+                 conversations: {all}.",
+                n = id.0,
+                all = self.state.roll_call(flow)
+            ));
+        }
         Ok(format!(
-            "Started {agent} as conversation {n}. Its answer will arrive here as a new message \
-             starting with [From {agent} · conversation {n}]. Use message_agent with \
-             conversation {n} for follow-ups.",
-            n = id.0
+            "Started {name} (conversation {n}). Its answer will arrive here as a new message \
+             starting with [From {name} · conversation {n}]. For follow-ups, use message_agent \
+             with conversation \"{name}\" or {n}. The flow's conversations: {all}.",
+            n = id.0,
+            all = self.state.roll_call(flow)
         ))
     }
 
@@ -159,11 +205,11 @@ impl Core {
             .filter(|s| s.conversation.flow == flow)
             .map(|s| !ready(s.status))
             .ok_or_else(|| format!("Conversation {} is not in this flow.", target.0))?;
-        let name = self.conversation_label(target);
-        self.message(caller, target, text.to_owned(), true);
+        let name = self.state.conversation_name(target);
+        self.message(caller, target, text.to_owned(), Sent::Request);
         Ok(if busy {
             format!(
-                "{name} (session {}) is busy: your message is sent when it finishes. \
+                "{name} (conversation {}) is busy: your message is sent when it finishes. \
                  Its answer will arrive here as a new message.",
                 target.0
             )
@@ -178,37 +224,34 @@ impl Core {
     /// Sends `text` from conversation `from` to conversation `to`: now if `to` is ready,
     /// else after its current turn. For a request, `to`'s answer goes back to
     /// `from`.
-    fn message(
-        &mut self,
-        from: ConversationId,
-        to: ConversationId,
-        text: String,
-        expects_answer: bool,
-    ) {
-        let header = format!(
-            "[From {} · conversation {}]",
-            self.conversation_label(from),
-            from.0
-        );
+    fn message(&mut self, from: ConversationId, to: ConversationId, text: String, sent: Sent) {
+        let name = self.state.conversation_name(from);
+        let header = match sent {
+            Sent::ForUser => format!(
+                "[From {name} · conversation {} · for the user: your answers go to the user, \
+                 who reviews and continues this conversation, not back to {name}]",
+                from.0
+            ),
+            Sent::Request | Sent::Answer => format!("[From {name} · conversation {}]", from.0),
+        };
         let Some(s) = self.state.conversations.get_mut(&to) else {
             return;
         };
         if !ready(s.status) {
-            s.inbox.push_back(Waiting {
-                from,
-                text,
-                expects_answer,
-            });
+            s.inbox.push_back(Waiting { from, text, sent });
             return;
         }
-        if expects_answer {
+        if sent == Sent::Request {
             s.reply_to = Some(from);
         }
         let message = format!("{header}\n\n{text}");
-        let entry = Entry::FromAgent {
-            from,
-            text,
-            answer: !expects_answer,
+        let entry = match sent {
+            Sent::Request | Sent::Answer => Entry::FromAgent {
+                from,
+                text,
+                answer: sent == Sent::Answer,
+            },
+            Sent::ForUser => Entry::ForYou { from, text },
         };
         if !self.deliver(to, entry, &message) {
             // The CLI could not start: the asker gets the error as the answer.
@@ -227,10 +270,10 @@ impl Core {
         let answer = reply_to.map(|_| last_answer(s, failed));
         let next = s.inbox.pop_front();
         if let (Some(to), Some(answer)) = (reply_to, answer) {
-            self.message(id, to, answer, false);
+            self.message(id, to, answer, Sent::Answer);
         }
         if let Some(w) = next {
-            self.message(w.from, id, w.text, w.expects_answer);
+            self.message(w.from, id, w.text, w.sent);
         }
         reply_to.is_some()
     }
@@ -238,25 +281,11 @@ impl Core {
     /// Conversation `id`'s work goes on: it already reads its next message,
     /// or an agent it asked has not answered yet.
     pub(crate) fn goes_on(&self, id: ConversationId) -> bool {
-        self.state.conversations.values().any(|s| {
-            (s.conversation.id == id && s.status == Status::Running)
-                || s.reply_to == Some(id)
-                || s.inbox.iter().any(|w| w.from == id && w.expects_answer)
-        })
-    }
-
-    /// The agent's name, or its CLI's when it has no agent.
-    pub(crate) fn conversation_label(&self, id: ConversationId) -> String {
-        self.state.conversations.get(&id).map_or_else(
-            || format!("conversation {}", id.0),
-            |s| {
-                s.conversation
-                    .settings
-                    .agent
-                    .clone()
-                    .unwrap_or_else(|| s.conversation.settings.backend.display_name().to_owned())
-            },
-        )
+        self.state
+            .conversations
+            .get(&id)
+            .is_some_and(|s| s.status == Status::Running)
+            || !self.state.waiting_for(id).is_empty()
     }
 }
 
@@ -274,7 +303,12 @@ fn last_answer(s: &ConversationState, failed: bool) -> String {
         .map_or_default(|t| t.entries.as_slice());
     let start = entries
         .iter()
-        .rposition(|e| matches!(e.entry, Entry::User { .. } | Entry::FromAgent { .. }))
+        .rposition(|e| {
+            matches!(
+                e.entry,
+                Entry::User { .. } | Entry::FromAgent { .. } | Entry::ForYou { .. }
+            )
+        })
         .map_or(0, |i| i + 1);
     let mut parts: Vec<&str> = Vec::new();
     for e in &entries[start..] {

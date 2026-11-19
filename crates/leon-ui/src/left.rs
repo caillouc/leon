@@ -155,7 +155,6 @@ impl Workspace {
                     ),
             )
             .child(body)
-            .children(self.render_row_menu(cx))
             .child(self.render_bottom_nav(cx))
             .into_any_element()
     }

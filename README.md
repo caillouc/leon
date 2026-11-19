@@ -4,7 +4,7 @@ One native window to run and follow many coding-agent conversations across
 many repositories, on top of the coding CLIs you already use: Claude Code,
 Codex and Copilot CLI.
 
-![A flow in Leon: the Flow tab with a planner, two coders and two reviewers spread around it, the prompts and reports between them, and the right pane's Info: what each agent does now, the flow's folders, issues and pull requests (sample data)](docs/flow.png)
+![A flow in Leon: the Flow tab with a planner, two coders and two reviewers spread around it, the prompts and reports between them, and the right pane's Info: the flow's pull requests, what each agent does now, its folders and issues (sample data)](docs/flow.png)
 
 ## Why Leon
 
@@ -20,13 +20,16 @@ window:
   an arrow to read what was said; the one with an answer for you is marked
   "To review".
 - **What each agent does now**, live at the bottom of its conversation:
-  the command it runs and for how long, its subagents, its plan.
+  the command it runs and for how long, its subagents, its plan, and the
+  agents it waits for ("Waiting for coder 1 · Working").
 - **Agents that start agents.** Any agent can start or message another
   through Leon's own tools, whichever CLI it runs on: a Claude Code planner
-  can hand work to a Codex coder.
+  can hand work to a Codex coder. Agents call each other by the names you
+  see (coder 1, reviewer 2), link the issues and pull requests they create,
+  and each can work in its own worktree or repository.
 - **Your work around it**: the git changes and branch diff of each flow with
   line comments sent back as one review, its pull requests with their
-  checks (a failing job one click away), your GitHub issues by board column, priority and sprint (start a
+  checks (a failing job one click away) and merge conflicts, your GitHub issues by board column, priority and sprint (start a
   flow from an issue in one click), and the connectors each CLI can reach.
 - **Your subscriptions, your CLIs.** Leon drives the official CLIs with your
   own logins; it never calls a model API itself and stores everything locally.

@@ -67,6 +67,20 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE agent_sessions RENAME COLUMN conversation_id TO flow_id;
     ALTER TABLE agent_sessions RENAME TO conversations;
     ALTER TABLE entries RENAME COLUMN session_id TO conversation_id;",
+    // 10: every issue and pull request linked to a flow, in the order they
+    // were linked, instead of only the issue it was started for (CTX-2).
+    "CREATE TABLE flow_links (
+        flow_id INTEGER NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        PRIMARY KEY (flow_id, kind, repo, number)
+    ) STRICT;
+    INSERT INTO flow_links (flow_id, kind, repo, number)
+      SELECT id, 'issue', substr(issue, 1, instr(issue, '#') - 1),
+             CAST(substr(issue, instr(issue, '#') + 1) AS INTEGER)
+      FROM flows WHERE instr(issue, '#') > 1 ORDER BY id;
+    ALTER TABLE flows DROP COLUMN issue;",
 ];
 
 /// Latest schema version this build knows.
@@ -160,6 +174,40 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(folders, [r#"["/code/api/.worktrees/fix"]"#, "[]"]);
+    }
+
+    /// The issue a flow was started for becomes its first link; the flow
+    /// and its links go together.
+    #[test]
+    fn a_flows_issue_becomes_its_first_link() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        for sql in &MIGRATIONS[..9] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 9).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, path, added_at) VALUES (1, 'api', '/code/api', 0);
+             INSERT INTO flows (id, project_id, title, updated_at, issue)
+               VALUES (1, 1, 'from an issue', 0, 'acme/api#12'), (2, 1, 'plain', 0, NULL);",
+        )
+        .unwrap();
+        run(&mut conn).unwrap();
+        let links: Vec<(i64, String, String, i64)> = conn
+            .prepare("SELECT flow_id, kind, repo, number FROM flow_links")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(links, [(1, "issue".into(), "acme/api".into(), 12)]);
+        conn.execute("DELETE FROM flows WHERE id = 1", []).unwrap();
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM flow_links", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]

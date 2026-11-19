@@ -209,6 +209,8 @@ fn pr(number: u64, title: &str, state: PrState) -> PullRequest {
         author: "octocat".into(),
         closes: vec![leon_domain::GhRef::issue("acme/payments-api", 401)],
         lines: Some((40 + u32::try_from(number % 100).unwrap_or(0), 12)),
+        // The API pull request conflicts with its base (GH-3).
+        conflicts: number == 412,
     }
 }
 

@@ -97,8 +97,10 @@ pub struct Flow {
     /// the order Leon saw them (D3, CTX-2); empty: the first conversation's
     /// folder.
     pub folders: Vec<PathBuf>,
-    /// The issue it was started for (GH-2, CTX-1), if any.
-    pub issue: Option<crate::GhRef>,
+    /// The issues and pull requests linked to it, in the order they were:
+    /// the issue it was started for (GH-2), then those its agents linked
+    /// (CTX-2).
+    pub links: Vec<crate::GhRef>,
 }
 
 /// Choices that shape an conversation (CONV-2..4).

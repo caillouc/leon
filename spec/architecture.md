@@ -73,6 +73,9 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    (`crates/leon-core/src/agents.rs`) creates the coder's conversation in the
    same flow with the planner's CLI, model, effort and permission, sends the
    prompt as `[From planner · conversation N]` and answers the tool at once.
+   Names are the ones the user sees (`State::conversation_name`: the agent,
+   numbered when the flow has several: `coder 2`), in the UI and for the
+   agents alike; `message_agent` takes a name or an id.
 3. The coder's transcript records the prompt as `Entry::FromAgent { answer:
    false }`; the coder's `reply_to` is the planner.
 4. When the coder's turn ends, its answer (its agent messages since the
@@ -86,12 +89,19 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    `set_working_directory`, or when its CLI reports a file edit
    (`BackendEvent::FilesChanged`): the core asks git for the working tree
    holding the file (`Git::working_tree`, a repository or one of its
-   worktrees) and adds it once. The folder the calling CLI was started in
-   never changes (its resume depends on it).
-7. Git state (`GitView`) and pull requests are kept per folder; a
-   flow's issues are the one it was started for, then those its
-   folders' pull requests close (`closingIssuesReferences`). The right pane
-   shows one folder at a time (`crates/leon-ui/src/right_folders.rs`).
+   worktrees) and adds it once; a conversation started with a
+   `working_directory` brings it at once. Each conversation keeps the folder
+   it last worked in (`ConversationView::folder`), which the right pane shows
+   on its tab. The folder the calling CLI was started in never changes (its
+   resume depends on it).
+7. Git state (`GitView`) and pull requests are kept per folder. A flow's
+   links (`Flow::links`, SQLite `flow_links`, I19) are the issue it was
+   started for and what its agents linked with `link_github`
+   (`crates/leon-core/src/links.rs`), each read from GitHub when linked, at
+   startup and at each tick. Its pull requests are its folders', then its
+   linked ones; its issues its linked ones, then those its pull requests
+   close (`closingIssuesReferences`). The right pane shows one folder at a
+   time (`crates/leon-ui/src/right_folders.rs`).
 8. Every conversation is told, in its CLI's system prompt or first message, to
    keep Leon up to date with these tools (`AppTools::instructions`, CTX-3;
    assembled in `crates/leon-backends/src/told.rs`).

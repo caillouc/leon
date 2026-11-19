@@ -107,6 +107,7 @@ impl GitHub for FakeGitHub {
             author: String::new(),
             closes: vec![closes],
             lines: None,
+            conflicts: false,
         }))
     }
     fn my_issues(&self) -> Result<Vec<Issue>, PortError> {

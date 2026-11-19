@@ -43,22 +43,30 @@ pub(crate) struct Edge {
     pub items: Vec<Item>,
 }
 
-impl Edge {
-    /// Short text on the arrow.
-    pub(crate) fn label(&self) -> String {
-        let n = self.items.len();
-        let (one, many) = match (self.kind, self.from, self.to) {
-            (EdgeKind::Question, _, _) => return "question".to_owned(),
-            (EdgeKind::Prompt, Node::You, _) => ("your message", "messages"),
-            (EdgeKind::Prompt, _, _) => ("prompt", "prompts"),
-            (EdgeKind::Report, _, Node::You) => ("answer", "answers"),
-            (EdgeKind::Report, _, _) => ("report", "reports"),
-        };
-        if n > 1 {
-            format!("{n} {many}")
-        } else {
-            one.to_owned()
-        }
+/// How many messages a line of arrows carries: what its label shows, its
+/// kind told by its colour (the legend says which).
+pub(crate) fn count(edges: &[&Edge]) -> usize {
+    edges.iter().map(|e| e.items.len()).sum()
+}
+
+/// What a line of arrows of one kind between two boxes carries, one way or
+/// both, in words: "prompt", "2 reports".
+pub(crate) fn label(edges: &[&Edge]) -> String {
+    let Some(first) = edges.first() else {
+        return String::new();
+    };
+    let n = count(edges);
+    let (one, many) = match (first.kind, first.from, first.to) {
+        (EdgeKind::Question, _, _) => return "question".to_owned(),
+        (EdgeKind::Prompt, Node::You, _) => ("your message", "messages"),
+        (EdgeKind::Prompt, _, _) => ("prompt", "prompts"),
+        (EdgeKind::Report, _, Node::You) => ("answer", "answers"),
+        (EdgeKind::Report, _, _) => ("report", "reports"),
+    };
+    if n > 1 {
+        format!("{n} {many}")
+    } else {
+        one.to_owned()
     }
 }
 
@@ -148,6 +156,17 @@ pub(crate) fn build(
                     };
                     add(Node::Conversation(*from), me, kind, item(e.at, label, text));
                 }
+                // Started for you by an agent: its answers go to you.
+                Entry::ForYou { from, text } => {
+                    asked_by_you = true;
+                    answer = None;
+                    add(
+                        Node::Conversation(*from),
+                        me,
+                        EdgeKind::Prompt,
+                        item(e.at, "Request for you", text),
+                    );
+                }
                 Entry::Agent { text } => answer = Some((e.at, text)),
                 Entry::TurnEnd { .. } => {
                     if let Some((at, text)) = answer.take().filter(|_| asked_by_you) {
@@ -189,7 +208,7 @@ fn item(at: i64, label: &'static str, text: &str) -> Item {
 }
 
 /// Status line of a box.
-pub(crate) fn status_text(s: &ConversationView, waiting_for: Option<&str>) -> String {
+pub(crate) fn status_text(s: &ConversationView, waiting_for: &[String]) -> String {
     match s.status {
         Status::Running if s.subagents.1 > 0 => {
             let n = s.subagents.1;
@@ -201,9 +220,8 @@ pub(crate) fn status_text(s: &ConversationView, waiting_for: Option<&str>) -> St
         Status::Running => "Working".to_owned(),
         Status::NeedsInput => "Waiting for your answer".to_owned(),
         Status::Error => "Stopped with an error".to_owned(),
-        Status::Idle => {
-            waiting_for.map_or_else(|| "Done".to_owned(), |name| format!("Waiting for {name}"))
-        }
+        Status::Idle if waiting_for.is_empty() => "Done".to_owned(),
+        Status::Idle => format!("Waiting for {}", waiting_for.join(", ")),
     }
 }
 
@@ -261,6 +279,6 @@ mod start;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use arrows::draw;
+pub(crate) use arrows::{Line, draw};
 pub(crate) use force::Sim;
 pub(crate) use layout::{Pt, Rect, Step, bends, bounds, rect};

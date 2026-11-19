@@ -15,13 +15,19 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     /// The folder Changes, Branch and PR show for flow `id`: the one
-    /// picked, else the newest.
+    /// picked on this tab, else on an agent's tab the one that agent works
+    /// in, else the newest.
     pub(crate) fn folder(&self, id: FlowId) -> Option<PathBuf> {
         let view = self.snapshot.flow(id)?;
+        let tab = self.current_conversation();
+        let agent = tab
+            .and_then(|c| self.snapshot.conversations.get(&c))
+            .and_then(|s| s.folder.as_ref());
         self.right
             .folder
-            .get(&id)
+            .get(&(id, tab))
             .filter(|f| view.folders.contains(f))
+            .or(agent.filter(|f| view.folders.contains(f)))
             .or_else(|| view.folders.last())
             .cloned()
     }
@@ -84,7 +90,8 @@ impl Workspace {
                 }))
                 .children(self.snapshot.prs.get(folder).map(|pr| pr_badge(pr, cx)))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.right.folder.insert(id, pick.clone());
+                    let tab = this.current_conversation();
+                    this.right.folder.insert((id, tab), pick.clone());
                     this.core.send(Intent::RefreshGit(id));
                     cx.notify();
                 }))
@@ -108,7 +115,8 @@ impl Workspace {
 impl Workspace {
     /// Info's "Where" (CTX-2): the flow's project, then each folder its
     /// agents work in — repository, branch and what it started from, its
-    /// pull request (opening Leon's view of it), its path.
+    /// pull request (opening Leon's view of it), the agents working there
+    /// in their colours, its path.
     pub(crate) fn folders_card(
         &self,
         view: &leon_core::FlowView,
@@ -125,8 +133,17 @@ impl Workspace {
                 .text_ellipsis()
                 .child(text)
         };
+        let conversations: Vec<&leon_core::ConversationView> = view
+            .conversations
+            .iter()
+            .filter_map(|c| self.snapshot.conversations.get(c))
+            .collect();
         let folder = |path: &PathBuf| {
             let git = self.snapshot.git.get(path);
+            let here: Vec<&&leon_core::ConversationView> = conversations
+                .iter()
+                .filter(|s| s.folder.as_ref() == Some(path))
+                .collect();
             div()
                 .flex()
                 .flex_col()
@@ -153,6 +170,21 @@ impl Workspace {
                         )
                         .children(self.snapshot.prs.get(path).map(|pr| pr_badge(pr, cx))),
                 )
+                .when(!here.is_empty(), |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap(px(8.))
+                            .text_size(px(11.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .children(here.iter().map(|s| {
+                                div()
+                                    .text_color(crate::agent_color::agent_color(&conversations, s))
+                                    .child(s.name.clone())
+                            })),
+                    )
+                })
                 .children(
                     git.and_then(|g| g.base.as_deref())
                         .map(|b| mono(format!("from {b}"), theme::fg_faint())),

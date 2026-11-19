@@ -93,6 +93,8 @@ pub enum Intent {
     Archive(FlowId, bool),
     /// Mark as unread (NAV-4).
     MarkUnread(FlowId),
+    /// Mark one conversation as unread, and so its flow (NAV-4).
+    MarkConversationUnread(ConversationId),
     /// Delete a flow (NAV-8).
     Delete(FlowId),
     /// Re-read a flow's git state now.

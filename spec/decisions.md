@@ -251,3 +251,10 @@ CLIs. Each CLI's own personal file (`~/.claude/CLAUDE.md`,
 `~/.codex/AGENTS.md`, `~/.copilot/copilot-instructions.md`) still loads in
 that CLI. Chosen by the maintainer on 2026-11-18.
 
+**I19 — A flow's issues and pull requests (CTX-2).** Agents can link issues
+and PRs to a flow in Leon, with Leon's `link_github` tool. A flow stores
+several: SQLite table `flow_links` (flow, kind, repository, number), in the
+order they were linked; the issue a flow was started for became its first
+link (migration 10). Chosen by the maintainer on 2026-11-19: "Yes, enable
+the fact that agent can link issues in PR in Leon. Yes, you can do the
+storage migration to store several issues".

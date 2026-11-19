@@ -37,6 +37,9 @@ pub(crate) struct ConversationState {
     pub reply_to: Option<ConversationId>,
     /// Messages from other conversations waiting for this one to finish its turn.
     pub inbox: VecDeque<Waiting>,
+    /// The flow folder it last worked in: changed a file in, said it moved
+    /// to, or was started in (CTX-2).
+    pub folder: Option<PathBuf>,
 }
 
 /// A message from another conversation, not sent yet.
@@ -44,8 +47,19 @@ pub(crate) struct ConversationState {
 pub(crate) struct Waiting {
     pub from: ConversationId,
     pub text: String,
-    /// A request: the answer goes back to `from`.
-    pub expects_answer: bool,
+    pub sent: Sent,
+}
+
+/// What a message between conversations is (FLOW-1, FLOW-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Sent {
+    /// A request: its answer goes back to the sender.
+    Request,
+    /// The answer to a request the receiver sent.
+    Answer,
+    /// The first message of a conversation started for the user: its
+    /// answers go to the user.
+    ForUser,
 }
 
 impl ConversationState {
@@ -62,6 +76,7 @@ impl ConversationState {
             carry_context: false,
             reply_to: None,
             inbox: VecDeque::new(),
+            folder: None,
         }
     }
 
@@ -95,6 +110,10 @@ pub(crate) struct State {
     pub git: crate::repo::GitMap,
     /// The pull request of each folder's branch (NAV-6, CTX-2).
     pub prs: Arc<HashMap<PathBuf, leon_domain::PullRequest>>,
+    /// The issues and pull requests linked to flows, as GitHub last gave
+    /// them (CTX-2).
+    pub linked_issues: Arc<HashMap<GhRef, leon_domain::Issue>>,
+    pub linked_prs: Arc<HashMap<GhRef, leon_domain::PullRequest>>,
     pub my_issues: Arc<Vec<leon_domain::Issue>>,
     pub my_prs: Arc<Vec<leon_domain::PullRequest>>,
     pub github_error: Option<String>,
@@ -120,6 +139,88 @@ pub(crate) struct State {
 }
 
 impl State {
+    /// A conversation's name, the same for the user and the agents: its
+    /// agent (else its CLI), numbered in start order when its flow has
+    /// several of that agent: "coder 2".
+    pub(crate) fn conversation_name(&self, id: ConversationId) -> String {
+        let Some(s) = self.conversations.get(&id) else {
+            return format!("conversation {}", id.0);
+        };
+        let label = |c: &ConversationState| {
+            c.conversation
+                .settings
+                .agent
+                .clone()
+                .unwrap_or_else(|| c.conversation.settings.backend.display_name().to_owned())
+        };
+        let name = label(s);
+        let same: Vec<ConversationId> = self
+            .conversations
+            .values()
+            .filter(|o| o.conversation.flow == s.conversation.flow && label(o) == name)
+            .map(|o| o.conversation.id)
+            .collect();
+        match same.iter().position(|o| *o == id) {
+            Some(ix) if same.len() > 1 => format!("{name} {}", ix + 1),
+            _ => name,
+        }
+    }
+
+    /// The conversation of flow `flow` that `to` names: its name as the user
+    /// sees it ("coder 2", any case), its id, or "conversation <id>".
+    pub(crate) fn find_conversation(&self, flow: FlowId, to: &str) -> Option<ConversationId> {
+        let to = to.trim();
+        let id = to
+            .strip_prefix("conversation ")
+            .unwrap_or(to)
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .map(ConversationId);
+        self.conversations_of(flow)
+            .into_iter()
+            .find(|c| Some(*c) == id || self.conversation_name(*c).eq_ignore_ascii_case(to))
+    }
+
+    /// The folder of its flow a conversation works in: the one it last
+    /// worked in, else the flow folder holding its working directory.
+    fn folder_of(&self, s: &ConversationState) -> Option<PathBuf> {
+        let folders = self.folders_of(s.conversation.flow);
+        s.folder
+            .clone()
+            .filter(|f| folders.contains(f))
+            .or_else(|| {
+                folders
+                    .into_iter()
+                    .filter(|f| s.conversation.working_dir.starts_with(f))
+                    .max_by_key(|f| f.as_os_str().len())
+            })
+    }
+
+    /// Every conversation of a flow, by name and id: "planner (1), coder 1 (2)".
+    pub(crate) fn roll_call(&self, flow: FlowId) -> String {
+        self.conversations_of(flow)
+            .into_iter()
+            .map(|c| format!("{} ({})", self.conversation_name(c), c.0))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// The conversations that owe conversation `id` an answer: working on
+    /// its request, or with the request queued until they finish (FLOW-1).
+    pub(crate) fn waiting_for(&self, id: ConversationId) -> Vec<ConversationId> {
+        self.conversations
+            .values()
+            .filter(|s| {
+                s.reply_to == Some(id)
+                    || s.inbox
+                        .iter()
+                        .any(|w| w.from == id && w.sent == Sent::Request)
+            })
+            .map(|s| s.conversation.id)
+            .collect()
+    }
+
     pub(crate) fn flow_mut(&mut self, id: FlowId) -> Option<&mut Flow> {
         self.flows.iter_mut().find(|c| c.id == id)
     }
@@ -145,7 +246,12 @@ impl State {
     /// The issues a flow is linked to (CTX-2): the one it was
     /// started for, then those its folders' pull requests close.
     fn issues_of(&self, c: &Flow, folders: &[PathBuf]) -> Vec<GhRef> {
-        let mut issues: Vec<GhRef> = c.issue.iter().cloned().collect();
+        let mut issues: Vec<GhRef> = c
+            .links
+            .iter()
+            .filter(|l| l.kind == leon_domain::GhKind::Issue)
+            .cloned()
+            .collect();
         let closed = folders
             .iter()
             .filter_map(|f| self.prs.get(f))
@@ -214,6 +320,9 @@ impl State {
                     plan: s.plan.clone(),
                     question: s.question.clone(),
                     suggestions: s.suggestions.clone(),
+                    waiting_for: self.waiting_for(s.conversation.id),
+                    name: self.conversation_name(s.conversation.id),
+                    folder: self.folder_of(s),
                 };
                 (s.conversation.id, view)
             })
@@ -242,6 +351,8 @@ impl State {
             notifications: Arc::clone(&self.notifications),
             git: Arc::clone(&self.git),
             prs: Arc::clone(&self.prs),
+            linked_issues: Arc::clone(&self.linked_issues),
+            linked_prs: Arc::clone(&self.linked_prs),
             my_issues: Arc::clone(&self.my_issues),
             my_prs: Arc::clone(&self.my_prs),
             github_error: self.github_error.clone(),

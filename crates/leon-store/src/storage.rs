@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use leon_core::ports::{NewConversation, PortError, Storage};
 use leon_domain::{
-    BackendKind, Conversation, ConversationId, ConversationSettings, Flow, FlowId, GhRef, Project,
-    ProjectId, TimedEntry,
+    BackendKind, Conversation, ConversationId, ConversationSettings, Flow, FlowId, GhKind, GhRef,
+    Project, ProjectId, TimedEntry,
 };
 use rusqlite::{Row, params};
 
@@ -34,6 +34,27 @@ fn project_row(row: &Row<'_>) -> rusqlite::Result<Project> {
     })
 }
 
+/// How a link's kind is stored.
+fn kind_text(kind: GhKind) -> &'static str {
+    match kind {
+        GhKind::Issue => "issue",
+        GhKind::PullRequest => "pull_request",
+    }
+}
+
+/// A stored link; an unknown kind is skipped.
+fn link_row(row: &Row<'_>) -> rusqlite::Result<(i64, Option<GhRef>)> {
+    let kind: String = row.get(1)?;
+    let repo: String = row.get(2)?;
+    let number = u64::try_from(row.get::<_, i64>(3)?).unwrap_or_default();
+    let link = match kind.as_str() {
+        "issue" => Some(GhRef::issue(&repo, number)),
+        "pull_request" => Some(GhRef::pull_request(&repo, number)),
+        _ => None,
+    };
+    Ok((row.get(0)?, link))
+}
+
 fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
     Ok(Flow {
         id: FlowId(row.get(0)?),
@@ -44,10 +65,7 @@ fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
         unread: row.get(5)?,
         updated_at: row.get(6)?,
         folders: folders(&row.get::<_, String>(7)?),
-        issue: row
-            .get::<_, Option<String>>(8)?
-            .as_deref()
-            .and_then(GhRef::issue_from_text),
+        links: Vec::new(),
     })
 }
 
@@ -116,12 +134,25 @@ impl Storage for Store {
         let conn = self.lock();
         let mut stmt = conn
             .prepare_cached(
-                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders, issue FROM flows
+                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders FROM flows
                  ORDER BY updated_at DESC, id DESC",
             )
             .map_err(err(C))?;
-        let rows = stmt.query_map([], flow_row).map_err(err(C))?;
-        rows.collect::<Result<_, _>>().map_err(err(C))
+        let mut flows: Vec<Flow> = stmt
+            .query_map([], flow_row)
+            .map_err(err(C))?
+            .collect::<Result<_, _>>()
+            .map_err(err(C))?;
+        let mut links = conn
+            .prepare_cached("SELECT flow_id, kind, repo, number FROM flow_links ORDER BY rowid")
+            .map_err(err(C))?;
+        for row in links.query_map([], link_row).map_err(err(C))? {
+            let (id, link) = row.map_err(err(C))?;
+            if let (Some(flow), Some(link)) = (flows.iter_mut().find(|f| f.id.0 == id), link) {
+                flow.links.push(link);
+            }
+        }
+        Ok(flows)
     }
 
     fn list_conversations(&self) -> Result<Vec<Conversation>, PortError> {
@@ -153,31 +184,45 @@ impl Storage for Store {
             unread: false,
             updated_at: now,
             folders: Vec::new(),
-            issue: None,
+            links: Vec::new(),
         })
     }
 
     fn update_flow(&self, c: &Flow) -> Result<(), PortError> {
-        self.lock()
-            .execute(
-                "UPDATE flows SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
-                 folders = ?7, issue = ?8 WHERE id = ?1",
+        const C: &str = "saving a flow";
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(err(C))?;
+        tx.execute(
+            "UPDATE flows SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
+             folders = ?7 WHERE id = ?1",
+            params![
+                c.id.0,
+                c.title,
+                c.pinned,
+                c.archived,
+                c.unread,
+                c.updated_at,
+                serde_json::Value::from(c.folders.iter().map(|p| path_text(p)).collect::<Vec<_>>())
+                    .to_string(),
+            ],
+        )
+        .map_err(err(C))?;
+        // Its links, in their order.
+        tx.execute("DELETE FROM flow_links WHERE flow_id = ?1", [c.id.0])
+            .map_err(err(C))?;
+        for link in &c.links {
+            tx.execute(
+                "INSERT OR IGNORE INTO flow_links (flow_id, kind, repo, number) VALUES (?1, ?2, ?3, ?4)",
                 params![
                     c.id.0,
-                    c.title,
-                    c.pinned,
-                    c.archived,
-                    c.unread,
-                    c.updated_at,
-                    serde_json::Value::from(
-                        c.folders.iter().map(|p| path_text(p)).collect::<Vec<_>>()
-                    )
-                    .to_string(),
-                    c.issue.as_ref().map(GhRef::text)
+                    kind_text(link.kind),
+                    link.repo,
+                    i64::try_from(link.number).unwrap_or(i64::MAX)
                 ],
             )
-            .map(drop)
-            .map_err(err("saving a flow"))
+            .map_err(err(C))?;
+        }
+        tx.commit().map_err(err(C))
     }
 
     fn folded_groups(&self) -> Result<Vec<String>, PortError> {
@@ -412,7 +457,10 @@ mod tests {
             PathBuf::from("/code/api/.worktrees/fix"),
             PathBuf::from("/code/web/.worktrees/fix"),
         ];
-        conv.issue = Some(leon_domain::GhRef::issue("acme/api", 12));
+        conv.links = vec![
+            leon_domain::GhRef::issue("acme/api", 12),
+            leon_domain::GhRef::pull_request("acme/web", 7),
+        ];
         store.update_flow(&conv).unwrap();
         store
             .append_entry(

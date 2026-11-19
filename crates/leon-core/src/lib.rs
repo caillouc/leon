@@ -14,6 +14,7 @@ mod events;
 mod folders;
 mod idle;
 mod intent;
+mod links;
 mod model_pick;
 pub mod ports;
 mod repo;

@@ -45,6 +45,7 @@ fn recorded_open_pull_request() {
         author: String::new(),
         closes: vec![],
         lines: None,
+        conflicts: false,
     };
     assert_eq!(pr, expected);
     assert_eq!(pr.checks_state(), Some(CheckState::Pass));
@@ -185,6 +186,20 @@ fn lines_added_and_removed() {
     );
     assert_eq!(pr(json!({ "additions": 3 })), None);
     assert_eq!(pr(json!({})), None);
+}
+
+#[test]
+fn conflicts_only_when_github_says_so() {
+    let pr = |mergeable: &str| {
+        let node = json!({ "number": 1, "title": "t", "url": "u", "state": "OPEN",
+            "isDraft": false, "headRefName": "b", "baseRefName": "main",
+            "repository": { "nameWithOwner": "o/r" }, "mergeable": mergeable });
+        let json = json!({ "data": { "repository": { "pullRequests": { "nodes": [node] } } } });
+        fixture_pr(&json.to_string(), "b").conflicts
+    };
+    assert!(pr("CONFLICTING"));
+    assert!(!pr("MERGEABLE"));
+    assert!(!pr("UNKNOWN"));
 }
 
 fn label(name: &str) -> Label {

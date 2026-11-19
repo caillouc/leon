@@ -32,6 +32,9 @@ fn conversation(id: i64, started_by: Option<i64>) -> ConversationView {
         plan: Vec::new(),
         question: None,
         suggestions: Vec::new(),
+        waiting_for: Vec::new(),
+        name: format!("conversation {id}"),
+        folder: None,
     }
 }
 
@@ -365,4 +368,87 @@ fn a_box_on_an_arrow_bends_it_round() {
     assert!(super::arrows::bulge(a, b, &[r(250., 200.)]).abs() < f32::EPSILON);
     assert!(super::arrows::bulge(a, b, &[r(30., 0.)]).abs() < f32::EPSILON);
     assert_eq!(super::arrows::path(a, b, 0., 0.).len(), 2);
+}
+
+/// Two agents that asked each other: the arrows of one kind run as one line
+/// with a head at each end, counted under one label, as between you and an
+/// agent (FLOW-4).
+#[test]
+fn arrows_both_ways_share_one_line_per_kind() {
+    let s = |id| Node::Conversation(ConversationId(id));
+    let mut m = model(&[(1, "planner", None), (2, "planner", Some(1))]);
+    let edge = |from, to, kind| super::Edge {
+        from,
+        to,
+        kind,
+        items: vec![super::Item {
+            at: 0,
+            label: "Request",
+            text: String::new(),
+        }],
+    };
+    m.edges = vec![
+        edge(s(1), s(2), EdgeKind::Prompt),
+        edge(s(2), s(1), EdgeKind::Report),
+        edge(s(2), s(1), EdgeKind::Prompt),
+        edge(s(1), s(2), EdgeKind::Report),
+    ];
+    let r = |x| Rect {
+        x,
+        y: 0.,
+        w: 100.,
+        h: 50.,
+    };
+    let rects = HashMap::from([(s(1), r(0.)), (s(2), r(300.))]);
+    let drawing = super::draw(&m, &rects);
+    let labels: Vec<String> = drawing
+        .lines
+        .iter()
+        .map(|l| super::label(&l.edges.iter().map(|e| &m.edges[*e]).collect::<Vec<_>>()))
+        .collect();
+    assert_eq!(labels, ["2 prompts", "2 reports"]);
+    assert_eq!(drawing.labels.len(), 1);
+    // One way only: one line, one head.
+    m.edges.truncate(2);
+    let drawing = super::draw(&m, &rects);
+    assert!(drawing.lines.iter().all(|l| l.edges.len() == 1));
+    assert_eq!(drawing.lines.len(), 2);
+}
+
+/// A conversation an agent started for the user: the agent's prompt goes to
+/// it, and its answers go to the user, not back (FLOW-1).
+#[test]
+fn a_conversation_started_for_you_answers_you() {
+    let (planner, other) = (
+        Node::Conversation(ConversationId(1)),
+        Node::Conversation(ConversationId(2)),
+    );
+    let conversations = [conversation(1, None), conversation(2, Some(1))];
+    let transcripts = HashMap::from([(
+        ConversationId(2),
+        transcript(vec![
+            Entry::ForYou {
+                from: ConversationId(1),
+                text: "Plan task B".into(),
+            },
+            Entry::Agent {
+                text: "Plan for B".into(),
+            },
+            Entry::TurnEnd { usage: None },
+        ]),
+    )]);
+    let refs: Vec<&ConversationView> = conversations.iter().collect();
+    let model = build(&refs, &transcripts);
+    assert_eq!(
+        texts(&model, planner, other, EdgeKind::Prompt),
+        ["Plan task B"]
+    );
+    assert_eq!(
+        texts(&model, other, Node::You, EdgeKind::Report),
+        ["Plan for B"]
+    );
+    assert_eq!(
+        texts(&model, other, planner, EdgeKind::Report),
+        Vec::<String>::new()
+    );
 }

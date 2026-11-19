@@ -213,49 +213,8 @@ pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
         .iter()
         .filter(|c| c.state != CheckState::Pass)
         .collect();
-    div()
-        .rounded_lg()
-        .border_1()
-        .border_color(tint(color, 0.55))
-        .bg(theme::panel())
-        .overflow_hidden()
-        .child(
-            div()
-                .px_4()
-                .py_3()
-                .flex()
-                .items_center()
-                .gap_3()
-                .bg(tint(color, 0.08))
-                .child(
-                    div()
-                        .size(px(30.))
-                        .flex_none()
-                        .rounded_full()
-                        .bg(tint(color, 0.2))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(icon(check_glyph(state), color, 17.)),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .text_size(px(13.5))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(title),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(theme::fg_muted())
-                                .child(detail),
-                        ),
-                ),
-        )
+    merge_box(color)
+        .child(merge_header(check_glyph(state), color, title, detail))
         .children(shown.into_iter().enumerate().map(|(ix, check)| {
             check_row(ix, check)
                 .px_4()
@@ -263,6 +222,78 @@ pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
                 .border_color(theme::border())
         }))
         .into_any_element()
+}
+
+/// GitHub's merge box for a branch that conflicts with its base: shown
+/// while the pull request is open (GH-3).
+pub(crate) fn conflicts_card(pr: &PullRequest) -> Option<AnyElement> {
+    let open = matches!(pr.state, PrState::Open | PrState::Draft);
+    (pr.conflicts && open).then(|| {
+        let color = theme::err();
+        merge_box(color)
+            .child(merge_header(
+                Icon::Failed,
+                color,
+                "This branch has conflicts that must be resolved",
+                format!("{} conflicts with {}", pr.branch, pr.base),
+            ))
+            .into_any_element()
+    })
+}
+
+/// A box of GitHub's merge area, its border in `color`.
+fn merge_box(color: Rgba) -> Div {
+    div()
+        .rounded_lg()
+        .border_1()
+        .border_color(tint(color, 0.55))
+        .bg(theme::panel())
+        .overflow_hidden()
+}
+
+/// A merge box's header as GitHub draws it: its icon in a circle, a title
+/// and a line under it, on a tint of `color`.
+fn merge_header(
+    glyph: Icon,
+    color: Rgba,
+    title: impl IntoElement,
+    detail: impl IntoElement,
+) -> Div {
+    div()
+        .px_4()
+        .py_3()
+        .flex()
+        .items_center()
+        .gap_3()
+        .bg(tint(color, 0.08))
+        .child(
+            div()
+                .size(px(30.))
+                .flex_none()
+                .rounded_full()
+                .bg(tint(color, 0.2))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(icon(glyph, color, 17.)),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .text_size(px(13.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(title),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme::fg_muted())
+                        .child(detail),
+                ),
+        )
 }
 
 /// A check that did not pass: its state, its name and, when GitHub links
@@ -522,6 +553,7 @@ impl Workspace {
             .flex_col()
             .gap_4()
             .child(pr_header(pr))
+            .children(conflicts_card(pr))
             .child(checks_card(pr))
             .child(self.comment_card(
                 &format!("{id}-body"),

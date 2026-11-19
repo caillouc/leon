@@ -24,6 +24,7 @@ pub(crate) enum Internal {
     /// repository (CTX-2). `keep`: the folder joins the flow even
     /// then (an agent said it works there).
     WorkingTree {
+        conversation: leon_domain::ConversationId,
         flow: FlowId,
         dir: PathBuf,
         root: Option<PathBuf>,
@@ -36,6 +37,10 @@ pub(crate) enum Internal {
     Done(GhRef, String),
     /// An item's details, read for the drawer.
     Detail(Detail),
+    /// A linked issue, read (CTX-2).
+    LinkedIssue(GhRef, Box<Issue>),
+    /// A linked pull request, read (CTX-2).
+    LinkedPr(GhRef, Box<PullRequest>),
     /// Time to refresh pull request badges.
     Tick,
     /// A title the CLI wrote for a flow (NAV-9), with the title it
@@ -268,11 +273,12 @@ impl Core {
                 }
             }
             Internal::WorkingTree {
+                conversation,
                 flow,
                 dir,
                 root,
                 keep,
-            } => self.working_tree_found(flow, dir, root, keep),
+            } => self.working_tree_found(conversation, flow, dir, root, keep),
             Internal::Lists(Ok((issues, prs))) => {
                 self.state.my_issues = Arc::new(issues);
                 self.state.my_prs = Arc::new(prs);
@@ -290,6 +296,9 @@ impl Core {
                     .collect();
                 for dir in shown {
                     self.refresh_folder_pr(dir);
+                }
+                if self.is_linked(&item) {
+                    self.read_link(item.clone());
                 }
                 if self.state.detail.as_ref().map(Detail::item) == Some(item.clone()) {
                     self.load_detail(item);
@@ -311,11 +320,18 @@ impl Core {
             }
             Internal::Doctor(sections) => self.doctor_done(sections),
             Internal::Tools(cli) => self.tools_done(cli),
+            Internal::LinkedIssue(item, issue) => {
+                Arc::make_mut(&mut self.state.linked_issues).insert(item, *issue);
+            }
+            Internal::LinkedPr(item, pr) => {
+                Arc::make_mut(&mut self.state.linked_prs).insert(item, *pr);
+            }
             Internal::Tick => {
                 self.stop_idle_clis();
                 for dir in self.open_folders() {
                     self.refresh_folder_pr(dir);
                 }
+                self.refresh_links();
             }
         }
     }

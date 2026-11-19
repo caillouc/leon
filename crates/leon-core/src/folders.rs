@@ -30,20 +30,28 @@ impl Core {
         dirs.dedup();
         for dir in dirs {
             match self.working_trees.get(&dir) {
-                Some(root) => self.add_folder(flow, root.clone()),
-                None => self.find_working_tree(flow, dir, false),
+                Some(root) => self.worked_in(conversation, flow, root.clone()),
+                None => self.find_working_tree(conversation, flow, dir, false),
             }
         }
     }
 
-    /// Looks for the working tree holding `dir` in the background. `keep`:
-    /// `dir` joins the flow even outside a repository.
-    pub(crate) fn find_working_tree(&self, flow: FlowId, dir: PathBuf, keep: bool) {
+    /// Looks for the working tree holding `dir`, where `conversation` works,
+    /// in the background. `keep`: `dir` joins the flow even outside a
+    /// repository.
+    pub(crate) fn find_working_tree(
+        &self,
+        conversation: ConversationId,
+        flow: FlowId,
+        dir: PathBuf,
+        keep: bool,
+    ) {
         let git = Arc::clone(&self.ports.git);
         let tx = self.internal_tx.clone();
         tokio::task::spawn_blocking(move || {
             let root = git.working_tree(&dir);
             let _ = tx.send(Internal::WorkingTree {
+                conversation,
                 flow,
                 dir,
                 root,
@@ -54,6 +62,7 @@ impl Core {
 
     pub(crate) fn working_tree_found(
         &mut self,
+        conversation: ConversationId,
         flow: FlowId,
         dir: PathBuf,
         root: Option<PathBuf>,
@@ -62,11 +71,20 @@ impl Core {
         match root {
             Some(root) => {
                 self.working_trees.insert(dir, root.clone());
-                self.add_folder(flow, root);
+                self.worked_in(conversation, flow, root);
             }
-            None if keep => self.add_folder(flow, dir),
+            None if keep => self.worked_in(conversation, flow, dir),
             None => {}
         }
+    }
+
+    /// `conversation` works in `folder`: the folder joins its flow, and is
+    /// where the right pane shows it working.
+    fn worked_in(&mut self, conversation: ConversationId, flow: FlowId, folder: PathBuf) {
+        if let Some(s) = self.state.conversations.get_mut(&conversation) {
+            s.folder = Some(folder.clone());
+        }
+        self.add_folder(flow, folder);
     }
 
     /// Adds a folder to a flow, once, and reads its git state (its

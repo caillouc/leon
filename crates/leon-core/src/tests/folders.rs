@@ -94,6 +94,51 @@ async fn an_agent_saying_where_it_works_adds_that_folder() {
     .await;
 }
 
+/// Several agents in several folders: each conversation knows the folder it
+/// works in, which the right pane shows on its tab (CTX-2).
+#[tokio::test(flavor = "multi_thread")]
+async fn each_agent_has_the_folder_it_works_in() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::Codex).await;
+    next_command(&h, 0).await;
+    // Before any change: the flow folder holding its working directory.
+    until(&h.core, "the planner's folder", |s| {
+        s.conversations[&planner].folder.as_deref() == Some(Path::new("/code/api"))
+    })
+    .await;
+    let start = crate::ports::AppToolCall::StartAgent {
+        agent: "coder".into(),
+        prompt: "Fix it in the worktree".into(),
+        working_directory: None,
+        for_user: false,
+    };
+    agents::call(&h, planner, start).await.unwrap();
+    started(&h, 2).await;
+    emit(
+        &h,
+        0,
+        BackendEvent::FilesChanged(vec![PathBuf::from("/code/web/src/app.ts")]),
+    );
+    emit(
+        &h,
+        1,
+        BackendEvent::FilesChanged(vec![PathBuf::from("/code/api/.worktrees/fix/src/retry.rs")]),
+    );
+    let coder = ConversationId(2);
+    let s = until(&h.core, "each in its folder", |s| {
+        s.conversations[&coder].folder.as_deref() == Some(Path::new("/code/api/.worktrees/fix"))
+            && s.conversations[&planner].folder.as_deref() == Some(Path::new("/code/web"))
+    })
+    .await;
+    assert_eq!(
+        s.flows[0].folders,
+        [
+            PathBuf::from("/code/web"),
+            PathBuf::from("/code/api/.worktrees/fix")
+        ]
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn every_conversation_is_told_to_keep_leon_up_to_date() {
     let h = harness();

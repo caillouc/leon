@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_has_the_four_tools() {
+    fn tools_list_has_the_five_tools() {
         let answer = send(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","extra":true}"#);
         let names: Vec<_> = answer["result"]["tools"]
             .as_array()
@@ -204,7 +204,8 @@ mod tests {
                 "start_agent",
                 "message_agent",
                 "rename_flow",
-                "set_working_directory"
+                "set_working_directory",
+                "link_github",
             ]
         );
     }

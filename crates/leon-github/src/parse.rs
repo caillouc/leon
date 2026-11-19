@@ -115,6 +115,9 @@ fn pull_request_node(pr: &Value) -> Option<PullRequest> {
             })
             .collect(),
         lines: count(&pr["additions"]).zip(count(&pr["deletions"])),
+        // `MergeableState`: MERGEABLE, CONFLICTING, or UNKNOWN while GitHub
+        // works it out (schema read 2026-11-19).
+        conflicts: pr["mergeable"].as_str() == Some("CONFLICTING"),
     })
 }
 
