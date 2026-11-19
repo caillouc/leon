@@ -54,6 +54,9 @@ pub struct Snapshot {
     pub github_error: Option<String>,
     /// The issue or pull request whose details are shown (GH-2, GH-3).
     pub detail: Option<Detail>,
+    /// A pull request's changes as GitHub shows them, for the diff drawer
+    /// (GH-3).
+    pub pr_diff: Option<PrDiff>,
     /// `diff.fold` patterns (GIT-4).
     pub fold: Arc<Vec<FoldPattern>>,
     /// The latest short message to show the user (an action's result), with
@@ -90,7 +93,8 @@ impl Snapshot {
         self.flows.iter().find(|c| c.flow.id == id)
     }
 
-    /// A flow's pull requests, each once: its folders' in folder order (a
+    /// A flow's pull requests, each once, the most active first: open, draft,
+    /// merged, closed (CTX-1); within a state, its folders' in folder order (a
     /// worktree its agents left keeps its pull request here), then those
     /// linked to it (CTX-2).
     pub fn prs_of(&self, c: &FlowView) -> Vec<&PullRequest> {
@@ -105,6 +109,7 @@ impl Snapshot {
                 prs.push(pr);
             }
         }
+        prs.sort_by_key(|p| p.state);
         prs
     }
 }
@@ -216,6 +221,15 @@ impl GitView {
     }
 }
 
+/// A pull request's changes as GitHub's "Files changed" shows them (GH-3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrDiff {
+    /// The pull request.
+    pub pr: GhRef,
+    /// Its files; `None` while GitHub is read; why not, when it failed.
+    pub files: Option<Result<Arc<Vec<FileDiff>>, String>>,
+}
+
 /// An issue's or a pull request's details, as read from GitHub.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Detail {
@@ -237,5 +251,89 @@ impl Detail {
             Self::Issue(issue) => GhRef::issue(&issue.repo, issue.number),
             Self::PullRequest(pr) => GhRef::pull_request(&pr.repo, pr.number),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use leon_domain::{Flow, FlowId, PrState, ProjectId, PullRequest, Status};
+
+    use super::{FlowView, Snapshot};
+
+    fn pr(number: u64, state: PrState) -> PullRequest {
+        PullRequest {
+            repo: "acme/api".into(),
+            number,
+            title: String::new(),
+            url: String::new(),
+            state,
+            branch: String::new(),
+            base: "main".into(),
+            labels: vec![],
+            checks: vec![],
+            rollup: None,
+            reviewers: vec![],
+            comments: vec![],
+            body: String::new(),
+            threads: vec![],
+            author: String::new(),
+            closes: vec![],
+            lines: None,
+            conflicts: false,
+        }
+    }
+
+    /// A flow's pull requests come the most active first: open, draft,
+    /// merged, closed (CTX-1).
+    #[test]
+    fn open_pull_requests_come_first() {
+        let folders: Vec<PathBuf> = ["/a", "/b", "/c", "/d"].map(PathBuf::from).into();
+        let states = [
+            PrState::Merged,
+            PrState::Closed,
+            PrState::Draft,
+            PrState::Open,
+        ];
+        let snapshot = Snapshot {
+            prs: Arc::new(
+                folders
+                    .iter()
+                    .zip(states)
+                    .enumerate()
+                    .map(|(n, (f, state))| (f.clone(), pr(n as u64 + 1, state)))
+                    .collect(),
+            ),
+            ..Snapshot::default()
+        };
+        let view = FlowView {
+            flow: Flow {
+                id: FlowId(1),
+                project: ProjectId(1),
+                title: String::new(),
+                pinned: false,
+                archived: false,
+                unread: false,
+                updated_at: 0,
+                folders: folders.clone(),
+                links: vec![],
+            },
+            status: Status::Idle,
+            conversations: vec![],
+            folders,
+            issues: vec![],
+        };
+        let order: Vec<PrState> = snapshot.prs_of(&view).iter().map(|p| p.state).collect();
+        assert_eq!(
+            order,
+            [
+                PrState::Open,
+                PrState::Draft,
+                PrState::Merged,
+                PrState::Closed
+            ]
+        );
     }
 }

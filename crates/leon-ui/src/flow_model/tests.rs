@@ -136,6 +136,9 @@ fn arrows_come_from_what_the_conversations_did() {
     }
     assert_eq!(model.parent[&coder], planner);
     assert_eq!(model.agent[&coder], "Codex");
+    // The user wrote to the planner, never to the coder.
+    assert!(model.talked_to(planner));
+    assert!(!model.talked_to(coder));
 }
 
 #[test]
@@ -452,4 +455,6 @@ fn a_conversation_started_for_you_answers_you() {
         texts(&model, other, planner, EdgeKind::Report),
         Vec::<String>::new()
     );
+    // Started for the user, who has not written to it yet.
+    assert!(!model.talked_to(other));
 }

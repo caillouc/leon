@@ -19,7 +19,7 @@ pub(crate) struct Rect {
     pub h: f32,
 }
 
-const NODE: Pt = Pt { x: 250., y: 96. };
+const NODE: Pt = Pt { x: 250., y: 112. };
 const YOU: Pt = Pt { x: 140., y: 56. };
 
 /// A box's width and height.

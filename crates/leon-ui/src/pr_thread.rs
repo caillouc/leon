@@ -117,7 +117,33 @@ impl Workspace {
             .gap_2();
         if self.right.replying.as_deref() == Some(thread.id.as_str()) {
             let input = self.right.thread_reply.clone();
-            let thread_id = thread.id.clone();
+            // Sends the answer, and resolves the thread after with `resolve`.
+            let send = |label: &'static str, key: &str, resolve: bool| {
+                let (input, item, thread_id) = (input.clone(), item.clone(), thread.id.clone());
+                (
+                    SharedString::from(format!("{id}-{key}")),
+                    label,
+                    cx.listener(move |this, _, window, cx| {
+                        let body = text_of(&input, cx);
+                        if body.trim().is_empty() {
+                            return;
+                        }
+                        this.core.send(Intent::ReplyToThread {
+                            pr: item.clone(),
+                            thread: thread_id.clone(),
+                            body: body.trim().to_owned(),
+                            resolve,
+                        });
+                        this.right.replying = None;
+                        input.update(cx, |state, cx| state.set_value("", window, cx));
+                        cx.notify();
+                    }),
+                )
+            };
+            let reply = send("Reply", "send", false);
+            let reply_and_resolve = thread
+                .can_resolve
+                .then(|| send("Reply and resolve", "send-resolve", true));
             return footer
                 .flex_col()
                 .child(
@@ -142,24 +168,10 @@ impl Workspace {
                                 cx.notify();
                             }),
                         ))
-                        .child(primary(
-                            SharedString::from(format!("{id}-send")),
-                            "Reply",
-                            cx.listener(move |this, _, window, cx| {
-                                let body = text_of(&input, cx);
-                                if body.trim().is_empty() {
-                                    return;
-                                }
-                                this.core.send(Intent::ReplyToThread {
-                                    pr: item.clone(),
-                                    thread: thread_id.clone(),
-                                    body: body.trim().to_owned(),
-                                });
-                                this.right.replying = None;
-                                input.update(cx, |state, cx| state.set_value("", window, cx));
-                                cx.notify();
-                            }),
-                        )),
+                        .children(
+                            reply_and_resolve.map(|(key, label, click)| button(key, label, click)),
+                        )
+                        .child(primary(reply.0, reply.1, reply.2)),
                 );
         }
         let reply_to = thread.id.clone();

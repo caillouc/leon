@@ -29,9 +29,6 @@ impl Workspace {
             .px_6()
             .pb_4()
             .pt_1()
-            .w_full()
-            .max_w(crate::theme::rem(theme::COLUMN))
-            .mx_auto()
             .flex()
             .flex_col()
             .gap_2();

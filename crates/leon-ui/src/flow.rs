@@ -245,8 +245,8 @@ impl Workspace {
             .iter()
             .filter_map(|node| {
                 let r = rects.get(node)?;
-                let review = review.contains(node);
-                Some(self.flow_box(id, *node, *r, view, (&conversations, review), cx))
+                let marks = (review.contains(node), model.talked_to(*node));
+                Some(self.flow_box(id, *node, *r, view, (&conversations, marks), cx))
             })
             .collect();
         // The picked line's arrows: one way, or both.
@@ -308,7 +308,7 @@ impl Workspace {
         node: Node,
         r: Rect,
         view: View,
-        (conversations, review): (&[&ConversationView], bool),
+        (conversations, (review, talked)): (&[&ConversationView], (bool, bool)),
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let at = view.to_screen(Pt { x: r.x, y: r.y });
@@ -394,6 +394,20 @@ impl Workspace {
             .map_or((0, 0), |t| leon_domain::activity(&t.entries));
         let (model, effort) = self.model_and_effort(settings);
         let model = format!("{model} · effort {effort}");
+        // Where it works: the repository and branch of its worktree, else
+        // of the checkout its CLI runs in (CTX-2).
+        let place = {
+            let folder = conversation
+                .folder
+                .as_ref()
+                .unwrap_or(&conversation.conversation.working_dir);
+            let git = self.snapshot.git.get(folder);
+            let repo = crate::right_folders::folder_name(folder, git);
+            Some(match git.and_then(|g| g.branch.as_deref()) {
+                Some(branch) => format!("{repo} · {branch}"),
+                None => repo,
+            })
+        };
         let agent = crate::agent_color::agent_color(conversations, conversation);
         let circles = conversation.status == leon_domain::Status::Running && !cx.reduce_motion();
         let unread = conversation.conversation.unread;
@@ -502,6 +516,28 @@ impl Workspace {
                     .whitespace_nowrap()
                     .child(model),
             )
+            .children(place.map(|place| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5. * s))
+                    .font_family(theme::MONO)
+                    .text_size(px(11. * s))
+                    .text_color(theme::fg_muted())
+                    .child(
+                        crate::icons::icon(crate::icons::Icon::Branch, theme::fg_muted(), 11.)
+                            .size(px(11. * s))
+                            .flex_none(),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .child(place),
+                    )
+            }))
             .child(
                 div()
                     .flex()
@@ -526,25 +562,38 @@ impl Workspace {
                     // as the left pane says it of the flow (NAV-5).
                     .children(crate::flow_row::attention_pill(attention, s)),
             )
+            // Its activity, and "You" at the bottom right.
             .child(
                 div()
                     .mt_auto()
+                    .flex()
+                    .items_center()
+                    .gap(px(6. * s))
                     .text_size(px(11. * s))
                     .text_color(theme::fg_faint())
-                    .child({
-                        // The plan's progress, when the agent keeps one.
-                        let done = conversation
-                            .plan
-                            .iter()
-                            .filter(|p| p.status == leon_domain::StepStatus::Done)
-                            .count();
-                        let plan = if conversation.plan.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" · plan {done}/{}", conversation.plan.len())
-                        };
-                        format!("{messages} messages · {tools} tool calls{plan}")
-                    }),
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .child({
+                                // The plan's progress, when the agent keeps one.
+                                let done = conversation
+                                    .plan
+                                    .iter()
+                                    .filter(|p| p.status == leon_domain::StepStatus::Done)
+                                    .count();
+                                let plan = if conversation.plan.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(" · plan {done}/{}", conversation.plan.len())
+                                };
+                                format!("{messages} messages · {tools} tool calls{plan}")
+                            }),
+                    )
+                    .child(div().flex_1())
+                    .when(talked, |d| d.child(you_chip(s))),
             )
             .into_any_element()
     }
@@ -898,6 +947,21 @@ fn to_review(
 }
 
 /// A layer over a whole box, following its corners, for a border.
+/// "You", in the "You" box's green, on the box of a conversation the user
+/// wrote to: it stands out from those only agents talk to (FLOW-4).
+fn you_chip(scale: f32) -> gpui::Div {
+    div()
+        .flex_none()
+        .px(px(5. * scale))
+        .rounded(px(4.))
+        // Filled, so it shows even zoomed out.
+        .bg(theme::ok())
+        .text_size(px(10.5 * scale))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(theme::window())
+        .child("You")
+}
+
 fn edge(scale: f32) -> gpui::Div {
     div().absolute().inset_0().rounded(px(10. * scale))
 }

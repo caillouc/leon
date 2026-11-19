@@ -11,6 +11,7 @@
 )]
 
 mod agent_color;
+mod clipboard;
 mod composer;
 mod diff_drawer;
 mod diff_rows;
@@ -28,6 +29,7 @@ mod flow_row;
 mod form;
 mod gh_detail;
 mod github;
+mod history;
 mod icons;
 mod info_now;
 mod info_refs;
@@ -52,6 +54,7 @@ mod shortcuts;
 mod sound;
 mod spinner;
 mod sprints;
+mod syntax;
 mod theme;
 mod tools_view;
 mod transcript;

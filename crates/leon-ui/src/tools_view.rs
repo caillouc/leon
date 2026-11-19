@@ -117,18 +117,18 @@ impl Workspace {
             .child(header)
             .child(
                 div().id("tools-body").flex_1().overflow_y_scroll().child(
-                    div()
-                        .max_w(crate::theme::rem(820.))
-                        .w_full()
-                        .mx_auto()
-                        .px_6()
-                        .py_5()
-                        .flex()
-                        .flex_col()
-                        .gap_4()
-                        .text_size(crate::theme::rem(13.))
-                        .child(table)
-                        .child(shared),
+                    crate::widgets::centered(
+                        820.,
+                        div()
+                            .px_6()
+                            .py_5()
+                            .flex()
+                            .flex_col()
+                            .gap_4()
+                            .text_size(crate::theme::rem(13.))
+                            .child(table)
+                            .child(shared),
+                    ),
                 ),
             )
             .into_any_element()

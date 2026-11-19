@@ -1,11 +1,13 @@
-//! Parses `git diff` unified output into [`FileDiff`]s.
+//! Parses unified diffs in git's format into [`FileDiff`]s: `git diff`'s
+//! output (GIT-2, GIT-3) and a pull request's diff as GitHub gives it
+//! (`gh pr diff`, GH-3).
 //!
-//! Expects the `a/` and `b/` prefixes and no colour (the caller forces both).
+//! Expects the `a/` and `b/` prefixes and no colour (the callers force both).
 
-use leon_domain::{DiffLine, FileDiff, FileStatus, Hunk, LineKind};
+use crate::{DiffLine, FileDiff, FileStatus, Hunk, LineKind};
 
-/// Every file of a `git diff` output, in git's order.
-pub(crate) fn parse_diff(text: &str) -> Vec<FileDiff> {
+/// Every file of a unified diff, in its order.
+pub fn parse_diff(text: &str) -> Vec<FileDiff> {
     let mut files: Vec<FileDiff> = Vec::new();
     let mut cursor = Cursor::default();
     for line in text.split_terminator('\n') {

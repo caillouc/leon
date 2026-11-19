@@ -52,37 +52,43 @@ impl Workspace {
         );
         let expanded = self.expanded.clone();
         // Back to the user's last message once an answer follows it, to read
-        // the answer from its start.
-        let jump = transcript
-            .entries
-            .iter()
-            .rposition(|e| matches!(e.entry, Entry::User { .. }))
-            .filter(|&ix| ix + 1 < count)
-            .map(|item_ix| {
-                let state = state.clone();
-                div()
-                    .id("jump-to-mine")
-                    // Shortened before the message box's settings are.
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .px_2()
-                    .py(crate::theme::rem(3.))
-                    .rounded_md()
-                    .text_size(crate::theme::rem(12.))
-                    .text_color(theme::fg_muted())
-                    .cursor_pointer()
-                    .hover(|s| s.text_color(theme::fg()).bg(theme::surface_2()))
-                    .child("↑ Your last message")
-                    .on_click(move |_, _, _| {
-                        state.scroll_to(ListOffset {
-                            item_ix,
-                            offset_in_item: gpui::px(0.),
-                        });
-                    })
-                    .into_any_element()
-            });
+        // the answer from its start: a button, and where an unread
+        // conversation opens.
+        let mine = last_mine(&transcript.entries).filter(|&ix| ix + 1 < count);
+        if self.open_at_mine == Some(conversation) {
+            self.open_at_mine = None;
+            if let Some(item_ix) = mine {
+                state.scroll_to(ListOffset {
+                    item_ix,
+                    offset_in_item: gpui::px(0.),
+                });
+            }
+        }
+        let jump = mine.map(|item_ix| {
+            let state = state.clone();
+            div()
+                .id("jump-to-mine")
+                // Shortened before the message box's settings are.
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .px_2()
+                .py(crate::theme::rem(3.))
+                .rounded_md()
+                .text_size(crate::theme::rem(12.))
+                .text_color(theme::fg_muted())
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::fg()).bg(theme::surface_2()))
+                .child("↑ Your last message")
+                .on_click(move |_, _, _| {
+                    state.scroll_to(ListOffset {
+                        item_ix,
+                        offset_in_item: gpui::px(0.),
+                    });
+                })
+                .into_any_element()
+        });
         let list = list(state, move |ix, _window, _cx| {
             let item = match transcript.entries.get(ix) {
                 Some(entry) => entry_view(
@@ -95,20 +101,7 @@ impl Workspace {
                 ),
                 None => partial_view(conversation, &transcript),
             };
-            // A list item is laid out alone, so `mx_auto` cannot centre it:
-            // a full-width row centres the column instead.
-            div()
-                .w_full()
-                .flex()
-                .justify_center()
-                .child(
-                    div()
-                        .w_full()
-                        .max_w(crate::theme::rem(theme::COLUMN))
-                        .px_6()
-                        .py_1()
-                        .child(item),
-                )
+            crate::widgets::centered(theme::COLUMN, div().px_6().py_1().child(item))
                 .into_any_element()
         })
         .flex_1()
@@ -125,6 +118,13 @@ impl Workspace {
             jump,
         )
     }
+}
+
+/// Where the user's last message is in a transcript.
+fn last_mine(entries: &[TimedEntry]) -> Option<usize> {
+    entries
+        .iter()
+        .rposition(|e| matches!(e.entry, Entry::User { .. }))
 }
 
 fn partial_view(conversation: ConversationId, t: &Arc<TranscriptView>) -> AnyElement {
@@ -416,5 +416,43 @@ fn thousands(n: u64) -> String {
         0..1_000 => n.to_string(),
         1_000..1_000_000 => format!("{:.1}k", n as f64 / 1_000.),
         _ => format!("{:.1}M", n as f64 / 1_000_000.),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use leon_domain::{ConversationId, Entry, TimedEntry};
+
+    use super::last_mine;
+
+    /// An unread conversation opens at the user's last message, also when
+    /// another agent wrote after it (CONV-15).
+    #[test]
+    fn the_last_message_of_the_user_is_found() {
+        let at = |entry| TimedEntry { at: 0, entry };
+        let you = |text: &str| at(Entry::User { text: text.into() });
+        let agent = |text: &str| at(Entry::Agent { text: text.into() });
+        let from = at(Entry::FromAgent {
+            from: ConversationId(2),
+            text: "Done".into(),
+            answer: true,
+        });
+        let cases: [(Vec<TimedEntry>, Option<usize>); 3] = [
+            (vec![], None),
+            (vec![agent("Hi")], None),
+            (
+                vec![
+                    you("Plan it"),
+                    agent("Plan"),
+                    you("Go"),
+                    from,
+                    agent("Done"),
+                ],
+                Some(2),
+            ),
+        ];
+        for (entries, expected) in cases {
+            assert_eq!(last_mine(&entries), expected);
+        }
     }
 }

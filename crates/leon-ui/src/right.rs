@@ -44,6 +44,8 @@ pub(crate) struct RightState {
     /// The folder picked by hand, per flow working in several and per tab
     /// (the Flow's, or an agent's) (CTX-2).
     pub folder: HashMap<(FlowId, Option<ConversationId>), std::path::PathBuf>,
+    /// Syntax colours of the files diffs show, by content (I21).
+    pub syntax: HashMap<u64, crate::diff_rows::FileStyles>,
     /// Files the user opened or closed by hand, overriding `diff.fold`.
     pub open: HashMap<(FlowId, DiffSource, String), bool>,
     /// Pending review per flow (GIT-5).
@@ -99,6 +101,7 @@ impl RightState {
         let state = Self {
             tabs: HashMap::new(),
             folder: HashMap::new(),
+            syntax: HashMap::new(),
             open: HashMap::new(),
             review: HashMap::new(),
             review_to: HashMap::new(),
@@ -277,11 +280,12 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_3()
-            // Its pull requests first, its issues last (CTX-1).
+            // Its pull requests first, then its issues, then Now and Where
+            // (CTX-1).
             .children(self.pr_cards(view, cx))
+            .children(self.issue_cards(view, cx))
             .child(self.now_card(&conversations))
             .child(place)
-            .children(self.issue_cards(view, cx))
             .into_any_element()
     }
 

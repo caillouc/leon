@@ -54,6 +54,12 @@ impl Workspace {
             .unwrap_or_else(theme::fg_muted)
     }
 
+    /// An issue's colour, as the issue list shows it: its board column's,
+    /// faint without one.
+    pub(crate) fn issue_color(&self, status: Option<&BoardOption>) -> Rgba {
+        status.map_or(theme::fg_faint(), |s| self.status_color(s))
+    }
+
     /// The sprint the list shows; `None` for every issue.
     pub(crate) fn shown_sprint(&self, today: Day) -> Option<SprintKey> {
         match &self.gh.sprint {

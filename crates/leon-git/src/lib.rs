@@ -1,12 +1,13 @@
 //! Reads a working directory's git state by running the `git` command with
 //! its machine-readable output (P6): current branch, default base,
-//! uncommitted changes and branch diff (GIT-1..3).
+//! uncommitted changes and branch diff (GIT-1..3); fetches a branch diff's
+//! base (I22).
 //!
-//! Must not: change a repository in any way (D4) — only read-only commands,
-//! with `--no-optional-locks` so not even the index is refreshed; prompt for
-//! credentials; or depend on another adapter.
+//! Must not: change a repository (D4) — read-only commands, with
+//! `--no-optional-locks` so not even the index is refreshed; the one write
+//! is a fetch, to a remote-tracking branch only. Nor prompt for credentials,
+//! nor depend on another adapter.
 
-mod parse;
 mod run;
 mod status;
 mod untracked;
@@ -17,9 +18,9 @@ use std::path::{Path, PathBuf};
 use leon_core::ports::{Git, PortError, SearchPath, inherited_path};
 use leon_domain::FileDiff;
 
-use crate::parse::parse_diff;
 use crate::run::{git, git_line};
 use crate::untracked::untracked_diff;
+use leon_domain::parse_diff;
 
 /// The [`Git`] port, backed by the `git` command found on `PATH`.
 #[derive(Debug, Clone)]
@@ -109,6 +110,23 @@ impl Git for GitCli {
     fn branch_diff(&self, dir: &Path, base: &str) -> Result<Vec<FileDiff>, PortError> {
         branch_diff((self.path)(), dir, base)
             .map_err(|e| PortError::new("reading the branch diff", e))
+    }
+
+    fn fetch(&self, dir: &Path, branch: &str) -> Result<(), PortError> {
+        // No `FETCH_HEAD` written (an agent's own fetch may be reading it),
+        // no maintenance started after.
+        let args = [
+            "fetch",
+            "--quiet",
+            "--no-write-fetch-head",
+            "--no-auto-maintenance",
+            "--end-of-options",
+            "origin",
+            branch,
+        ];
+        git((self.path)(), dir, &args)
+            .map(drop)
+            .map_err(|e| PortError::new("fetching the base branch", format!("{branch}: {e}")))
     }
 }
 

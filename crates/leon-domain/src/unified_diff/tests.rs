@@ -1,4 +1,4 @@
-use leon_domain::{DiffLine, FileDiff, FileStatus, LineKind};
+use crate::{DiffLine, FileDiff, FileStatus, LineKind};
 
 use super::{parse_diff, unquote};
 

@@ -112,17 +112,21 @@ impl Workspace {
     }
 }
 
+/// Key of "Where" folded, for every flow.
+const WHERE: &str = "info:where";
+
 impl Workspace {
     /// Info's "Where" (CTX-2): the flow's project, then each folder its
     /// agents work in — repository, branch and what it started from, its
     /// pull request (opening Leon's view of it), the agents working there
-    /// in their colours, its path.
+    /// in their colours, its path. Folds to its title.
     pub(crate) fn folders_card(
         &self,
         view: &leon_core::FlowView,
         project: Option<&leon_domain::Project>,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
+        let collapsed = self.snapshot.folded_groups.contains(WHERE);
         let mono = |text: String, color| {
             div()
                 .font_family(theme::MONO)
@@ -203,10 +207,7 @@ impl Workspace {
             .border_color(theme::border())
             .bg(theme::window())
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
+                crate::widgets::fold_toggle(WHERE.to_owned(), collapsed)
                     .child(
                         div()
                             .text_size(crate::theme::rem(13.))
@@ -220,7 +221,7 @@ impl Workspace {
                             .child(format!("project {}", p.name))
                     })),
             )
-            .when(view.folders.is_empty(), |d| {
+            .when(!collapsed && view.folders.is_empty(), |d| {
                 d.child(
                     div()
                         .text_size(crate::theme::rem(12.))
@@ -228,7 +229,7 @@ impl Workspace {
                         .child("No worktree yet: one shows once an agent works in it."),
                 )
             })
-            .children(view.folders.iter().map(folder))
+            .when(!collapsed, |d| d.children(view.folders.iter().map(folder)))
     }
 }
 

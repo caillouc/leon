@@ -6,10 +6,14 @@
 //! box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous flow, Esc closes
 //! what is open on top (a menu, a picker, a drawer).
 
-use gpui::{App, Context, Div, KeyBinding, KeyDownEvent, Menu, MenuItem, OsAction, actions};
+use gpui::{
+    App, Context, Div, KeyBinding, Menu, MenuItem, MouseButton, NavigationDirection, OsAction,
+    actions,
+};
 use gpui_component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
+use leon_domain::{ConversationId, FlowId};
 
-use crate::workspace::{Screen, Workspace};
+use crate::workspace::{Screen, Tab, Workspace};
 
 actions!(
     leon,
@@ -28,6 +32,8 @@ actions!(
         FocusSearch,
         NextFlow,
         PreviousFlow,
+        GoBack,
+        GoForward,
     ]
 );
 
@@ -106,6 +112,8 @@ fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new(primary!("k"), FocusSearch, None),
         KeyBinding::new("ctrl-tab", NextFlow, None),
         KeyBinding::new("ctrl-shift-tab", PreviousFlow, None),
+        KeyBinding::new(primary!("["), GoBack, None),
+        KeyBinding::new(primary!("]"), GoForward, None),
     ]
 }
 
@@ -135,24 +143,41 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
                 gpui::Focusable::focus_handle(this.search.read(cx), cx).focus(window, cx);
             }))
+            .on_action(cx.listener(|this, _: &GoBack, _, cx| this.go(false, cx)))
+            .on_action(cx.listener(|this, _: &GoForward, _, cx| this.go(true, cx)))
+            // A mouse's back and forward buttons (NAV-12).
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                cx.listener(|this, _, _, cx| this.go(false, cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                cx.listener(|this, _, _, cx| this.go(true, cx)),
+            )
             .on_action(cx.listener(|this, _: &NextFlow, _, cx| this.step_flow(1, cx)))
             .on_action(cx.listener(|this, _: &PreviousFlow, _, cx| {
                 this.step_flow(-1, cx);
             }))
-            .capture_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
-                if e.keystroke.key == "escape" && this.close_top(cx) {
-                    cx.stop_propagation();
-                }
-            }))
+    }
+
+    /// Esc closes what is open on top, wherever the focus is: also when it
+    /// was left on a message box no longer shown, which no key reaches.
+    pub(crate) fn escape(cx: &mut Context<Self>) -> gpui::Subscription {
+        let view = cx.entity().downgrade();
+        cx.intercept_keystrokes(move |e, _, cx| {
+            if e.keystroke.key == "escape" && view.update(cx, Self::close_top).unwrap_or(false) {
+                cx.stop_propagation();
+            }
+        })
     }
 
     /// Closes what is open on top, the most recent kind first; `false` when
     /// nothing was.
     fn close_top(&mut self, cx: &mut Context<Self>) -> bool {
-        let closed = if self.open_picker.take().is_some()
-            || self.row_menu.take().is_some()
-            || self.right.drawer.take().is_some()
-        {
+        let closed = if self.open_picker.take().is_some() || self.row_menu.take().is_some() {
+            true
+        } else if self.right.drawer.is_some() {
+            self.close_drawer(cx);
             true
         } else if self.snapshot.detail.is_some() {
             self.core.send(leon_core::Intent::ShowDetail(None));
@@ -164,6 +189,34 @@ impl Workspace {
             cx.notify();
         }
         closed
+    }
+
+    /// Back to the place visited before, or forward again (NAV-12): a flow,
+    /// on the tab it was on.
+    fn go(&mut self, forward: bool, cx: &mut Context<Self>) {
+        let snapshot = std::sync::Arc::clone(&self.snapshot);
+        let there = |(flow, tab): &(FlowId, Option<ConversationId>)| {
+            snapshot
+                .flow(*flow)
+                .is_some_and(|f| tab.is_none_or(|c| f.conversations.contains(&c)))
+        };
+        // Away from the flows (Settings, a GitHub list), back returns to the
+        // last place visited first.
+        let away = !matches!(self.screen, Screen::Flow(_));
+        let place = if forward {
+            self.history.forward(there)
+        } else if away {
+            self.history.current(there)
+        } else {
+            self.history.back(there)
+        };
+        let Some((flow, tab)) = place else {
+            return;
+        };
+        self.select(flow, cx);
+        let tab = tab.map_or(Tab::Flow, Tab::Conversation);
+        self.tabs.insert(flow, tab);
+        cx.notify();
     }
 
     /// Opens the flow `step` places after (or before) the open one,
@@ -191,6 +244,6 @@ impl Workspace {
 mod tests {
     #[test]
     fn every_shortcut_parses() {
-        assert_eq!(super::bindings().len(), 12);
+        assert_eq!(super::bindings().len(), 14);
     }
 }

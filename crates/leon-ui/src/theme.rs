@@ -67,25 +67,27 @@ pub fn ok() -> Rgba {
 pub fn merged() -> Rgba {
     rgb(0x00b1_8cf0)
 }
-/// Background of an added line.
+/// Background of an added line: a clear green, not the muted one of
+/// text, so it reads as green on the dark background.
 pub fn add_bg() -> Rgba {
-    rgba(0x6dbe_861f)
+    rgba(0x2ea0_4333)
 }
 /// Line-number gutter of an added line.
 pub fn add_gutter() -> Rgba {
-    rgba(0x6dbe_8638)
+    rgba(0x3fb9_5059)
 }
-/// Background of a removed line.
+/// Background of a removed line: a clear red, likewise.
 pub fn del_bg() -> Rgba {
-    rgba(0xe672_7b1f)
+    rgba(0xf851_492e)
 }
 /// Line-number gutter of a removed line.
 pub fn del_gutter() -> Rgba {
-    rgba(0xe672_7b38)
+    rgba(0xf851_4959)
 }
 
 /// Width of the reading column: a transcript, its composer, an item's
-/// details. Centred in its pane.
+/// details. Centred in its pane, wider in a wider one
+/// ([`crate::widgets::centered`]).
 pub const COLUMN: f32 = 860.;
 
 /// Monospace font for code, paths and diffs.

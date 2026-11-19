@@ -20,6 +20,52 @@ pub fn label(text: impl Into<SharedString>) -> Div {
         .child(text.to_uppercase())
 }
 
+/// The header of a group that folds (`key`, kept folded across restarts by
+/// the core): a chevron, then what the caller adds. A click folds or
+/// unfolds it.
+pub fn fold_toggle(key: String, folded: bool) -> Stateful<Div> {
+    let chevron = if folded {
+        crate::icons::Icon::ChevronRight
+    } else {
+        crate::icons::Icon::ChevronDown
+    };
+    div()
+        .id(SharedString::from(format!("fold-{key}")))
+        .flex()
+        .items_center()
+        .gap_2()
+        .cursor_pointer()
+        .child(crate::icons::icon(chevron, theme::fg_muted(), 15.))
+        .on_click(move |_, _, cx| {
+            if let Some(core) = cx.try_global::<crate::markdown::Core>() {
+                core.0
+                    .send(leon_core::Intent::FoldGroup(key.clone(), !folded));
+            }
+        })
+}
+
+/// A page's column, centred in its pane: `base` wide plus half the room a
+/// wider pane leaves, so a bigger window shows more of it; all of a pane
+/// narrower than `base`.
+pub fn centered(base: f32, content: impl IntoElement) -> Div {
+    let column = div()
+        .flex_basis(theme::rem(base))
+        // Twice the share of each side's room.
+        .flex_grow(2.)
+        .flex_shrink(1.)
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .child(content);
+    div()
+        .flex_none()
+        .w_full()
+        .flex()
+        .child(div().flex_1())
+        .child(column)
+        .child(div().flex_1())
+}
+
 /// Faint text for empty states.
 pub fn empty(text: impl Into<SharedString>) -> AnyElement {
     div()

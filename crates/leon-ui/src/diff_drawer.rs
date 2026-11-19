@@ -12,6 +12,10 @@ use crate::theme;
 use crate::widgets::{OnClick, segmented};
 use crate::workspace::{Screen, Workspace};
 
+/// Where a pull request's diff keeps its files' open state when no flow is
+/// on screen: no flow has id 0 (SQLite ids start at 1).
+const NO_FLOW: leon_domain::FlowId = leon_domain::FlowId(0);
+
 /// The open drawer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Drawer {
@@ -57,7 +61,26 @@ impl Workspace {
     }
 
     pub(crate) fn close_drawer(&mut self, cx: &mut Context<Self>) {
+        if self
+            .right
+            .drawer
+            .as_ref()
+            .is_some_and(|d| d.source == DiffSource::PullRequest)
+        {
+            self.core.send(leon_core::Intent::ShowPrDiff(None));
+        }
         self.right.drawer = None;
+        cx.notify();
+    }
+
+    /// A pull request's changes as GitHub shows them, in the drawer, over
+    /// its view (GH-3).
+    pub(crate) fn open_pr_diff(&mut self, pr: leon_domain::GhRef, cx: &mut Context<Self>) {
+        self.core.send(leon_core::Intent::ShowPrDiff(Some(pr)));
+        self.right.drawer = Some(Drawer {
+            source: DiffSource::PullRequest,
+            scroll_to: None,
+        });
         cx.notify();
     }
 
@@ -67,11 +90,16 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let Screen::Flow(id) = self.screen else {
-            return None;
-        };
         let open = self.right.drawer.as_mut()?;
         let source = open.source;
+        // A pull request's diff opens over any screen; its files' open state
+        // is kept under `NO_FLOW`.
+        let id = match self.screen {
+            Screen::Flow(id) => id,
+            _ if source == DiffSource::PullRequest => NO_FLOW,
+            _ => return None,
+        };
+        let open = self.right.drawer.as_mut()?;
         let scroll_to = open.scroll_to.take();
         let summary = self.diff_files(id, source).ok().map(|diff| {
             let n = diff.files.len();
@@ -98,14 +126,19 @@ impl Workspace {
                     .child(match source {
                         DiffSource::Changes => "Uncommitted changes",
                         DiffSource::Branch => "Branch diff",
+                        DiffSource::PullRequest => "Files changed",
                     }),
             )
             .children(summary)
             .child(div().flex_1())
             .child(self.diff_layout_toggle(cx));
         let body = self.diff_rows(id, source, scroll_to.as_deref(), cx);
-        let review = self.render_review_bar(id, window, cx);
+        // Comments go to an agent from a flow's own diffs only.
+        let review = (source != DiffSource::PullRequest)
+            .then(|| self.render_review_bar(id, window, cx))
+            .flatten();
         Some(drawer(
+            "diff-drawer",
             header,
             body,
             review,

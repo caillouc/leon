@@ -289,7 +289,7 @@ fn ports(storage: Arc<dyn Storage>, backends: Arc<dyn Backends>) -> Ports {
         storage,
         backends,
         catalog: Arc::new(FakeCatalog),
-        git: Arc::new(repo::FakeGit),
+        git: Arc::new(repo::FakeGit::default()),
         github: Arc::new(repo::FakeGitHub::default()),
         app_tools: Some(Arc::new(agents::FakeTools)),
         shared_tools: Arc::new(tools::FakeShared::default()),
@@ -309,6 +309,7 @@ struct Harness {
     core: CoreHandle,
     storage: Arc<FakeStorage>,
     backends: Arc<FakeBackends>,
+    git: Arc<repo::FakeGit>,
 }
 
 fn settings(backend: BackendKind) -> ConversationSettings {
@@ -331,10 +332,12 @@ fn harness_with_config(config: Arc<dyn crate::ports::ConfigFile>) -> Harness {
         .add_project("api", Path::new("/code/api"), 0)
         .unwrap();
     let backends = Arc::new(FakeBackends::default());
+    let git = Arc::new(repo::FakeGit::default());
     let core = start(
         &tokio::runtime::Handle::current(),
         Ports {
             config,
+            git: Arc::clone(&git) as Arc<dyn crate::ports::Git>,
             ..ports(
                 Arc::clone(&storage) as Arc<dyn Storage>,
                 Arc::clone(&backends) as Arc<dyn Backends>,
@@ -346,6 +349,7 @@ fn harness_with_config(config: Arc<dyn crate::ports::ConfigFile>) -> Harness {
         core,
         storage,
         backends,
+        git,
     }
 }
 

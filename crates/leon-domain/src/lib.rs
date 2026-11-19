@@ -18,6 +18,7 @@ mod review;
 mod settings;
 mod sprint;
 mod transcript;
+mod unified_diff;
 
 pub use agent_file::{Capability, capabilities, cli_for_model, full_cli_order};
 pub use backend::BackendKind;
@@ -35,7 +36,7 @@ pub use flow::{
 };
 pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,
-    ReviewThread, issues_by_status, prs_by_repo,
+    ReviewThread, issues_by_status, prs_by_repo, repo_name,
 };
 pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};
@@ -44,3 +45,4 @@ pub use review::{ReviewComment, review_message};
 pub use settings::{ConversationDefaults, OpenOn, Settings, Zoom};
 pub use sprint::{Iteration, current_sprint};
 pub use transcript::{Entry, RunningTool, TimedEntry, Usage, activity, running_tools};
+pub use unified_diff::parse_diff;

@@ -227,6 +227,16 @@ pub fn prs() -> Arc<HashMap<PathBuf, PullRequest>> {
     ]))
 }
 
+/// A pull request linked to the first flow, merged already: one line in
+/// the Info tab.
+pub fn linked_prs() -> Arc<HashMap<leon_domain::GhRef, PullRequest>> {
+    let merged = pr(398, "Log each webhook delivery attempt", PrState::Merged);
+    Arc::new(HashMap::from([(
+        leon_domain::GhRef::pull_request("acme/payments-api", 398),
+        merged,
+    )]))
+}
+
 fn label(name: &str, color: &str) -> Label {
     Label {
         name: name.into(),

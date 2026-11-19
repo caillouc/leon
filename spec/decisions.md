@@ -265,3 +265,21 @@ conversation last worked in is kept in SQLite `conversations.folder`
 in, also after a restart. Chosen by the maintainer on 2026-11-19, asked
 "Save each agent's folder in the store so empty worktrees can be hidden?":
 "Yes, save it".
+
+**I21 — Syntax colours in diffs (GIT-2, GIT-3, GH-3).** Tree-sitter, as in
+Zed, through gpui-component's highlighter: its `tree-sitter-*` features for
+Bash, C, C++, Go, HTML, Java, JavaScript, JSON, Make, Markdown, Python,
+Rust, Scala, SQL, TOML, TypeScript and YAML; other files stay plain.
+Grammars are built into the app, not downloaded. Chosen by the maintainer
+on 2026-11-19, between tree-sitter and syntect: "Tree-sitter, like Zed";
+then "just add C/C++, java, scala, make and remove CSS and TSX".
+
+**I22 — Leon fetches a branch diff's base (GIT-3).** The one exception to
+D4: when a flow is opened or its Changes, Branch or folder is clicked, each
+folder's base (its PR's, else the remote's default branch) is fetched in
+the background with `git fetch origin <base>`, at most every five minutes
+per folder. Only `origin/<base>` moves: no file, local branch or
+`FETCH_HEAD`, no maintenance, no prompt; a failure leaves the diff as it
+was. The PR view needs none: it shows GitHub's own diff. Chosen by the
+maintainer on 2026-11-19, asked whether Leon should fetch the base when a
+branch diff opens: "Yes for background fetch when needed".

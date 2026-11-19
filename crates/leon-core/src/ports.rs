@@ -409,8 +409,9 @@ pub fn inherited_path() -> Option<&'static std::ffi::OsString> {
     None
 }
 
-/// Reads a working directory's git state (GIT-1..3, CONV-14). Read-only:
-/// the app never changes a repository (D4). Calls may block.
+/// Reads a working directory's git state (GIT-1..3, CONV-14). The app never
+/// changes a repository (D4): the one write is [`Git::fetch`], which only
+/// brings a remote-tracking branch up to date (I22). Calls may block.
 pub trait Git: Send + Sync + 'static {
     /// Current branch name; `None` outside a repository or on a detached HEAD.
     fn branch(&self, dir: &Path) -> Option<String>;
@@ -423,6 +424,10 @@ pub trait Git: Send + Sync + 'static {
     /// What the branch changed since it left `base`, as a PR shows it:
     /// `merge-base(base, HEAD)..HEAD` (GIT-3).
     fn branch_diff(&self, dir: &Path, base: &str) -> Result<Vec<FileDiff>, PortError>;
+    /// Brings `origin/<branch>` up to date from the remote, without a
+    /// prompt; files, local branches and `FETCH_HEAD` stay as they are
+    /// (GIT-3, I22).
+    fn fetch(&self, dir: &Path, branch: &str) -> Result<(), PortError>;
     /// Doctor: git installed and its version. Blocks.
     fn doctor(&self) -> DoctorSection;
     /// `owner/name` of the GitHub repository `origin` points to, if any.
@@ -444,6 +449,13 @@ pub trait GitHub: Send + Sync + 'static {
     fn my_pull_requests(&self) -> Result<Vec<PullRequest>, PortError>;
     /// One pull request with its checks, reviewers and comments (GH-3).
     fn pull_request_by_number(&self, repo: &str, number: u64) -> Result<PullRequest, PortError>;
+    /// A pull request's changes as GitHub's "Files changed" shows them
+    /// (GH-3).
+    fn pull_request_diff(
+        &self,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<leon_domain::FileDiff>, PortError>;
     /// One issue with its board fields, assignees, body and comments (GH-2).
     fn issue(&self, repo: &str, number: u64) -> Result<Issue, PortError>;
     /// Asks Copilot to review a pull request (GH-5).

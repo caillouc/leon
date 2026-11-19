@@ -161,19 +161,21 @@ impl Workspace {
             .flex_col()
             .child(header(list, count, filter, cx))
             .child(
-                div().id("gh-list").flex_1().overflow_y_scroll().child(
-                    div()
-                        .max_w(crate::theme::rem(880.))
-                        .w_full()
-                        .mx_auto()
-                        .px_6()
-                        .py_5()
-                        .flex()
-                        .flex_col()
-                        .gap_5()
-                        .children(empty_text.map(empty))
-                        .children(sections),
-                ),
+                div()
+                    .id("gh-list")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .child(crate::widgets::centered(
+                        880.,
+                        div()
+                            .px_6()
+                            .py_5()
+                            .flex()
+                            .flex_col()
+                            .gap_5()
+                            .children(empty_text.map(empty))
+                            .children(sections),
+                    )),
             )
             .into_any_element()
     }
@@ -185,7 +187,7 @@ impl Workspace {
         issues: &[&Issue],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let color = status.map_or(theme::fg_faint(), |s| self.status_color(s));
+        let color = self.issue_color(status);
         let name = status.map_or("No status", |s| s.name.as_str()).to_owned();
         let title = div()
             .text_size(crate::theme::rem(13.5))
@@ -195,28 +197,17 @@ impl Workspace {
             .iter()
             .map(|i| self.issue_row(i, color, cx))
             .collect();
-        self.group(name, color, title.into_any_element(), rows, cx)
+        self.group(name, color, title.into_any_element(), rows)
     }
 
     /// One repository of my pull requests: a foldable header, then its pull
     /// requests (GH-3).
     fn repo_group(&self, repo: &str, prs: &[&PullRequest], cx: &mut Context<Self>) -> AnyElement {
-        let (owner, name) = repo.split_once('/').unwrap_or(("", repo));
         let title = div()
-            .flex()
-            .items_center()
             .font_family(theme::MONO)
             .text_size(crate::theme::rem(13.))
-            .child(
-                div()
-                    .text_color(theme::fg_muted())
-                    .child(format!("{owner}/")),
-            )
-            .child(
-                div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(name.to_owned()),
-            );
+            .font_weight(FontWeight::SEMIBOLD)
+            .child(leon_domain::repo_name(repo).to_owned());
         let color = theme::agent_color(repo.bytes().map(usize::from).sum());
         let rows = prs.iter().map(|pr| self.pr_row(pr, cx)).collect();
         self.group(
@@ -224,21 +215,18 @@ impl Workspace {
             color,
             title.into_any_element(),
             rows,
-            cx,
         )
     }
 
     /// A foldable group of rows: chevron, a dot in `color`, `title`, the
-    /// count; `key` remembers it folded while the window is open.
+    /// count; `key` keeps it folded across restarts.
     fn group(
         &self,
         key: String,
         color: Rgba,
         title: AnyElement,
         rows: Vec<AnyElement>,
-        cx: &mut Context<Self>,
     ) -> AnyElement {
-        // Kept by the core across restarts.
         let folded = self.snapshot.folded_groups.contains(&key);
         let count = rows.len();
         div()
@@ -246,25 +234,11 @@ impl Workspace {
             .flex_col()
             .gap_1()
             .child(
-                div()
-                    .id(SharedString::from(format!("gh-group-{key}")))
-                    .flex()
-                    .items_center()
-                    .gap_2()
+                crate::widgets::fold_toggle(key, folded)
                     .px_2()
                     .py_1()
                     .rounded_md()
-                    .cursor_pointer()
                     .hover(|s| s.bg(theme::surface()))
-                    .child(icon(
-                        if folded {
-                            Icon::ChevronRight
-                        } else {
-                            Icon::ChevronDown
-                        },
-                        theme::fg_muted(),
-                        15.,
-                    ))
                     .child(div().size(crate::theme::rem(10.)).rounded_full().bg(color))
                     .child(title)
                     .child(
@@ -275,11 +249,7 @@ impl Workspace {
                             .text_size(crate::theme::rem(11.5))
                             .text_color(theme::fg_muted())
                             .child(count.to_string()),
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.core.send(Intent::FoldGroup(key.clone(), !folded));
-                        cx.notify();
-                    })),
+                    ),
             )
             .when(!folded, |d| d.children(rows))
             .into_any_element()
@@ -545,7 +515,7 @@ fn repo_text(repo: &str) -> Div {
     div()
         .font_family(theme::MONO)
         .text_size(crate::theme::rem(11.5))
-        .child(repo.to_owned())
+        .child(leon_domain::repo_name(repo).to_owned())
 }
 
 /// "Open flow" as a link in a row's details line.
@@ -558,7 +528,7 @@ fn flow_link(item: &GhRef, flow: FlowId, cx: &mut Context<Workspace>) -> AnyElem
         .text_color(theme::accent())
         .cursor_pointer()
         .hover(|s| s.opacity(0.8))
-        .child(icon(Icon::Chat, theme::accent(), 12.))
+        .child(icon(Icon::Flow, theme::accent(), 12.))
         .child("Open flow")
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();

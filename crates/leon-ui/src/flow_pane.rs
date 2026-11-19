@@ -1,9 +1,7 @@
 //! Main pane for a flow: header (title, branch), tabs (the flow and
 //! each conversation), transcript and composer.
 
-use gpui::{
-    AnyElement, ClipboardItem, Context, IntoElement, SharedString, Window, div, prelude::*,
-};
+use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
 use leon_core::ConversationView;
 use leon_domain::{ConversationId, FlowId, Status};
 
@@ -38,7 +36,10 @@ impl Workspace {
                     .flex()
                     .flex_col()
                     .child(transcript)
-                    .child(self.render_composer(conversation, jump, window, cx))
+                    .child(crate::widgets::centered(
+                        theme::COLUMN,
+                        self.render_composer(conversation, jump, window, cx),
+                    ))
                     .into_any_element()
             }
         };
@@ -89,8 +90,8 @@ impl Workspace {
                 .cursor_pointer()
                 .hover(|s| s.text_color(theme::fg()))
                 .child(format!("⎇ {chip_text}"))
-                .on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
+                .on_click(move |_, window, cx| {
+                    crate::clipboard::copy(window, cx, copy.to_string());
                 })
         });
         let current = self.current_conversation();

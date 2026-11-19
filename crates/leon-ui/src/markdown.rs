@@ -148,8 +148,8 @@ fn code_corner(lang: Option<SharedString>, code: SharedString) -> AnyElement {
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::surface_2()))
                 .child(icon(Icon::Copy, theme::fg_muted(), 13.))
-                .on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(code.to_string()));
+                .on_click(move |_, window, cx| {
+                    crate::clipboard::copy(window, cx, code.to_string());
                 }),
         )
         .into_any_element()

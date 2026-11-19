@@ -66,6 +66,9 @@ pub enum Shot {
     Drawer(FlowId, &'static str, bool),
     /// An issue's or a pull request's details in the drawer.
     Detail(Box<leon_core::Detail>),
+    /// A pull request's view with its changes, as GitHub gave them, open
+    /// over it.
+    PrDiff(Box<leon_core::Detail>, Box<leon_core::PrDiff>),
 }
 
 impl Workspace {
@@ -179,6 +182,18 @@ impl Workspace {
             }
             Shot::MyPullRequests => self.screen = Screen::GitHub(GhList::PullRequests),
             Shot::MyIssues => self.screen = Screen::GitHub(GhList::Issues),
+            Shot::PrDiff(detail, diff) => {
+                self.screen = Screen::GitHub(GhList::PullRequests);
+                self.snapshot = std::sync::Arc::new(leon_core::Snapshot {
+                    detail: Some((**detail).clone()),
+                    pr_diff: Some((**diff).clone()),
+                    ..(*self.snapshot).clone()
+                });
+                self.right.drawer = Some(crate::diff_drawer::Drawer {
+                    source: DiffSource::PullRequest,
+                    scroll_to: None,
+                });
+            }
             Shot::Detail(detail) => {
                 self.screen = Screen::GitHub(match detail.item().kind {
                     leon_domain::GhKind::Issue => GhList::Issues,

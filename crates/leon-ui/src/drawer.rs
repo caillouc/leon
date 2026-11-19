@@ -12,8 +12,10 @@ use crate::theme;
 type OnClose = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
 /// The drawer: `header` (its left part; Close is added), `body`, and an
-/// optional `footer`.
+/// optional `footer`. `id` tells it from another drawer open under it: with
+/// the same ids, the one under takes the clicks meant for the one on top.
 pub(crate) fn drawer(
+    id: &'static str,
     header: Div,
     body: impl IntoElement,
     footer: Option<AnyElement>,
@@ -61,7 +63,7 @@ pub(crate) fn drawer(
         .child(div().flex_1().min_h_0().flex().flex_col().child(body))
         .children(footer);
     div()
-        .id("drawer-backdrop")
+        .id(id)
         .absolute()
         .inset_0()
         .occlude()

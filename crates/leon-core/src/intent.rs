@@ -11,7 +11,8 @@ pub enum Intent {
     AddProject(PathBuf),
     /// Remove a project from Leon with its flows; the folder stays.
     RemoveProject(ProjectId),
-    /// Fold (`true`) or unfold a GitHub list's group, kept across restarts.
+    /// Fold (`true`) or unfold a group — a GitHub list's group, Info's Now
+    /// or Where — kept across restarts.
     FoldGroup(String, bool),
     /// The flow shown in the main pane (`None`: none): loads its
     /// transcripts and git state.
@@ -97,7 +98,8 @@ pub enum Intent {
     MarkConversationUnread(ConversationId),
     /// Delete a flow (NAV-8).
     Delete(FlowId),
-    /// Re-read a flow's git state now.
+    /// Re-read a flow's git state now, its bases fetched if they were not in
+    /// the last five minutes (I22).
     RefreshGit(FlowId),
     /// Re-read my issues and pull requests (GH-2, GH-3).
     RefreshGitHub,
@@ -117,7 +119,8 @@ pub enum Intent {
     Comment(leon_domain::GhRef, String),
     /// Mark a pull request as a draft (`true`) or ready for review (GH-7).
     SetDraft(leon_domain::GhRef, bool),
-    /// Answer a review thread of a pull request (GH-8).
+    /// Answer a review thread of a pull request, and resolve it after when
+    /// `resolve` (GH-8).
     ReplyToThread {
         /// The pull request.
         pr: leon_domain::GhRef,
@@ -125,6 +128,8 @@ pub enum Intent {
         thread: String,
         /// The answer.
         body: String,
+        /// Resolve the thread once answered.
+        resolve: bool,
     },
     /// Resolve a review thread of a pull request (GH-8).
     ResolveThread {
@@ -136,4 +141,7 @@ pub enum Intent {
     /// Show an issue's or a pull request's details (`None`: close them);
     /// they are read from GitHub in the background.
     ShowDetail(Option<leon_domain::GhRef>),
+    /// Read a pull request's changes from GitHub for the diff drawer (`None`:
+    /// close them) (GH-3).
+    ShowPrDiff(Option<leon_domain::GhRef>),
 }

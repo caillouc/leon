@@ -72,6 +72,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **NAV-11** A flow's row shows no issue: its issues are in the right
   pane's Info (CTX-1). Its title stays readable next to "To review" or
   "Needs you".
+- **NAV-12** Back and forward through the places visited — a flow on its
+  Flow tab or on a conversation's tab — like a browser: ⌘[ and ⌘], or a
+  mouse's back and forward buttons. Away from the flows, back returns to
+  the last one.
 
 ### Main pane
 
@@ -107,7 +111,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   conversation, while Leon runs.
 - **CONV-15** Your messages stand out from the agents'. Once an answer
   follows your last message, a button next to Send scrolls back to it, to
-  read the answer from its start.
+  read the answer from its start; a conversation with an answer not read
+  yet opens there.
 - **CONV-16** While an agent works, the bottom of its conversation, just
   above the message box, shows live what it does this moment, as Info's
   "Now" does: each command or edit it runs and for how long, its running
@@ -139,7 +144,10 @@ flow**: one item in the left pane (D5).
 - **FLOW-3** Switch between the conversations of a flow and talk to any of
   them directly.
 - **FLOW-4** A flow diagram is the flow's main tab: one box per conversation
-  (plus a "You" box), arrows for the prompts sent and the reports returned, a
+  (plus a "You" box), each box saying the repository and branch its agent
+  works in (CTX-2), a green "You" at the bottom right of the boxes of the
+  conversations the user wrote to, so they stand out from those only agents
+  talk to, arrows for the prompts sent and the reports returned, a
   highlighted arrow for a question waiting for you, and live status on each
   box, with "To review" or "Needs you" on the agent whose answer or question
   waits for you; while an agent works, its colour goes round its box's
@@ -184,10 +192,14 @@ flow**: one item in the left pane (D5).
 ### Right pane
 
 - **CTX-1** Information about the current flow: its pull requests at the
-  top, its issues at the bottom (each opening Leon's view of it, GitHub from
-  there), and between them what each agent is doing now, in its colour from the diagram: its
+  top (open, then draft, merged, closed), then its issues (each opening
+  Leon's view of it, GitHub from there; its icon in its board column's
+  colour, as in the issue list), then what each agent is doing now, in its
+  colour from the diagram: its
   CLI and model, working on which commands and for how long, how many
-  subagents run, the answer it waits for, or idle. The right pane's tabs
+  subagents run, the answer it waits for, or idle. "Now" and "Where" fold
+  to their title with a click on it, for every flow, kept across restarts.
+  The right pane's tabs
   are Info, Changes, Branch; a flow opens it on Info, and a tab picked by
   hand is kept per flow. The right pane stays narrow: a pull
   request opens in the details drawer, not in a tab of its own. Each issue
@@ -195,7 +207,8 @@ flow**: one item in the left pane (D5).
   its CI checks that failed or still run, each opening its job on GitHub.
   A pull request stands apart from an issue: its state's colour along its
   left side, its state (Open, Draft, Merged, Closed), its title in bold and
-  the lines it adds and removes.
+  the lines it adds and removes. A merged or closed pull request folds into
+  one small line: its icon, reference, title and lines.
 - **CTX-2** One flow can edit several repositories, in several
   worktrees, with several PRs, linked to several issues, and Leon follows
   what the agents do: a folder joins the flow when an agent edits a
@@ -219,13 +232,15 @@ flow**: one item in the left pane (D5).
   naming the flow, linking an issue or PR it creates or works on), so the
   app always shows the current work.
 - **GIT-1** Uncommitted files of the flow's folder (CTX-2).
-- **GIT-2** Diff of each uncommitted file. Changes and Branch list the files
+- **GIT-2** Diff of each uncommitted file, code in its language's colours
+  as in Zed (I21). Changes and Branch list the files
   (with lines added and removed on the tab); clicking one opens a large drawer
   over the middle of the window with every file's diff, at the one clicked,
   unified or side by side; side by side, the divider between the sides is
   dragged left or right.
 - **GIT-3** Whole diff of the worktree against its starting branch/commit, as a
-  PR shows it.
+  PR shows it. That base is fetched from the remote in the background when
+  the flow is opened, at most every five minutes.
 - **GIT-4** Auto-fold files whose path matches configured patterns (glob or
   regex).
 - **GIT-5** Comment on lines of a diff: click a line's +, or drag it over
@@ -257,7 +272,9 @@ flow**: one item in the left pane (D5).
   <base>" line on its card in Info), the checks box (how they went, the failing ones
   named), its description (GitHub's folded sections stay folded) and each
   review thread still open with the code it is on, people as coloured
-  avatars, a box to comment. Its actions (Copilot review, then ready or
+  avatars, a box to comment. "Files changed" opens its changes over it, in
+  the large drawer, read from GitHub so they are exactly what GitHub's own
+  "Files changed" shows, whatever is checked out locally; read-only. Its actions (Copilot review, then ready or
   draft) sit left of "Copy link", which puts its
   address on the clipboard, and "Open on GitHub".
 - **GH-4** Labels of issues and PRs.
@@ -265,7 +282,8 @@ flow**: one item in the left pane (D5).
 - **GH-6** Post a comment.
 - **GH-7** Mark a pull request ready for review, or convert it back to a
   draft.
-- **GH-8** Answer a review thread and resolve it, from Leon's view of the PR.
+- **GH-8** Answer a review thread and resolve it, from Leon's view of the PR,
+  or both at once ("Reply and resolve"; a failed answer resolves nothing).
 - **GH-9** Every reference to an issue or a pull request — in the left pane,
   the right pane, the details drawer, or a GitHub link in a message — opens
   Leon's view of it first, GitHub from there.
@@ -297,7 +315,10 @@ flow**: one item in the left pane (D5).
   once into `config.toml`, keeping the rest of the file.
 - **SETTINGS-2** The app's zoom: 100 (default), 125 or 150 %. Text, icons,
   spacing and widths grow together, so the conversation column and the
-  panes keep their proportions; the flow diagram keeps its own zoom.
+  panes keep their proportions; the flow diagram keeps its own zoom. A
+  page's column (a conversation, Settings, the GitHub lists, Doctor,
+  Connectors) also grows with the window: half the room a wider pane
+  leaves goes to it.
 - **SETTINGS-3** What a flow opens on when picked in the left pane: its
   Flow diagram (default) or its main conversation, the one the user started
   it with. The Flow tab stays either way.
@@ -354,11 +375,17 @@ flow**: one item in the left pane (D5).
 - **PLAT-1** Builds and runs on macOS and Linux.
 - **QUAL-1** Fast and very responsive — Zed is the reference.
 - **QUAL-2** Small footprint.
-- **QUAL-3** Clean, modern UI: one coherent colour theme, no emoji in the UI.
+- **QUAL-3** Clean, modern UI: one coherent colour theme, no emoji in the UI;
+  a repository shows by its name, without its owner (`api#12`, not
+  `acme/api#12`).
 - **QUAL-4** The usual menus and shortcuts: Quit, Hide, Close, Minimize, an
   Edit menu (macOS dictation and emoji), ⌘N new flow, ⌘, Settings,
-  ⌘L message box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous flow, Esc
+  ⌘L message box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous flow, ⌘[ / ⌘]
+  back / forward (NAV-12), Esc
   closes what is open on top. The left and right panes resize by dragging.
+- **QUAL-5** Copying from the interface (a code block, the worktree's branch,
+  a pull request's link) shows "Copied" for a moment just above where it was
+  clicked.
 - **OSS-1** Open source.
 
 ## Layout *(proposal)*
@@ -398,7 +425,10 @@ flow**: one item in the left pane (D5).
   worked on is animated. The view refits on its own until you pan, zoom or move
   a box.
 - **Branch diff** (GIT-3): `merge-base(base, HEAD)..HEAD`, like a PR;
-  uncommitted changes stay in their own tab.
+  uncommitted changes stay in their own tab. The base (the PR's, else the
+  remote's default branch) is fetched with `git fetch origin <base>` when the
+  flow is opened or its Changes, Branch or folder is clicked, at most every
+  five minutes per folder (I22).
 - **Auto-fold** (GIT-4): `diff.fold` patterns in the config, global and per
   project; no built-in patterns.
 

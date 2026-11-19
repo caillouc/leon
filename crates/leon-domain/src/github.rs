@@ -2,8 +2,9 @@
 
 use crate::Iteration;
 
-/// State of a pull request (NAV-6).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// State of a pull request (NAV-6), ordered from the most active: open,
+/// draft, merged, closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PrState {
     /// Open, ready for review.
     Open,
@@ -93,6 +94,11 @@ impl GhRef {
         format!("{}#{}", self.repo, self.number)
     }
 
+    /// `name#12`, as the UI shows it: the repository without its owner.
+    pub fn short(&self) -> String {
+        format!("{}#{}", repo_name(&self.repo), self.number)
+    }
+
     /// The issue `owner/name#12` names.
     pub fn issue_from_text(text: &str) -> Option<Self> {
         let (repo, number) = text.rsplit_once('#')?;
@@ -122,6 +128,12 @@ impl GhRef {
             _ => None,
         }
     }
+}
+
+/// A repository's name without its owner: `api` for `acme/api`, as the UI
+/// shows it.
+pub fn repo_name(repo: &str) -> &str {
+    repo.rsplit_once('/').map_or(repo, |(_, name)| name)
 }
 
 /// A label (GH-4), with GitHub's own color.
@@ -291,6 +303,16 @@ pub fn prs_by_repo(prs: &[PullRequest]) -> Vec<(&str, Vec<&PullRequest>)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_ui_shows_a_repository_without_its_owner() {
+        assert_eq!(super::repo_name("acme/payments-api"), "payments-api");
+        assert_eq!(super::repo_name("payments-api"), "payments-api");
+        assert_eq!(
+            super::GhRef::pull_request("acme/payments-api", 412).short(),
+            "payments-api#412"
+        );
+    }
+
     #[test]
     fn github_addresses_name_issues_and_pull_requests() {
         use super::GhRef;

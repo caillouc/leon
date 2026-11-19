@@ -25,7 +25,7 @@ use std::fmt::Display;
 use std::path::Path;
 
 use leon_core::ports::{GitHub, PortError, SearchPath, inherited_path};
-use leon_domain::{Issue, PullRequest};
+use leon_domain::{FileDiff, Issue, PullRequest, parse_diff};
 
 use crate::run::{GhError, gh};
 
@@ -173,6 +173,13 @@ impl GitHub for GhCli {
         parse::issue(&json)
             .map_err(|e| error(&e))?
             .ok_or_else(|| error(&"GitHub sent no issue"))
+    }
+
+    fn pull_request_diff(&self, repo: &str, number: u64) -> Result<Vec<FileDiff>, PortError> {
+        let args = query::pull_request_diff(repo, number);
+        gh((self.path)(), &args, None)
+            .map(|text| parse_diff(&text))
+            .map_err(|e| numbered("reading the pull request's changes", repo, number)(&e))
     }
 
     fn request_copilot_review(&self, repo: &str, number: u64) -> Result<(), PortError> {

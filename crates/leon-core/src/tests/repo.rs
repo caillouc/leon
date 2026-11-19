@@ -9,9 +9,20 @@ use crate::Detail;
 use super::*;
 use crate::ports::{Git, GitHub};
 
-pub(super) struct FakeGit;
+#[derive(Default)]
+pub(super) struct FakeGit {
+    /// `(folder, branch)` of each fetch, in order.
+    pub fetches: Mutex<Vec<(PathBuf, String)>>,
+}
 
 impl Git for FakeGit {
+    fn fetch(&self, dir: &Path, branch: &str) -> Result<(), PortError> {
+        self.fetches
+            .lock()
+            .unwrap()
+            .push((dir.to_owned(), branch.to_owned()));
+        Ok(())
+    }
     fn github_repo(&self, _dir: &Path) -> Option<String> {
         Some("acme/api".into())
     }
@@ -129,6 +140,15 @@ impl GitHub for FakeGitHub {
         pr.filter(|pr| pr.repo == repo && pr.number == number)
             .ok_or_else(|| PortError::new("reading a pull request", "not found"))
     }
+    fn pull_request_diff(&self, _repo: &str, number: u64) -> Result<Vec<FileDiff>, PortError> {
+        if number == 404 {
+            return Err(PortError::new(
+                "reading the pull request's changes",
+                "not found",
+            ));
+        }
+        Ok(vec![file("src/retry.rs")])
+    }
     fn issue(&self, repo: &str, number: u64) -> Result<Issue, PortError> {
         Ok(Issue {
             repo: repo.into(),
@@ -156,11 +176,15 @@ impl GitHub for FakeGitHub {
         self.reviews.lock().unwrap().push(number);
         Ok(())
     }
+    /// `PRRT_2` is gone; the other threads take answers.
     fn reply_to_thread(&self, thread: &str, _body: &str) -> Result<(), PortError> {
-        Err(PortError::new(
-            "answering a review thread",
-            format!("{thread} is gone"),
-        ))
+        if thread == "PRRT_2" {
+            return Err(PortError::new(
+                "answering a review thread",
+                format!("{thread} is gone"),
+            ));
+        }
+        Ok(())
     }
     fn resolve_thread(&self, _thread: &str) -> Result<(), PortError> {
         Ok(())
@@ -186,6 +210,37 @@ async fn a_flow_shows_its_branch_changes_and_pull_request() {
     assert_eq!(s.prs[api].number, 7);
 }
 
+/// Looking at a flow fetches the base of its pull request once, not again
+/// within five minutes (GIT-3, I22).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_flows_base_is_fetched_when_looked_at() {
+    let h = harness();
+    new_flow(&h, BackendKind::Codex).await;
+    let id = until(&h.core, "conversation", |s| !s.flows.is_empty())
+        .await
+        .flows[0]
+        .flow
+        .id;
+    let api = Path::new("/code/api");
+    h.core.send(Intent::View(Some(id)));
+    until(&h.core, "pull request", |s| s.prs.contains_key(api)).await;
+    h.core.send(Intent::RefreshGit(id));
+    let fetched = || h.git.fetches.lock().unwrap().clone();
+    for _ in 0..200 {
+        if !fetched().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    // Again: once both are handled, and a fetch would have had time, none.
+    h.core.send(Intent::RefreshGit(id));
+    h.core.send(Intent::View(Some(id)));
+    h.core.send(Intent::MarkUnread(id));
+    until(&h.core, "handled", |s| s.flows[0].flow.unread).await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(fetched(), [(api.to_owned(), "main".to_owned())]);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_github_failure_is_shown_not_fatal() {
     let h = harness();
@@ -195,6 +250,38 @@ async fn a_github_failure_is_shown_not_fatal() {
             .as_deref()
             .is_some_and(|e| e.contains("not logged in"))
     );
+}
+
+/// A pull request's changes are read from GitHub for the diff drawer, and
+/// a failure says why (GH-3).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pull_requests_changes_come_from_github() {
+    let h = harness();
+    until(&h.core, "loaded", |s| s.loaded).await;
+    h.core
+        .send(Intent::ShowPrDiff(Some(GhRef::pull_request("acme/api", 7))));
+    let s = until(&h.core, "the changes", |s| {
+        s.pr_diff.as_ref().is_some_and(|d| d.files.is_some())
+    })
+    .await;
+    let diff = s.pr_diff.clone().unwrap();
+    let files = diff.files.unwrap().unwrap();
+    assert_eq!(
+        files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+        ["src/retry.rs"]
+    );
+    h.core.send(Intent::ShowPrDiff(Some(GhRef::pull_request(
+        "acme/api", 404,
+    ))));
+    let s = until(&h.core, "the failure", |s| {
+        s.pr_diff
+            .as_ref()
+            .is_some_and(|d| matches!(&d.files, Some(Err(e)) if e.contains("not found")))
+    })
+    .await;
+    assert_eq!(s.pr_diff.as_ref().map(|d| d.pr.number), Some(404));
+    h.core.send(Intent::ShowPrDiff(None));
+    until(&h.core, "closed", |s| s.pr_diff.is_none()).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -230,8 +317,27 @@ async fn requesting_a_copilot_review_says_so() {
                 pr: pr.clone(),
                 thread: "PRRT_2".into(),
                 body: "Done.".into(),
+                resolve: true,
             },
             "Could not answer the thread: answering a review thread: PRRT_2 is gone",
+        ),
+        (
+            Intent::ReplyToThread {
+                pr: pr.clone(),
+                thread: "PRRT_3".into(),
+                body: "Done.".into(),
+                resolve: false,
+            },
+            "Answer posted",
+        ),
+        (
+            Intent::ReplyToThread {
+                pr: pr.clone(),
+                thread: "PRRT_4".into(),
+                body: "Fixed.".into(),
+                resolve: true,
+            },
+            "Answered and resolved",
         ),
     ];
     for (intent, said) in cases {

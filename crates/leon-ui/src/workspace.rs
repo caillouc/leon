@@ -101,6 +101,11 @@ pub struct Workspace {
     pub(crate) pending_conversation: Option<(FlowId, usize)>,
     /// The flow last said to be read (an agent's tab on screen).
     pub(crate) reading: Option<ConversationId>,
+    /// A conversation opened with an answer not read yet: its transcript
+    /// shows the user's last message first, once loaded (CONV-15).
+    pub(crate) open_at_mine: Option<ConversationId>,
+    /// The flows and tabs visited, for back and forward (NAV-12).
+    pub(crate) history: crate::history::History<(FlowId, Option<ConversationId>)>,
     /// Each flow's agent tabs opened, the last one first: the tabs' order
     /// (FLOW-3).
     pub(crate) recent: HashMap<FlowId, Vec<ConversationId>>,
@@ -175,6 +180,7 @@ impl Workspace {
             }),
         ];
         subscriptions.extend(right_subscriptions);
+        subscriptions.push(Self::escape(cx));
         // An answer counts as seen only while this window is the active one.
         subscriptions.push(cx.observe_window_activation(window, |this, window, _| {
             this.core
@@ -224,6 +230,8 @@ impl Workspace {
             pending_open: false,
             pending_conversation: None,
             reading: None,
+            open_at_mine: None,
+            history: crate::history::History::default(),
             recent: HashMap::new(),
             tab_scroll: gpui::ScrollHandle::new(),
             shown_notifications: 0,
@@ -431,9 +439,20 @@ impl Render for Workspace {
         }
         // An answer is read on its agent's tab, not on the Flow (NAV-4).
         let reading = self.current_conversation();
+        if let Screen::Flow(id) = self.screen {
+            self.history.visit((id, reading));
+        }
         if reading != self.reading {
             self.reading = reading;
             self.core.send(Intent::Read(reading));
+            // An answer not read yet is read from its start: the tab opens
+            // at the user's last message (CONV-15).
+            self.open_at_mine = reading.filter(|c| {
+                self.snapshot
+                    .conversations
+                    .get(c)
+                    .is_some_and(|s| s.conversation.unread)
+            });
             // The tab opened goes first after Flow, in view.
             if let (Screen::Flow(id), Some(c)) = (self.screen, reading) {
                 let recent = self.recent.entry(id).or_default();
@@ -482,10 +501,12 @@ impl Render for Workspace {
                 d.child(Self::pane_handle(Side::Right, cx))
                     .child(self.render_right(window, cx))
             })
-            .children(self.render_drawer(window, cx))
             .children(self.render_detail(cx))
+            // Over the details: a pull request's changes open from its view.
+            .children(self.render_drawer(window, cx))
             .children(self.render_row_menu(cx))
             .children(self.render_flash())
+            .children(crate::clipboard::render_copied(cx))
     }
 }
 

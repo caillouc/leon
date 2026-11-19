@@ -115,6 +115,7 @@ pub(crate) struct State {
     pub github_error: Option<String>,
     /// The issue or pull request whose details are shown.
     pub detail: Option<crate::Detail>,
+    pub pr_diff: Option<crate::PrDiff>,
     pub fold: Arc<Vec<leon_domain::FoldPattern>>,
     pub flash: Option<(u64, String)>,
     /// The last doctor report and when it was made.
@@ -377,6 +378,7 @@ impl State {
             my_prs: Arc::clone(&self.my_prs),
             github_error: self.github_error.clone(),
             detail: self.detail.clone(),
+            pr_diff: self.pr_diff.clone(),
             fold: Arc::clone(&self.fold),
             flash: self.flash.clone(),
             doctor: self.doctor.clone(),

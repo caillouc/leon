@@ -90,16 +90,10 @@ impl Workspace {
                     .px_6()
                     .py_4()
                     .text_size(crate::theme::rem(13.))
-                    .child(
-                        div()
-                            .max_w(crate::theme::rem(820.))
-                            .w_full()
-                            .mx_auto()
-                            .flex()
-                            .flex_col()
-                            .gap_4()
-                            .children(body),
-                    ),
+                    .child(crate::widgets::centered(
+                        820.,
+                        div().flex().flex_col().gap_4().children(body),
+                    )),
             )
             .into_any_element()
     }

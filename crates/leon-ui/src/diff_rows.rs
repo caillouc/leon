@@ -111,7 +111,13 @@ pub(crate) struct Data {
     /// Side by side: the old side's share of the width.
     pub(crate) split: Option<f32>,
     pub(crate) view: WeakEntity<Workspace>,
+    /// Each file's syntax colours, per hunk and line, when opened and its
+    /// language has a grammar (I21).
+    styles: Vec<Option<FileStyles>>,
 }
+
+/// A file's syntax colours: per hunk, per line.
+pub(crate) type FileStyles = Arc<Vec<Vec<crate::syntax::LineStyles>>>;
 
 impl Workspace {
     /// Every file of a diff in one list, files matching `diff.fold` folded;
@@ -155,6 +161,11 @@ impl Workspace {
             .clone()
             .filter(|d| d.flow == id && d.source == source);
         let split = self.right.split;
+        let styles = files
+            .iter()
+            .zip(&opened)
+            .map(|(f, open)| open.then(|| self.file_styles(f)).flatten())
+            .collect();
         let rows = build_rows(&files, &opened, source, &review, draft.as_ref(), split);
         let area = std::rc::Rc::clone(&self.right.split_area);
         let (state, rows) = self.diff_list((id, source), rows);
@@ -185,6 +196,7 @@ impl Workspace {
             draft,
             split: split.then_some(self.right.split_ratio),
             view: cx.entity().downgrade(),
+            styles,
         });
         let rows = list(state, move |ix, _window, cx| {
             let row = match data.rows.get(ix) {
@@ -237,6 +249,37 @@ impl Workspace {
             list.rows = Arc::new(rows);
         }
         (list.state.clone(), Arc::clone(&list.rows))
+    }
+
+    /// A file's syntax colours, worked out once per content (I21).
+    fn file_styles(&mut self, file: &FileDiff) -> Option<FileStyles> {
+        use std::hash::{Hash, Hasher};
+        let language = crate::syntax::language(&file.path)?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        file.path.hash(&mut hasher);
+        for hunk in &file.hunks {
+            for line in &hunk.lines {
+                (line.kind as u8).hash(&mut hasher);
+                line.text.hash(&mut hasher);
+            }
+        }
+        let key = hasher.finish();
+        let cache = &mut self.right.syntax;
+        if let Some(styles) = cache.get(&key) {
+            return Some(Arc::clone(styles));
+        }
+        // Bounded: old diffs' colours go once many are kept.
+        if cache.len() > 500 {
+            cache.clear();
+        }
+        let styles: FileStyles = Arc::new(
+            file.hunks
+                .iter()
+                .map(|h| crate::syntax::hunk_styles(language, h))
+                .collect(),
+        );
+        cache.insert(key, Arc::clone(&styles));
+        Some(styles)
     }
 
     fn toggle_file(&mut self, id: FlowId, source: DiffSource, path: String, open: bool) {
@@ -492,6 +535,8 @@ enum Numbers {
 fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> AnyElement {
     let line = &data.files[f].hunks[h].lines[l];
     let path = data.files[f].path.clone();
+    // A pull request's diff from GitHub is read-only: no comment to add.
+    let commentable = data.source != DiffSource::PullRequest;
     // Chosen while dragging, and while their comment is written.
     let chosen = data
         .selecting
@@ -564,27 +609,29 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
                 .justify_center()
                 .text_color(theme::on_accent())
                 .opacity(if chosen { 1. } else { 0. })
-                .group_hover(group, |s| s.opacity(1.))
-                .cursor_pointer()
+                .when(commentable, |d| {
+                    d.group_hover(group, |s| s.opacity(1.))
+                        .cursor_pointer()
+                        // Press on + and drag over more lines; the comment
+                        // box opens when the mouse goes up.
+                        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                            cx.stop_propagation();
+                            let start = start.clone();
+                            down_view
+                                .update(cx, |this, cx| {
+                                    this.right.selecting = Some(start);
+                                    cx.notify();
+                                })
+                                .ok();
+                        })
+                })
                 .child(
                     div()
                         .px(crate::theme::rem(3.))
                         .rounded(crate::theme::rem(3.))
                         .bg(theme::accent())
                         .child("+"),
-                )
-                // Press on + and drag over more lines; the comment box opens
-                // when the mouse goes up.
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                    cx.stop_propagation();
-                    let start = start.clone();
-                    down_view
-                        .update(cx, |this, cx| {
-                            this.right.selecting = Some(start);
-                            cx.notify();
-                        })
-                        .ok();
-                }),
+                ),
         )
         .child(
             div()
@@ -593,7 +640,24 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
                 .text_color(theme::fg_faint())
                 .child(sign),
         )
-        .child(div().flex_1().min_w_0().pr_2().child(line.text.clone()))
+        .child({
+            // In its language's colours, when it has a grammar (I21).
+            let text = SharedString::from(line.text.clone());
+            let styles = data
+                .styles
+                .get(f)
+                .and_then(Option::as_ref)
+                .and_then(|file| file.get(h))
+                .and_then(|hunk| hunk.get(l))
+                .filter(|s| !s.is_empty());
+            let body = div().flex_1().min_w_0().pr_2();
+            match styles {
+                Some(styles) => {
+                    body.child(gpui::StyledText::new(text).with_highlights(styles.clone()))
+                }
+                None => body.child(text),
+            }
+        })
         .into_any_element()
 }
 

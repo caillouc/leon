@@ -32,8 +32,11 @@ async fn folders_join_a_flow_where_its_agents_change_files() {
     })
     .await;
     let c = &s.flows[0];
+    // Both kept; the two lookups may end in either order.
+    let mut kept = c.flow.folders.clone();
+    kept.sort();
     assert_eq!(
-        c.flow.folders,
+        kept,
         [
             PathBuf::from("/code/api/.worktrees/fix"),
             PathBuf::from("/code/web")

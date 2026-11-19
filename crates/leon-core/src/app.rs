@@ -113,6 +113,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         internal_tx,
         git_in_flight: HashSet::new(),
         git_dirty: HashSet::new(),
+        fetched: HashMap::new(),
         working_trees: HashMap::new(),
         lookups: 0,
         latest_lookup: HashMap::new(),
@@ -172,6 +173,8 @@ pub(crate) struct Core {
     pub(crate) internal_tx: UnboundedSender<Internal>,
     pub(crate) git_in_flight: HashSet<std::path::PathBuf>,
     pub(crate) git_dirty: HashSet<std::path::PathBuf>,
+    /// When each folder's base branch was last fetched, in ms (I22).
+    pub(crate) fetched: HashMap<(std::path::PathBuf, String), i64>,
     /// The working tree holding each folder agents changed files in (CTX-2).
     pub(crate) working_trees: HashMap<std::path::PathBuf, std::path::PathBuf>,
     /// Folder lookups started, and each conversation's latest: a lookup
@@ -361,7 +364,10 @@ impl Core {
             }
             Intent::Read(id) => self.read(id),
             Intent::Delete(id) => self.delete(id),
-            Intent::RefreshGit(id) => self.refresh_git(id),
+            Intent::RefreshGit(id) => {
+                self.refresh_git(id);
+                self.fetch_bases(id);
+            }
             Intent::RefreshGitHub => self.refresh_lists(),
             Intent::RunDoctor => self.run_doctor(),
             Intent::RefreshTools => self.refresh_tools(),
@@ -371,9 +377,15 @@ impl Core {
             Intent::RequestCopilotReview(item) => self.request_review(item),
             Intent::Comment(item, body) => self.comment(item, body),
             Intent::SetDraft(item, draft) => self.set_draft(item, draft),
-            Intent::ReplyToThread { pr, thread, body } => self.reply_to_thread(pr, thread, body),
+            Intent::ReplyToThread {
+                pr,
+                thread,
+                body,
+                resolve,
+            } => self.reply_to_thread(pr, thread, body, resolve),
             Intent::ResolveThread { pr, thread } => self.resolve_thread(pr, thread),
             Intent::ShowDetail(item) => self.show_detail(item),
+            Intent::ShowPrDiff(item) => self.show_pr_diff(item),
         }
     }
 
@@ -452,6 +464,7 @@ impl Core {
         self.viewing = id;
         let Some(id) = id else { return };
         self.refresh_git(id);
+        self.fetch_bases(id);
         self.refresh_pr(id);
         for conversation in self.state.conversations_of(id) {
             self.load_transcript(conversation);

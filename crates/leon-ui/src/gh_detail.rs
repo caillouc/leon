@@ -41,6 +41,16 @@ impl Workspace {
                 GhKind::PullRequest => icon(Icon::PullRequest, theme::fg_muted(), 16.),
             },
         };
+        // Its changes as GitHub shows them, over this view (GH-3).
+        let changes = (item.kind == GhKind::PullRequest).then(|| {
+            let pr = item.clone();
+            header_button(
+                "detail-files-changed",
+                Icon::Branch,
+                "Files changed",
+                cx.listener(move |this, _, _, cx| this.open_pr_diff(pr.clone(), cx)),
+            )
+        });
         let url = web_url(&item);
         let header = div()
             .flex()
@@ -52,9 +62,10 @@ impl Workspace {
                     .font_family(theme::MONO)
                     .text_size(crate::theme::rem(12.5))
                     .text_color(theme::fg_muted())
-                    .child(item.text()),
+                    .child(item.short()),
             )
             .child(div().flex_1())
+            .children(changes)
             .children(actions)
             .when(item.kind == GhKind::PullRequest, |d| {
                 d.child(copy_link(url.clone()))
@@ -74,6 +85,7 @@ impl Workspace {
                     .child(body),
             );
         Some(drawer(
+            "detail",
             header,
             scroll,
             None,
@@ -166,7 +178,7 @@ pub(crate) fn github_link(url: String) -> AnyElement {
         "detail-on-github",
         Icon::External,
         "Open on GitHub",
-        move |cx| {
+        move |_, _, cx| {
             cx.open_url(&url);
         },
     )
@@ -174,9 +186,14 @@ pub(crate) fn github_link(url: String) -> AnyElement {
 
 /// "Copy link", putting a pull request's `url` on the clipboard.
 fn copy_link(url: String) -> AnyElement {
-    header_button("detail-copy-link", Icon::Copy, "Copy link", move |cx| {
-        cx.write_to_clipboard(gpui::ClipboardItem::new_string(url.clone()));
-    })
+    header_button(
+        "detail-copy-link",
+        Icon::Copy,
+        "Copy link",
+        move |_, window, cx| {
+            crate::clipboard::copy(window, cx, url.clone());
+        },
+    )
 }
 
 /// A quiet button of the details drawer's header.
@@ -184,7 +201,7 @@ fn header_button(
     id: &'static str,
     glyph: Icon,
     label: &'static str,
-    click: impl Fn(&mut gpui::App) + 'static,
+    click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> AnyElement {
     div()
         .id(id)
@@ -201,7 +218,7 @@ fn header_button(
         .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
         .child(icon(glyph, theme::fg_muted(), 13.))
         .child(label)
-        .on_click(move |_, _, cx| click(cx))
+        .on_click(click)
         .into_any_element()
 }
 

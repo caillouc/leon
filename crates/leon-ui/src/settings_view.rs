@@ -162,9 +162,6 @@ impl Workspace {
             ),
         };
         let body = div()
-            .max_w(crate::theme::rem(760.))
-            .w_full()
-            .mx_auto()
             .px_6()
             .py_5()
             .flex()
@@ -270,7 +267,7 @@ impl Workspace {
                     .id("settings-body")
                     .flex_1()
                     .overflow_y_scroll()
-                    .child(body),
+                    .child(crate::widgets::centered(760., body)),
             )
             .into_any_element()
     }

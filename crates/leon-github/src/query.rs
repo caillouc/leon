@@ -115,6 +115,20 @@ fn issue_fields(board: bool) -> String {
     }
 }
 
+/// `gh pr diff`: pull request `number` of `repo` as GitHub diffs it, as a
+/// unified diff without colour.
+pub(crate) fn pull_request_diff(repo: &str, number: u64) -> Vec<String> {
+    owned([
+        "pr",
+        "diff",
+        &number.to_string(),
+        "--repo",
+        repo,
+        "--color",
+        "never",
+    ])
+}
+
 /// `gh pr edit` asking Copilot to review pull request `number` of `repo`.
 pub(crate) fn copilot_review(repo: &str, number: u64) -> Vec<String> {
     owned([
@@ -191,8 +205,17 @@ pub(crate) fn comment(repo: &str, number: u64, body: &str) -> Vec<String> {
 mod tests {
     use super::{
         PR_DETAILS, PR_FIELDS, PULL_REQUEST, comment, copilot_review, issue, owner_and_name,
-        pull_request, pull_request_by_number, reply_to_thread, resolve_thread, search, set_draft,
+        pull_request, pull_request_by_number, pull_request_diff, reply_to_thread, resolve_thread,
+        search, set_draft,
     };
+
+    #[test]
+    fn pull_request_diff_args() {
+        assert_eq!(
+            pull_request_diff("acme/api", 12),
+            ["pr", "diff", "12", "--repo", "acme/api", "--color", "never"]
+        );
+    }
 
     /// The thread id and the text go raw: an `@` or a `=` stays text.
     #[test]

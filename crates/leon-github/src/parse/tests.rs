@@ -432,3 +432,15 @@ fn invalid_json_fails() {
     assert!(issue("{").is_err());
     assert!(pull_request_by_number("").is_err());
 }
+
+/// A pull request's diff as `gh pr diff` gives it reads like `git diff`'s.
+/// Recorded from gh 2.101.0 on octocat/Hello-World#1 (2026-11-19).
+#[test]
+fn a_pull_requests_diff_from_github() {
+    let files = leon_domain::parse_diff(include_str!("../../fixtures/gh/2.101.0/pr-diff.txt"));
+    assert_eq!(files.len(), 1);
+    let readme = &files[0];
+    assert_eq!(readme.path, "README");
+    assert_eq!((readme.added, readme.removed), (6, 1));
+    assert_eq!(readme.status, leon_domain::FileStatus::Modified);
+}

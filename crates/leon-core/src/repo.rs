@@ -13,11 +13,16 @@ use crate::app::Core;
 use crate::ports::{GitHub, PortError};
 use crate::snapshot::{Detail, GitView};
 
+/// How long a fetched base stays fresh: no new fetch before (I22).
+const FETCH_EVERY_MS: i64 = 5 * 60 * 1000;
+
 /// Results of background work, applied by the core actor.
 #[derive(Debug)]
 pub(crate) enum Internal {
     /// Fresh git state of a folder.
     Git(PathBuf, GitView),
+    /// A folder's base branch was fetched: its branch diff is read again.
+    Fetched(PathBuf),
     /// The pull request of a folder's branch, or none.
     Pr(PathBuf, Option<Box<PullRequest>>),
     /// The working tree holding a folder of a flow, `None` outside a
@@ -39,6 +44,8 @@ pub(crate) enum Internal {
     Done(GhRef, String),
     /// An item's details, read for the drawer.
     Detail(Detail),
+    /// A pull request's changes, read from GitHub (GH-3).
+    PrDiff(GhRef, Result<Arc<Vec<leon_domain::FileDiff>>, String>),
     /// A linked issue, read (CTX-2).
     LinkedIssue(GhRef, Box<Issue>),
     /// A linked pull request, read (CTX-2).
@@ -99,6 +106,47 @@ impl Core {
             };
             let _ = tx.send(Internal::Git(dir, view));
         });
+    }
+
+    /// Brings the base of each folder's branch diff up to date from the
+    /// remote, in the background and at most every five minutes, then reads
+    /// the diff again (GIT-3, I22). A failure (offline, no access) leaves
+    /// the diff as it was.
+    pub(crate) fn fetch_bases(&mut self, id: FlowId) {
+        let now = self.now_ms();
+        for dir in self.state.folders_of(id) {
+            let Some(branch) = self.remote_base(&dir) else {
+                continue;
+            };
+            let key = (dir.clone(), branch.clone());
+            if self
+                .fetched
+                .get(&key)
+                .is_some_and(|at| now - at < FETCH_EVERY_MS)
+            {
+                continue;
+            }
+            self.fetched.insert(key, now);
+            let git = Arc::clone(&self.ports.git);
+            let tx = self.internal_tx.clone();
+            tokio::task::spawn_blocking(move || {
+                if git.fetch(&dir, &branch).is_ok() {
+                    let _ = tx.send(Internal::Fetched(dir));
+                } else {
+                    // git's message may hold the remote's URL: not logged.
+                    tracing::debug!(dir = %dir.display(), "fetching the base failed");
+                }
+            });
+        }
+    }
+
+    /// The remote branch `dir`'s branch diff is compared with, without
+    /// `origin/`: its pull request's base, else the base read last.
+    fn remote_base(&self, dir: &std::path::Path) -> Option<String> {
+        let base = self
+            .pr_base(dir)
+            .or_else(|| self.state.git.get(dir)?.base.clone())?;
+        base.strip_prefix("origin/").map(str::to_owned)
     }
 
     /// The branch the pull request of `dir`'s branch merges into, on the
@@ -185,12 +233,23 @@ impl Core {
         );
     }
 
-    /// Answers a review thread of pull request `pr` (GH-8).
-    pub(crate) fn reply_to_thread(&mut self, pr: GhRef, thread: String, body: String) {
+    /// Answers a review thread of pull request `pr`, then resolves it when
+    /// `resolve`; a failed answer resolves nothing (GH-8).
+    pub(crate) fn reply_to_thread(
+        &mut self,
+        pr: GhRef,
+        thread: String,
+        body: String,
+        resolve: bool,
+    ) {
         self.act(pr, "Could not answer the thread", move |github, _| {
+            github.reply_to_thread(&thread, &body)?;
+            if !resolve {
+                return Ok("Answer posted".to_owned());
+            }
             github
-                .reply_to_thread(&thread, &body)
-                .map(|()| "Answer posted".to_owned())
+                .resolve_thread(&thread)
+                .map(|()| "Answered and resolved".to_owned())
         });
     }
 
@@ -231,6 +290,28 @@ impl Core {
         self.load_detail(item);
     }
 
+    /// Reads a pull request's changes from GitHub, as its "Files changed"
+    /// shows them (GH-3); `None` closes them.
+    pub(crate) fn show_pr_diff(&mut self, item: Option<GhRef>) {
+        let Some(item) = item else {
+            self.state.pr_diff = None;
+            return;
+        };
+        self.state.pr_diff = Some(crate::PrDiff {
+            pr: item.clone(),
+            files: None,
+        });
+        let github = Arc::clone(&self.ports.github);
+        let tx = self.internal_tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let files = github
+                .pull_request_diff(&item.repo, item.number)
+                .map(Arc::new)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(Internal::PrDiff(item, files));
+        });
+    }
+
     fn load_detail(&self, item: GhRef) {
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
@@ -262,6 +343,7 @@ impl Core {
                     self.refresh_folder_pr(dir);
                 }
             }
+            Internal::Fetched(dir) => self.refresh_folder(dir),
             Internal::Pr(dir, pr) => {
                 let before = self.pr_base(&dir);
                 let prs = Arc::make_mut(&mut self.state.prs);
@@ -323,6 +405,12 @@ impl Core {
             }
             Internal::Doctor(sections) => self.doctor_done(sections),
             Internal::Tools(cli) => self.tools_done(cli),
+            Internal::PrDiff(item, files) => {
+                // Only the pull request still shown, not one closed since.
+                if let Some(diff) = self.state.pr_diff.as_mut().filter(|d| d.pr == item) {
+                    diff.files = Some(files);
+                }
+            }
             Internal::LinkedIssue(item, issue) => {
                 Arc::make_mut(&mut self.state.linked_issues).insert(item, *issue);
             }

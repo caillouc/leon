@@ -204,10 +204,14 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 ## git (P6)
 
 - Read-only commands with `--no-optional-locks`; the user's diff settings are
-  overridden so the output always parses (`crates/leon-git`).
+  overridden so the output always parses (`crates/leon-git`). The one write
+  is `git fetch --no-write-fetch-head --no-auto-maintenance origin <base>`,
+  with `GIT_TERMINAL_PROMPT=0`, run by the core at most every five minutes
+  per folder (I22).
 - Uncommitted: `git status --porcelain=v2 -z` for untracked files, one
   `git diff HEAD` for tracked ones; untracked files are read from disk.
 - Branch diff: `git diff <merge-base(base, HEAD)> HEAD`; the base is
+  `origin/<PR base>` when the branch has a PR and that ref exists, else
   `origin/HEAD`, else the first of `origin/main`, `origin/master`, `main`,
   `master` that exists.
 - Read off the core's async workers (`spawn_blocking`); refreshes of one

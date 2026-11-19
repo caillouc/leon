@@ -1,7 +1,9 @@
 //! The Info tab's pull requests and issues (CTX-1, CTX-2), each a card that
 //! opens in Leon's details drawer first, GitHub from there. A pull request
 //! stands out: its state's colour along its left side, its state, its title
-//! in bold, its lines and its checks that did not pass. An issue stays plain.
+//! in bold, its lines and its checks that did not pass; a merged or closed
+//! one, its work done, folds into one small line. An issue stays plain,
+//! its icon in its board column's colour as in the issue list.
 
 use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, Stateful, div, prelude::*};
 use leon_core::{FlowView, Intent};
@@ -23,6 +25,9 @@ impl Workspace {
             .enumerate()
             .map(|(ix, pr)| {
                 let item = GhRef::pull_request(&pr.repo, pr.number);
+                if matches!(pr.state, PrState::Merged | PrState::Closed) {
+                    return done_line(ix, pr, &item, cx);
+                }
                 let (color, state) = pr_state(pr.state);
                 let failing = pr.checks.iter().filter(|c| c.state != CheckState::Pass);
                 card(("info-pr", ix), &item, cx)
@@ -106,7 +111,11 @@ impl Workspace {
                     .or_else(|| self.snapshot.linked_issues.get(item));
                 card(("info-issue", ix), item, cx)
                     .child(header(
-                        icon(Icon::Issue, theme::fg_muted(), 14.),
+                        icon(
+                            Icon::Issue,
+                            self.issue_color(known.and_then(|i| i.status.as_ref())),
+                            14.,
+                        ),
                         "Issue",
                         item,
                     ))
@@ -124,8 +133,47 @@ impl Workspace {
     }
 }
 
+/// A merged or closed pull request on one line: its icon, reference, title
+/// and lines.
+fn done_line(
+    ix: usize,
+    pr: &leon_domain::PullRequest,
+    item: &GhRef,
+    cx: &mut Context<Workspace>,
+) -> AnyElement {
+    opens(("info-pr", ix), item, cx)
+        .py(crate::theme::rem(3.))
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_size(crate::theme::rem(12.))
+        .text_color(theme::fg_muted())
+        .child(pr_icon(pr.state, 13.))
+        .child(
+            div()
+                .flex_none()
+                .font_family(theme::MONO)
+                .child(item.short()),
+        )
+        .child(title(pr.title.clone()))
+        .children(pr.lines.map(|(added, removed)| counts(added, removed)))
+        .into_any_element()
+}
+
 /// A card that opens `item` in the details drawer.
 fn card(id: (&'static str, usize), item: &GhRef, cx: &mut Context<Workspace>) -> Stateful<Div> {
+    opens(id, item, cx)
+        .py_2()
+        .flex()
+        .flex_col()
+        .gap(crate::theme::rem(5.))
+        .border_1()
+        .border_color(theme::border())
+        .bg(theme::window())
+}
+
+/// A row of the Info tab that opens `item` in the details drawer.
+fn opens(id: (&'static str, usize), item: &GhRef, cx: &mut Context<Workspace>) -> Stateful<Div> {
     let item = item.clone();
     div()
         .id(id)
@@ -133,14 +181,7 @@ fn card(id: (&'static str, usize), item: &GhRef, cx: &mut Context<Workspace>) ->
         .flex_none()
         .mx_3()
         .px_3()
-        .py_2()
-        .flex()
-        .flex_col()
-        .gap(crate::theme::rem(5.))
         .rounded_lg()
-        .border_1()
-        .border_color(theme::border())
-        .bg(theme::window())
         .cursor_pointer()
         .hover(|s| s.bg(theme::surface_2()))
         .on_click(cx.listener(move |this, _, _, _| {
@@ -171,7 +212,7 @@ fn header(glyph: gpui::Svg, what: &'static str, item: &GhRef) -> Div {
                 .font_family(theme::MONO)
                 .text_size(crate::theme::rem(12.))
                 .text_color(theme::fg_muted())
-                .child(item.text()),
+                .child(item.short()),
         )
 }
 

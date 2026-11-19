@@ -123,9 +123,13 @@ fn flow(id: i64, project: i64, title: &str, unread: bool, pinned: bool) -> Flow 
         } else {
             Vec::new()
         },
-        // The first flow was started for issue #401.
+        // The first flow was started for issue #401; a first pull request
+        // of it is merged.
         links: if id == 1 {
-            vec![leon_domain::GhRef::issue("acme/payments-api", 401)]
+            vec![
+                leon_domain::GhRef::issue("acme/payments-api", 401),
+                leon_domain::GhRef::pull_request("acme/payments-api", 398),
+            ]
         } else {
             Vec::new()
         },
@@ -463,6 +467,7 @@ fn sample() -> Snapshot {
         options: Arc::new(options),
         git: repo::git(),
         prs: repo::prs(),
+        linked_prs: repo::linked_prs(),
         my_issues: repo::my_issues(),
         my_prs: repo::my_prs(),
         fold: repo::fold(),
@@ -551,6 +556,20 @@ fn main() {
             Shot::Detail(Box::new(Detail::Issue(Box::new(
                 repo::my_issues()[0].clone(),
             )))),
+        ),
+        (
+            "pr-diff".to_owned(),
+            Shot::PrDiff(
+                Box::new(Detail::PullRequest(Box::new(
+                    repo::prs()[std::path::Path::new(repo::API)].clone(),
+                ))),
+                Box::new(leon_core::PrDiff {
+                    pr: leon_domain::GhRef::pull_request("acme/payments-api", 412),
+                    files: Some(Ok(repo::git()[std::path::Path::new(repo::API)]
+                        .branch_diff
+                        .clone())),
+                }),
+            ),
         ),
         (
             "pr-detail".to_owned(),

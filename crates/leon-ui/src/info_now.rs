@@ -11,9 +11,14 @@ use crate::spinner::{spinner, status_mark};
 use crate::theme;
 use crate::workspace::Workspace;
 
+/// Key of "Now" folded, for every flow.
+const NOW: &str = "info:now";
+
 impl Workspace {
-    /// One block per conversation: its state, then what it is running.
+    /// One block per conversation: its state, then what it is running;
+    /// folds to its title.
     pub(crate) fn now_card(&self, conversations: &[&ConversationView]) -> Div {
+        let folded = self.snapshot.folded_groups.contains(NOW);
         div()
             .mx_3()
             .px_3()
@@ -26,14 +31,18 @@ impl Workspace {
             .border_color(theme::border())
             .bg(theme::window())
             .child(
-                div()
-                    .text_size(crate::theme::rem(13.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("Now"),
+                crate::widgets::fold_toggle(NOW.to_owned(), folded).child(
+                    div()
+                        .text_size(crate::theme::rem(13.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child("Now"),
+                ),
             )
-            .children(conversations.iter().map(|s| {
-                self.now_conversation(s, crate::agent_color::agent_color(conversations, s))
-            }))
+            .when(!folded, |d| {
+                d.children(conversations.iter().map(|s| {
+                    self.now_conversation(s, crate::agent_color::agent_color(conversations, s))
+                }))
+            })
     }
 
     /// One agent, in its colour from the flow diagram: a band on its left,

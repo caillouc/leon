@@ -82,6 +82,15 @@ pub(crate) struct FlowModel {
     pub agent: HashMap<Node, String>,
 }
 
+impl FlowModel {
+    /// The user sent this box's conversation a message: its box says so.
+    pub(crate) fn talked_to(&self, node: Node) -> bool {
+        self.edges
+            .iter()
+            .any(|e| e.from == Node::You && e.to == node && e.kind == EdgeKind::Prompt)
+    }
+}
+
 /// Builds the flow of one flow from its conversations (in order) and
 /// their loaded transcripts.
 pub(crate) fn build(

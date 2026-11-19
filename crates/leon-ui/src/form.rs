@@ -197,7 +197,7 @@ impl Workspace {
                                 .text_size(crate::theme::rem(12.))
                                 .text_color(theme::fg_muted())
                                 .child(icon(Icon::Issue, theme::fg_muted(), 13.))
-                                .child(format!("For issue {}", issue.text()))
+                                .child(format!("For issue {}", issue.short()))
                                 .child(
                                     div()
                                         .id("form-unlink-issue")

@@ -13,12 +13,10 @@ use crate::markdown::Core;
 use crate::pr_view::{check_color, pr_state};
 use crate::theme;
 
-/// The state shown for several: open first, then draft, merged, closed.
+/// The state shown for several: the most active (open, then draft, merged,
+/// closed).
 fn lead(prs: &[PullRequest]) -> PrState {
-    [PrState::Open, PrState::Draft, PrState::Merged]
-        .into_iter()
-        .find(|s| prs.iter().any(|p| p.state == *s))
-        .unwrap_or(PrState::Closed)
+    prs.iter().map(|p| p.state).min().unwrap_or(PrState::Closed)
 }
 
 /// The icon in the leading state's colour, how many, and the checks of the
@@ -115,7 +113,11 @@ fn row(ix: usize, pr: &PullRequest) -> Stateful<Div> {
                 .child(
                     ellipsis(div().flex_1())
                         .text_color(theme::fg_muted())
-                        .child(format!("{} #{}", pr.repo, pr.number)),
+                        .child(format!(
+                            "{} #{}",
+                            leon_domain::repo_name(&pr.repo),
+                            pr.number
+                        )),
                 )
                 .children(pr.lines.map(|(added, removed)| counts(added, removed))),
         )

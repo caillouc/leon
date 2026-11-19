@@ -12,8 +12,9 @@ use leon_git::GitCli;
 use tempfile::TempDir;
 
 /// Runs a setup command in a test repository, isolated from the user's git
-/// configuration (no hooks, no signing) and from any inherited repository.
-fn git(dir: &Path, args: &[&str]) {
+/// configuration (no hooks, no signing) and from any inherited repository;
+/// its output, trimmed.
+fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .current_dir(dir)
         .args(["-c", "user.name=t", "-c", "user.email=t@t"])
@@ -31,6 +32,7 @@ fn git(dir: &Path, args: &[&str]) {
         "git {args:?}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
 fn repo() -> TempDir {
@@ -266,4 +268,31 @@ fn a_file_belongs_to_the_working_tree_holding_it() {
     }
     let outside = tempfile::tempdir().unwrap();
     assert_eq!(git.working_tree(&outside.path().join("a.rs")), None);
+}
+
+/// A fetch brings `origin/<branch>` up to date and nothing else: files, the
+/// current branch and `FETCH_HEAD` stay as they were (I22).
+#[test]
+fn a_fetch_moves_only_the_remote_tracking_branch() {
+    let remote = repo();
+    write(remote.path(), "a.rs", "a\n");
+    commit_all(remote.path(), "first");
+    let clone = tempfile::tempdir().unwrap();
+    git(
+        clone.path(),
+        &["clone", "-q", remote.path().to_str().unwrap(), "."],
+    );
+    let head = git(clone.path(), &["rev-parse", "HEAD"]);
+    write(remote.path(), "b.rs", "b\n");
+    commit_all(remote.path(), "second");
+
+    GitCli::default().fetch(clone.path(), "main").unwrap();
+
+    let ahead = git(remote.path(), &["rev-parse", "HEAD"]);
+    assert_eq!(git(clone.path(), &["rev-parse", "origin/main"]), ahead);
+    assert_eq!(git(clone.path(), &["rev-parse", "HEAD"]), head);
+    assert!(!clone.path().join("b.rs").exists());
+    assert!(!clone.path().join(".git/FETCH_HEAD").exists());
+    let error = GitCli::default().fetch(clone.path(), "gone").unwrap_err();
+    assert_eq!(error.context, "fetching the base branch");
 }

@@ -24,6 +24,9 @@ pub(crate) enum DiffSource {
     Changes,
     /// The branch against its base (GIT-3).
     Branch,
+    /// The pull request shown, as GitHub's "Files changed" shows it,
+    /// read-only (GH-3).
+    PullRequest,
 }
 
 /// The lines a comment is being written on.
@@ -54,6 +57,9 @@ pub(crate) struct DiffFiles {
 impl Workspace {
     /// The files of a diff, or why there is nothing to show.
     pub(crate) fn diff_files(&self, id: FlowId, source: DiffSource) -> Result<DiffFiles, String> {
+        if source == DiffSource::PullRequest {
+            return self.pr_diff_files();
+        }
         if self.folder(id).is_none() {
             return Err("No worktree yet: one shows once an agent works in it.".to_owned());
         }
@@ -65,7 +71,7 @@ impl Workspace {
         }
         let (files, against) = match source {
             DiffSource::Changes => (Arc::clone(&git.changes), "vs HEAD".to_owned()),
-            DiffSource::Branch => (
+            DiffSource::Branch | DiffSource::PullRequest => (
                 Arc::clone(&git.branch_diff),
                 git.base.as_ref().map_or_default(|b| format!("since {b}")),
             ),
@@ -77,13 +83,37 @@ impl Workspace {
                 (DiffSource::Changes, _) => {
                     "No uncommitted changes. The working tree is clean.".to_owned()
                 }
-                (DiffSource::Branch, Some(base)) => format!(
+                (DiffSource::Branch | DiffSource::PullRequest, Some(base)) => format!(
                     "No commits on this branch yet compared with {base}. Uncommitted work shows in Changes."
                 ),
-                (DiffSource::Branch, None) => "No base branch found to compare with.".to_owned(),
+                (DiffSource::Branch | DiffSource::PullRequest, None) => {
+                    "No base branch found to compare with.".to_owned()
+                }
             });
         }
         Ok(DiffFiles { files, against })
+    }
+
+    /// The pull request's files as GitHub gave them, or why there are none
+    /// yet (GH-3).
+    fn pr_diff_files(&self) -> Result<DiffFiles, String> {
+        let diff = self
+            .snapshot
+            .pr_diff
+            .as_ref()
+            .ok_or_else(|| "No pull request.".to_owned())?;
+        let files = match &diff.files {
+            None => return Err("Reading its changes from GitHub…".to_owned()),
+            Some(Err(error)) => return Err(format!("GitHub could not give its changes: {error}")),
+            Some(Ok(files)) => folded_last(files, &self.snapshot.fold),
+        };
+        if files.is_empty() {
+            return Err("This pull request changes no file.".to_owned());
+        }
+        Ok(DiffFiles {
+            files,
+            against: format!("as GitHub shows {}", diff.pr.short()),
+        })
     }
 
     /// The tab: totals, the fold rule, and one row per file.

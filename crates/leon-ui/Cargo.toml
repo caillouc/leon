@@ -12,6 +12,7 @@ gpui.workspace = true
 gpui-component.workspace = true
 leon-core.workspace = true
 leon-domain.workspace = true
+ropey.workspace = true
 tracing.workspace = true
 image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
 
