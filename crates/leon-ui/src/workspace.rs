@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui::{
     AnyElement, App, Context, Entity, Focusable, FollowMode, IntoElement, ListAlignment, ListState,
@@ -93,8 +93,7 @@ pub struct Workspace {
     pub(crate) gh: crate::github::GhState,
     pub(crate) tools_form: crate::tools_view::ToolsForm,
     pub(crate) settings_form: crate::settings_view::SettingsForm,
-    /// The flash message shown, by id (an action's result).
-    flash: Option<(u64, String)>,
+    pub(crate) flash: crate::flash::Flash,
     /// Open the next new flow when it shows up.
     pub(crate) pending_open: bool,
     /// A flow and how many conversations it had when the user started one
@@ -216,7 +215,7 @@ impl Workspace {
             gh,
             tools_form,
             settings_form,
-            flash: None,
+            flash: crate::flash::Flash::default(),
             pending_open: false,
             pending_conversation: None,
             reading: None,
@@ -277,28 +276,6 @@ impl Workspace {
             self.screen = Screen::Nothing;
         }
         cx.notify();
-    }
-
-    /// Shows the core's latest flash message for a few seconds.
-    fn show_flash(&mut self, cx: &mut Context<Self>) {
-        let Some((id, text)) = self.snapshot.flash.clone() else {
-            return;
-        };
-        if self.flash.as_ref().is_some_and(|(shown, _)| *shown >= id) {
-            return;
-        }
-        self.flash = Some((id, text));
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_secs(4)).await;
-            this.update(cx, |this, cx| {
-                if this.flash.as_ref().is_some_and(|(shown, _)| *shown == id) {
-                    this.flash = None;
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
     }
 
     /// Shows a flow on its Flow tab (NAV-7, FLOW-4).
@@ -442,27 +419,6 @@ impl Render for Workspace {
             Screen::Tools => self.render_tools(cx),
             Screen::Settings => self.render_settings(cx),
         };
-        let flash = self.flash.as_ref().map(|(_, text)| {
-            div()
-                .absolute()
-                .bottom_4()
-                .left_0()
-                .right_0()
-                .flex()
-                .justify_center()
-                .child(
-                    div()
-                        .px_3()
-                        .py_2()
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(theme::border_strong())
-                        .bg(theme::surface())
-                        .shadow_lg()
-                        .text_size(px(12.5))
-                        .child(text.clone()),
-                )
-        });
         let root = self.shortcut_handlers(div(), cx);
         root.size_full()
             .relative()
@@ -496,7 +452,7 @@ impl Render for Workspace {
             })
             .children(self.render_drawer(window, cx))
             .children(self.render_detail(cx))
-            .children(flash)
+            .children(self.render_flash())
     }
 }
 

@@ -102,15 +102,22 @@ impl Workspace {
 
         let current = self.current_conversation();
         let adding = self.tabs.get(&id) == Some(&Tab::New);
-        let mut tabs = div().flex().gap_1().child(Self::tab_button(
-            "tab-flow",
-            "Flow".into(),
-            None,
-            current.is_none() && !adding,
-            id,
-            Tab::Flow,
-            cx,
-        ));
+        // More tabs than the pane is wide scroll sideways, with a trackpad
+        // swipe or the mouse wheel.
+        let mut tabs = div()
+            .id(SharedString::from(format!("flow-tabs-{}", id.0)))
+            .flex()
+            .gap_1()
+            .overflow_x_scroll()
+            .child(Self::tab_button(
+                "tab-flow",
+                "Flow".into(),
+                None,
+                current.is_none() && !adding,
+                id,
+                Tab::Flow,
+                cx,
+            ));
         for sid in &view.conversations {
             if let Some(s) = self.snapshot.conversations.get(sid).cloned() {
                 let selected = current == Some(*sid);
@@ -190,6 +197,8 @@ impl Workspace {
     ) -> AnyElement {
         div()
             .id(SharedString::from(id.to_owned()))
+            .flex_none()
+            .whitespace_nowrap()
             .px_2()
             .pb_2()
             .pt_1()

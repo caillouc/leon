@@ -18,6 +18,7 @@ mod diff_split;
 mod diff_view;
 mod doctor;
 mod drawer;
+mod flash;
 mod flow;
 mod flow_model;
 mod flow_paint;

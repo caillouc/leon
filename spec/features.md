@@ -47,7 +47,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   unread. An answer that arrives while the user is not looking — another
   flow shown, its Flow or another agent's tab, or Leon behind
   another app — is unread until the user opens that agent's tab or replies to
-  it; the flow stays unread while one of its agents' answers is.
+  it; the flow stays unread while one of its agents' answers is. An agent
+  that started others answers only once it has every report back: while one
+  of them still works, or a report waits to reach it, its turns are not
+  unread and do not notify.
 - **NAV-5** Each flow's row says what it asks of the user: working
   (a turning loader, also on the agent's tab; on its Flow box, its colour
   going round it; "Working…"), needs you — an answer or a decision — (amber

@@ -235,6 +235,16 @@ impl Core {
         reply_to.is_some()
     }
 
+    /// Conversation `id`'s work goes on: it already reads its next message,
+    /// or an agent it asked has not answered yet.
+    pub(crate) fn goes_on(&self, id: ConversationId) -> bool {
+        self.state.conversations.values().any(|s| {
+            (s.conversation.id == id && s.status == Status::Running)
+                || s.reply_to == Some(id)
+                || s.inbox.iter().any(|w| w.from == id && w.expects_answer)
+        })
+    }
+
     /// The agent's name, or its CLI's when it has no agent.
     pub(crate) fn conversation_label(&self, id: ConversationId) -> String {
         self.state.conversations.get(&id).map_or_else(

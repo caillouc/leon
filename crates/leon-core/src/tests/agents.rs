@@ -218,6 +218,61 @@ async fn only_the_agent_that_answered_you_is_to_review() {
     assert!(!s.conversations[&coder].conversation.unread);
 }
 
+/// An agent waiting for the agents it asked is not to review, and does not
+/// notify: only its turn after the last report is (NAV-4, FLOW-4, NOTIF-1).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_agent_is_to_review_once_every_report_is_back() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    for (count, prompt) in [(2, "Implement step 1"), (3, "Implement step 2")] {
+        let start = AppToolCall::StartAgent {
+            agent: "coder".into(),
+            prompt: prompt.into(),
+            working_directory: None,
+        };
+        call(&h, planner, start).await.unwrap();
+        started(&h, count).await;
+        next_command(&h, count - 1).await;
+    }
+    let not_to_review = |s: &Snapshot| {
+        !s.conversations[&planner].conversation.unread
+            && !s.flows[0].flow.unread
+            && s.notifications.is_empty()
+    };
+    // The first coder answers while the planner is in its turn: its report
+    // waits, and goes to the planner as soon as that turn ends.
+    end_turn(&h, 1, "Step 1 done.");
+    until(&h.core, "first coder idle", |s| {
+        s.conversations[&ConversationId(2)].status == Status::Idle
+    })
+    .await;
+    end_turn(&h, 0, "Waiting for the coders.");
+    next_command(&h, 0).await;
+    let s = until(&h.core, "planner reads the report", |s| {
+        s.conversations[&planner].status == Status::Running
+    })
+    .await;
+    assert!(not_to_review(&s));
+    // The second coder still works: the planner waits for it.
+    end_turn(&h, 0, "Waiting for the second coder.");
+    let s = until(&h.core, "planner idle", |s| {
+        s.conversations[&planner].status == Status::Idle
+    })
+    .await;
+    assert!(not_to_review(&s));
+    // Its report is the last one: the planner's next answer is to review.
+    end_turn(&h, 2, "Step 2 done.");
+    next_command(&h, 0).await;
+    end_turn(&h, 0, "Both steps are done.");
+    let s = until(&h.core, "planner to review", |s| {
+        s.conversations[&planner].conversation.unread
+    })
+    .await;
+    assert!(s.flows[0].flow.unread);
+    assert_eq!(s.notifications.len(), 1);
+}
+
 /// The user starts a second conversation in the same flow, in the folder
 /// they picked (FLOW-7).
 #[tokio::test(flavor = "multi_thread")]

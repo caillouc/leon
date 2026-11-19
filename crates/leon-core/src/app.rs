@@ -890,7 +890,9 @@ impl Core {
         let now = self.now();
         self.idle_since.insert(id, now);
         self.refresh_git(flow);
-        if self.after_turn(id, failed) {
+        // Not an answer for the user: one for another agent, or a turn its
+        // agent's work goes on after (NAV-4).
+        if self.after_turn(id, failed) || (!failed && self.goes_on(id)) {
             self.touch(flow, false);
         } else {
             self.answered(id, flow, failed);
