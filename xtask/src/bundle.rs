@@ -31,22 +31,9 @@ const PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 "#;
 
 pub(crate) fn bundle(install: bool) -> bool {
-    if !cfg!(target_os = "macos") {
-        eprintln!("bundle: only macOS has an app bundle; on Linux run target/release/leon");
+    let Some(app) = build_app() else {
         return false;
-    }
-    if !crate::cargo(&["build", "-p", "leon", "--release", "--locked"]) {
-        return false;
-    }
-    let root = workspace_root();
-    let app = root.join("target/release/Leon.app");
-    match assemble(&root, &app) {
-        Ok(()) => println!("bundle: {}", app.display()),
-        Err(error) => {
-            eprintln!("bundle: {error}");
-            return false;
-        }
-    }
+    };
     let identity = signing_identity();
     if identity == "-" {
         println!(
@@ -84,7 +71,30 @@ pub(crate) fn bundle(install: bool) -> bool {
     true
 }
 
-fn workspace_root() -> PathBuf {
+/// Builds the release binary and Leon.app around it, unsigned.
+pub(crate) fn build_app() -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        eprintln!("bundle: only macOS has an app bundle; on Linux run target/release/leon");
+        return None;
+    }
+    if !crate::cargo(&["build", "-p", "leon", "--release", "--locked"]) {
+        return None;
+    }
+    let root = workspace_root();
+    let app = root.join("target/release/Leon.app");
+    match assemble(&root, &app) {
+        Ok(()) => {
+            println!("bundle: {}", app.display());
+            Some(app)
+        }
+        Err(error) => {
+            eprintln!("bundle: {error}");
+            None
+        }
+    }
+}
+
+pub(crate) fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
@@ -112,7 +122,7 @@ fn assemble(root: &Path, app: &Path) -> std::io::Result<()> {
     )
 }
 
-fn run(program: &str, args: &[&str]) -> bool {
+pub(crate) fn run(program: &str, args: &[&str]) -> bool {
     match Command::new(program).args(args).status() {
         Ok(status) if status.success() => true,
         Ok(status) => {
@@ -129,7 +139,7 @@ fn run(program: &str, args: &[&str]) -> bool {
 /// The certificate to sign with: `LEON_SIGN_IDENTITY`, else the best
 /// code-signing identity of the keychain (see [`pick_identity`]), else `-`
 /// (ad hoc).
-fn signing_identity() -> String {
+pub(crate) fn signing_identity() -> String {
     if let Ok(name) = std::env::var("LEON_SIGN_IDENTITY")
         && !name.trim().is_empty()
     {

@@ -351,7 +351,14 @@ impl Core {
             Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
             Intent::MarkConversationUnread(id) => self.mark_unread(id),
-            Intent::WindowActive(active) => self.window_active = active,
+            Intent::WindowActive(active) => {
+                self.window_active = active;
+                // Back in Leon on a conversation's tab: its answer is seen
+                // (NAV-4).
+                if let Some(id) = self.reading.filter(|_| active) {
+                    self.mark_read(id);
+                }
+            }
             Intent::Read(id) => self.read(id),
             Intent::Delete(id) => self.delete(id),
             Intent::RefreshGit(id) => self.refresh_git(id),

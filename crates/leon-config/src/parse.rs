@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::Path;
 
-use leon_domain::{BackendKind, ConversationDefaults, Settings};
+use leon_domain::{BackendKind, ConversationDefaults, OpenOn, Settings, Zoom};
 use toml::{Table, Value};
 
 /// Config format version this build reads.
@@ -94,6 +94,7 @@ pub fn parse(text: &str) -> Loaded {
                     .filter_map(|id| BackendKind::from_id(id))
                     .collect();
             }
+            "ui" => read_ui(value, &mut out.settings, &mut out.warnings),
             "sources" => {
                 out.settings.sources =
                     read_list(value, "sources", "folders", &mut out.warnings, |f| {
@@ -120,6 +121,41 @@ fn check_version(value: &Value, warnings: &mut Vec<Warning>) {
             format!("this Leon reads version {CURRENT_VERSION}, the file says {other}; reading it anyway"),
         )),
         None => warnings.push(Warning::new("version", "must be a number")),
+    }
+}
+
+/// `[ui]`: the text size and what a flow opens on (SETTINGS-2, SETTINGS-3).
+fn read_ui(value: &Value, settings: &mut Settings, warnings: &mut Vec<Warning>) {
+    let Some(table) = value.as_table() else {
+        warnings.push(Warning::new("ui", "must be a table, ignored"));
+        return;
+    };
+    for (key, value) in table {
+        match key.as_str() {
+            "zoom" => match value
+                .as_integer()
+                .and_then(|n| u16::try_from(n).ok())
+                .filter(|n| Zoom::RANGE.contains(n))
+            {
+                Some(size) => settings.zoom = Zoom(size),
+                None => warnings.push(Warning::new(
+                    "ui.zoom",
+                    format!(
+                        "must be a percentage from {} to {}, ignored",
+                        Zoom::RANGE.start(),
+                        Zoom::RANGE.end()
+                    ),
+                )),
+            },
+            "open_flows_on" => match value.as_str().and_then(OpenOn::from_id) {
+                Some(open) => settings.open_on = open,
+                None => warnings.push(Warning::new(
+                    "ui.open_flows_on",
+                    "must be \"flow\" or \"conversation\", ignored",
+                )),
+            },
+            other => warnings.push(Warning::new(format!("ui.{other}"), "unknown key, ignored")),
+        }
     }
 }
 
@@ -224,6 +260,8 @@ mod tests {
             loaded.settings.diff_fold,
             ["glob:**/*.lock", "re:^generated/"]
         );
+        assert_eq!(loaded.settings.zoom, leon_domain::Zoom(125));
+        assert_eq!(loaded.settings.open_on, leon_domain::OpenOn::Conversation);
     }
 
     #[test]
@@ -241,6 +279,10 @@ mod tests {
             ("[sources]\nfolders = [\"\"]", "sources.folders"),
             ("[sources]\npaths = []", "sources.paths"),
             ("[agents]\ncli_order = [\"gemini\"]", "agents.cli_order"),
+            ("[ui]\nzoom = 400", "ui.zoom"),
+            ("[ui]\nzoom = \"big\"", "ui.zoom"),
+            ("[ui]\nopen_flows_on = \"graph\"", "ui.open_flows_on"),
+            ("[ui]\nfont = \"Inter\"", "ui.font"),
         ];
         for (text, key) in cases {
             let loaded = parse(text);

@@ -3,7 +3,6 @@
 
 use gpui::{
     AnyElement, Context, CursorStyle, MouseButton, MouseDownEvent, MouseMoveEvent, div, prelude::*,
-    px,
 };
 
 use crate::theme;
@@ -74,8 +73,8 @@ impl Workspace {
                 Side::Left => "resize-left",
                 Side::Right => "resize-right",
             })
-            .w(px(8.))
-            .mx(px(-4.))
+            .w(crate::theme::rem(8.))
+            .mx(crate::theme::rem(-4.))
             .h_full()
             .flex_none()
             .cursor(CursorStyle::ResizeLeftRight)
@@ -102,8 +101,10 @@ impl Workspace {
             return;
         }
         if e.pressed_button == Some(MouseButton::Left) {
-            let width = f32::from(window.viewport_size().width);
-            self.panes.drag_to(f32::from(e.position.x), width);
+            // Widths are kept at 100 %; the zoom scales them (SETTINGS-2).
+            let zoom = self.snapshot.settings.zoom.factor();
+            let width = f32::from(window.viewport_size().width) / zoom;
+            self.panes.drag_to(f32::from(e.position.x) / zoom, width);
         } else {
             self.panes.resizing = None;
         }

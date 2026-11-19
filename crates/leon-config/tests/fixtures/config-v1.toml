@@ -16,3 +16,7 @@ folders = ["~/agent-kit"]
 
 [agents]
 cli_order = ["codex", "claude"]
+
+[ui]
+zoom = 125
+open_flows_on = "conversation"

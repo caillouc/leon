@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, ClickEvent, Div, IntoElement, Window, div, prelude::*, px, relative};
+use gpui::{AnyElement, App, ClickEvent, Div, IntoElement, Window, div, prelude::*, relative};
 
 use crate::icons::{Icon, icon};
 use crate::theme;
@@ -35,7 +35,7 @@ pub(crate) fn drawer(
             div()
                 .id("drawer-close")
                 .flex_none()
-                .p(px(5.))
+                .p(crate::theme::rem(5.))
                 .rounded_md()
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::surface_2()))
@@ -45,7 +45,7 @@ pub(crate) fn drawer(
     let panel = div()
         .id("drawer")
         .w(relative(0.84))
-        .max_w(px(1400.))
+        .max_w(crate::theme::rem(1400.))
         .h(relative(0.9))
         .flex()
         .flex_col()

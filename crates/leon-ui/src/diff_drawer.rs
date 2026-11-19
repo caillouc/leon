@@ -3,7 +3,7 @@
 //! scrolled through file after file, closed with Close or a click beside it.
 //! Comments are written here, and the pending review is sent from here too.
 
-use gpui::{AnyElement, Context, FontWeight, Window, div, prelude::*, px};
+use gpui::{AnyElement, Context, FontWeight, Window, div, prelude::*};
 
 use crate::diff_rows::counts;
 use crate::diff_view::DiffSource;
@@ -81,7 +81,7 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .gap_2()
-                .text_size(px(12.5))
+                .text_size(crate::theme::rem(12.5))
                 .text_color(theme::fg_muted())
                 .child(format!("{n} file{}", if n == 1 { "" } else { "s" }))
                 .child(counts(added, removed))
@@ -93,7 +93,7 @@ impl Workspace {
             .gap_3()
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(crate::theme::rem(14.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(match source {
                         DiffSource::Changes => "Uncommitted changes",

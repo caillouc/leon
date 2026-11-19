@@ -2,7 +2,7 @@
 //! side by side, each an icon over its name. The Doctor's icon carries a dot
 //! in the colour of its worst finding.
 
-use gpui::{AnyElement, Context, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, Context, Rgba, SharedString, Window, div, prelude::*};
 use leon_core::Intent;
 
 use crate::doctor::worst;
@@ -43,12 +43,12 @@ impl Workspace {
         div()
             .id(SharedString::from(format!("nav-{name}")))
             .flex_1()
-            .py(px(6.))
+            .py(crate::theme::rem(6.))
             .rounded_md()
             .flex()
             .flex_col()
             .items_center()
-            .gap(px(3.))
+            .gap(crate::theme::rem(3.))
             .cursor_pointer()
             .when(selected, |s| s.bg(theme::accent_soft()))
             .when(!selected, |s| s.hover(|s| s.bg(theme::surface_2())))
@@ -59,16 +59,21 @@ impl Workspace {
                     .children(dot.map(|dot| {
                         div()
                             .absolute()
-                            .top(px(-2.))
-                            .right(px(-4.))
-                            .size(px(8.))
+                            .top(crate::theme::rem(-2.))
+                            .right(crate::theme::rem(-4.))
+                            .size(crate::theme::rem(8.))
                             .rounded_full()
                             .border_1()
                             .border_color(theme::panel())
                             .bg(dot)
                     })),
             )
-            .child(div().text_size(px(11.)).text_color(color).child(name))
+            .child(
+                div()
+                    .text_size(crate::theme::rem(11.))
+                    .text_color(color)
+                    .child(name),
+            )
             .on_click(cx.listener(move |this, _, window, cx| this.open_screen(screen, window, cx)))
             .into_any_element()
     }

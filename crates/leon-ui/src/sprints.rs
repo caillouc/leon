@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use gpui::{AnyElement, Context, Div, Rgba, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, Rgba, div, prelude::*};
 use leon_domain::{BoardOption, Day, Issue, Iteration, current_sprint};
 
 use crate::icons::{Icon, icon};
@@ -108,11 +108,11 @@ impl Workspace {
                 .items_center()
                 .gap_2()
                 .px_2()
-                .py(px(2.))
+                .py(crate::theme::rem(2.))
                 .rounded_md()
                 .border_1()
                 .border_color(theme::border())
-                .text_size(px(12.5))
+                .text_size(crate::theme::rem(12.5))
                 .child(icon(Icon::Filter, theme::fg_muted(), 13.))
                 .child(div().text_color(theme::fg_muted()).child(field))
                 .child(picker)
@@ -199,11 +199,11 @@ pub(crate) fn board_chips(issue: &Issue) -> Vec<Div> {
 /// A small outlined value: a sprint.
 pub(crate) fn chip(text: &str) -> Div {
     div()
-        .px(px(7.))
+        .px(crate::theme::rem(7.))
         .rounded_full()
         .border_1()
         .border_color(theme::border_strong())
-        .text_size(px(11.))
+        .text_size(crate::theme::rem(11.))
         .text_color(theme::fg_muted())
         .child(text.to_owned())
 }
@@ -216,7 +216,7 @@ pub(crate) fn tinted_chip(text: &str, color: Rgba) -> Div {
         .border_1()
         .border_color(Rgba { a: 0.7, ..color })
         .bg(Rgba { a: 0.18, ..color })
-        .text_size(px(11.))
+        .text_size(crate::theme::rem(11.))
         .text_color(theme::fg())
         .child(text.to_owned())
 }

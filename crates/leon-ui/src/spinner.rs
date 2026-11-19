@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, ElementId, IntoElement, Rgba, Transformation, div,
-    percentage, prelude::*, px,
+    percentage, prelude::*,
 };
 use leon_domain::Status;
 
@@ -33,7 +33,7 @@ pub(crate) fn status_mark(id: impl Into<ElementId>, status: Status) -> AnyElemen
         other => status_dot(other).into_any_element(),
     };
     div()
-        .size(px(12.))
+        .size(crate::theme::rem(12.))
         .flex_none()
         .flex()
         .items_center()

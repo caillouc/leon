@@ -8,7 +8,7 @@ use std::sync::Arc;
 use gpui::{
     AnyElement, App, Context, Entity, FontWeight, IntoElement, ListAlignment, ListOffset,
     ListState, MouseButton, MouseMoveEvent, SharedString, Styled, WeakEntity, div, list,
-    prelude::*, px,
+    prelude::*,
 };
 use gpui_component::input::{Textarea, TextareaState};
 use leon_domain::{DiffLine, FileDiff, FileStatus, FlowId, LineKind, fold_reason};
@@ -165,7 +165,7 @@ impl Workspace {
         if let Some(item_ix) = target {
             state.scroll_to(ListOffset {
                 item_ix,
-                offset_in_item: px(0.),
+                offset_in_item: gpui::px(0.),
             });
         }
         let data = Rc::new(Data {
@@ -227,7 +227,7 @@ impl Workspace {
         rows: Vec<Row>,
     ) -> (ListState, Arc<Vec<Row>>) {
         let list = self.right.lists.entry(key).or_insert_with(|| DiffList {
-            state: ListState::new(0, ListAlignment::Top, px(200.)),
+            state: ListState::new(0, ListAlignment::Top, gpui::px(200.)),
             rows: Arc::new(Vec::new()),
         });
         if *list.rows != rows {
@@ -357,7 +357,7 @@ fn render_row(data: &Rc<Data>, row: Row, cx: &mut App) -> AnyElement {
             mono(
                 div()
                     .px_2()
-                    .py(px(2.))
+                    .py(crate::theme::rem(2.))
                     .bg(theme::accent_soft())
                     .text_color(theme::fg_muted()),
             )
@@ -390,7 +390,8 @@ fn render_row(data: &Rc<Data>, row: Row, cx: &mut App) -> AnyElement {
 }
 
 fn mono(d: gpui::Div) -> gpui::Div {
-    d.font_family(theme::MONO).text_size(px(11.5))
+    d.font_family(theme::MONO)
+        .text_size(crate::theme::rem(11.5))
 }
 
 pub(crate) fn status_letter(status: FileStatus) -> AnyElement {
@@ -402,7 +403,7 @@ pub(crate) fn status_letter(status: FileStatus) -> AnyElement {
     };
     mono(
         div()
-            .w(px(12.))
+            .w(crate::theme::rem(12.))
             .flex_none()
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(color),
@@ -412,7 +413,7 @@ pub(crate) fn status_letter(status: FileStatus) -> AnyElement {
 }
 
 pub(crate) fn counts(added: u32, removed: u32) -> AnyElement {
-    mono(div().flex().flex_none().gap(px(6.)))
+    mono(div().flex().flex_none().gap(crate::theme::rem(6.)))
         .child(div().text_color(theme::ok()).child(format!("+{added}")))
         .child(div().text_color(theme::err()).child(format!("−{removed}")))
         .into_any_element()
@@ -437,10 +438,10 @@ fn file_header(data: &Rc<Data>, f: usize) -> AnyElement {
     let tag = |text: String| {
         div()
             .flex_none()
-            .px(px(6.))
-            .rounded(px(4.))
+            .px(crate::theme::rem(6.))
+            .rounded(crate::theme::rem(4.))
             .bg(theme::surface_2())
-            .text_size(px(10.5))
+            .text_size(crate::theme::rem(10.5))
             .text_color(theme::fg_muted())
             .child(text)
     };
@@ -449,14 +450,14 @@ fn file_header(data: &Rc<Data>, f: usize) -> AnyElement {
         .mt_2()
         .flex()
         .items_center()
-        .gap(px(7.))
+        .gap(crate::theme::rem(7.))
         .px_2()
-        .py(px(6.))
+        .py(crate::theme::rem(6.))
         .rounded_md()
         .border_1()
         .border_color(theme::border())
         .bg(theme::surface())
-        .text_size(px(12.))
+        .text_size(crate::theme::rem(12.))
         .cursor_pointer()
         .hover(|s| s.bg(theme::surface_2()))
         .child(chevron(open, theme::fg_muted(), 14.))
@@ -512,9 +513,9 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
     };
     let number = |n: Option<u32>| {
         div()
-            .w(px(34.))
+            .w(crate::theme::rem(34.))
             .flex_none()
-            .pr(px(6.))
+            .pr(crate::theme::rem(6.))
             .flex()
             .justify_end()
             .text_color(theme::fg_faint())
@@ -557,7 +558,7 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
                     "comment-{}-{h}-{l}",
                     start.path
                 )))
-                .w(px(16.))
+                .w(crate::theme::rem(16.))
                 .flex_none()
                 .flex()
                 .justify_center()
@@ -567,8 +568,8 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
                 .cursor_pointer()
                 .child(
                     div()
-                        .px(px(3.))
-                        .rounded(px(3.))
+                        .px(crate::theme::rem(3.))
+                        .rounded(crate::theme::rem(3.))
                         .bg(theme::accent())
                         .child("+"),
                 )
@@ -587,7 +588,7 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
         )
         .child(
             div()
-                .w(px(12.))
+                .w(crate::theme::rem(12.))
                 .flex_none()
                 .text_color(theme::fg_faint())
                 .child(sign),
@@ -603,20 +604,20 @@ fn pending_comment(data: &Rc<Data>, ix: usize) -> AnyElement {
     let (id, view) = (data.flow, data.view.clone());
     div()
         .my_1()
-        .ml(px(84.))
+        .ml(crate::theme::rem(84.))
         .pl_2()
         .border_l_2()
         .border_color(theme::warn())
         .flex()
         .gap_2()
-        .text_size(px(12.))
+        .text_size(crate::theme::rem(12.))
         .child(
             div()
                 .flex_1()
                 .min_w_0()
                 .child(
                     div()
-                        .text_size(px(11.))
+                        .text_size(crate::theme::rem(11.))
                         .text_color(theme::warn())
                         .child("Pending comment"),
                 )
@@ -649,12 +650,12 @@ fn draft_box(data: &Rc<Data>, _cx: &mut App) -> AnyElement {
     let (cancel_view, save_view) = (data.view.clone(), data.view.clone());
     div()
         .my_1()
-        .ml(px(84.))
-        .max_w(px(340.))
+        .ml(crate::theme::rem(84.))
+        .max_w(crate::theme::rem(340.))
         .p_2()
         .flex()
         .flex_col()
-        .gap(px(6.))
+        .gap(crate::theme::rem(6.))
         .rounded_md()
         .border_1()
         .border_color(theme::border_strong())
@@ -664,7 +665,7 @@ fn draft_box(data: &Rc<Data>, _cx: &mut App) -> AnyElement {
             div()
                 .flex()
                 .justify_end()
-                .gap(px(6.))
+                .gap(crate::theme::rem(6.))
                 .child(button("comment-cancel", "Cancel", move |_, _, cx| {
                     cancel_view
                         .update(cx, |this, cx| {

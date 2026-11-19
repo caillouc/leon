@@ -47,8 +47,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   unread, from its row's right-click menu, or mark one agent as unread, from
   its Flow box's right-click menu, which makes its flow unread too. An answer that arrives while the user is not looking — another
   flow shown, its Flow or another agent's tab, or Leon behind
-  another app — is unread until the user opens that agent's tab or replies to
-  it; the flow stays unread while one of its agents' answers is, and its
+  another app — is unread until the user opens that agent's tab, comes back
+  to Leon on it, or replies to it; the flow stays unread while one of its agents' answers is, and its
   Flow tab then shows a green dot. An agent
   that started others answers only once it has every report back: while one
   of them still works, or a report waits to reach it, its turns are not
@@ -272,7 +272,8 @@ flow**: one item in the left pane (D5).
 
 ### Notifications
 
-- **NOTIF-1** Desktop notification when an agent's answer is ready.
+- **NOTIF-1** Desktop notification, with a short sound, when an agent's answer
+  is ready.
 
 ### Connectors
 
@@ -294,6 +295,12 @@ flow**: one item in the left pane (D5).
   agents and skills it holds), the order in which CLIs are tried for an
   agent's model (EXT-6), changed by dragging the CLIs' boxes. Saved at
   once into `config.toml`, keeping the rest of the file.
+- **SETTINGS-2** The app's zoom: 100 (default), 125 or 150 %. Text, icons,
+  spacing and widths grow together, so the conversation column and the
+  panes keep their proportions; the flow diagram keeps its own zoom.
+- **SETTINGS-3** What a flow opens on when picked in the left pane: its
+  Flow diagram (default) or its main conversation, the one the user started
+  it with. The Flow tab stays either way.
 
 ### Doctor
 
@@ -382,7 +389,7 @@ flow**: one item in the left pane (D5).
 - **Tabs** (FLOW-3, FLOW-4): Flow first, then one tab per conversation: the
   one shown, then the others from the one opened last, then those never
   opened in start order; opening a tab brings the row back to its start.
-  Flow is the default tab when the flow has more than one conversation.
+  A flow opens on its Flow tab, or on its main conversation (SETTINGS-3).
 - **Flow diagram** (FLOW-4, FLOW-6): laid out by forces from columns of who
   started whom; straight arrows, bundled by pair of boxes. One line per kind between two boxes, both ways sharing it,
   labelled with its count ("2"); the arrow panel lists each message with its

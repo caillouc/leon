@@ -73,6 +73,33 @@ Only one Leon runs at a time: quit the other one first.
 Linux also needs the windowing and font libraries listed in
 `.github/workflows/ci.yml`.
 
+## Release
+
+Pushing a version tag publishes a GitHub release
+(`.github/workflows/release.yml`): a `.dmg` for macOS (Apple Silicon), signed
+with a Developer ID and notarized by Apple, and the Linux binary.
+
+```bash
+git tag v0.1.0
+```
+
+```bash
+git push origin v0.1.0
+```
+
+The workflow needs these repository secrets: `MACOS_CERTIFICATE_P12` (the
+Developer ID certificate and key, exported as `.p12`, in base64),
+`MACOS_CERTIFICATE_PASSWORD`, and an App Store Connect API key for
+notarization: `NOTARY_KEY` (the `.p8` file's text), `NOTARY_KEY_ID`,
+`NOTARY_ISSUER_ID`.
+
+The same build on your Mac, with the key's path in `LEON_NOTARY_KEY` and
+its ids in `LEON_NOTARY_KEY_ID` and `LEON_NOTARY_ISSUER`:
+
+```bash
+cargo xtask release
+```
+
 ## Checks
 
 ```bash

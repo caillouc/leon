@@ -34,7 +34,7 @@ pub(crate) fn legend() -> AnyElement {
         .border_1()
         .border_color(theme::border())
         .bg(theme::surface())
-        .text_size(px(11.5))
+        .text_size(crate::theme::rem(11.5))
         .text_color(theme::fg_muted())
         .child(key("prompt", EdgeKind::Prompt))
         .child(key("report", EdgeKind::Report))

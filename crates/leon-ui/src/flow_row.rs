@@ -62,7 +62,7 @@ pub(crate) fn attention_pill(attention: Attention, scale: f32) -> Option<Div> {
             .px(px(6. * scale))
             .rounded_full()
             .bg(Rgba { a: 0.18, ..color })
-            .text_size(px(10.5 * scale))
+            .text_size(crate::theme::rem(10.5 * scale))
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .text_color(color)
             .child(text),
@@ -88,7 +88,7 @@ impl Workspace {
             // Never squeezed away by what sits beside it.
             _ => div()
                 .flex_1()
-                .min_w(px(80.))
+                .min_w(crate::theme::rem(80.))
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
@@ -101,9 +101,9 @@ impl Workspace {
         div()
             .id(SharedString::from(format!("conv-{}", id.0)))
             .mx_1()
-            .pl(px(6.))
+            .pl(crate::theme::rem(6.))
             .pr_2()
-            .py(px(5.))
+            .py(crate::theme::rem(5.))
             .rounded_md()
             // What needs the user shows as a coloured edge too.
             .border_l_2()
@@ -116,7 +116,7 @@ impl Workspace {
             .when(!selected, |s| s.hover(|s| s.bg(theme::surface_2())))
             .flex()
             .flex_col()
-            .gap(px(2.))
+            .gap(crate::theme::rem(2.))
             .child(
                 div()
                     .flex()
@@ -174,11 +174,11 @@ impl Workspace {
             other => attention_color(other).unwrap_or_else(theme::fg_muted),
         };
         div()
-            .pl(px(22.))
+            .pl(crate::theme::rem(22.))
             .flex()
             .items_center()
-            .gap(px(6.))
-            .text_size(px(11.5))
+            .gap(crate::theme::rem(6.))
+            .text_size(crate::theme::rem(11.5))
             .child(
                 div()
                     .flex_1()

@@ -2,7 +2,7 @@
 
 use gpui::{
     AnyElement, App, ClickEvent, Div, ElementId, IntoElement, ParentElement, SharedString,
-    Stateful, Styled, Window, div, prelude::*, px,
+    Stateful, Styled, Window, div, prelude::*,
 };
 use leon_domain::Status;
 
@@ -15,7 +15,7 @@ pub fn label(text: impl Into<SharedString>) -> Div {
         .px_3()
         .pt_3()
         .pb_1()
-        .text_size(px(10.5))
+        .text_size(crate::theme::rem(10.5))
         .text_color(theme::fg_faint())
         .child(text.to_uppercase())
 }
@@ -25,7 +25,7 @@ pub fn empty(text: impl Into<SharedString>) -> AnyElement {
     div()
         .px_3()
         .py_2()
-        .text_size(px(12.5))
+        .text_size(crate::theme::rem(12.5))
         .text_color(theme::fg_faint())
         .child(text.into())
         .into_any_element()
@@ -35,14 +35,14 @@ pub fn empty(text: impl Into<SharedString>) -> AnyElement {
 /// user, filled red when failed, faint ring when idle. Colour and shape, no
 /// emoji (QUAL-3).
 pub fn status_dot(status: Status) -> Div {
-    let base = div().size(px(9.)).flex_none();
+    let base = div().size(crate::theme::rem(9.)).flex_none();
     match status {
         Status::Idle => base
             .rounded_full()
             .border_1()
             .border_color(theme::fg_faint()),
         Status::Running => base.rounded_full().border_2().border_color(theme::accent()),
-        Status::NeedsInput => base.rounded(px(2.)).bg(theme::warn()),
+        Status::NeedsInput => base.rounded(crate::theme::rem(2.)).bg(theme::warn()),
         Status::Error => base.rounded_full().bg(theme::err()),
     }
 }
@@ -82,10 +82,10 @@ fn base_button(
     div()
         .id(id.into())
         .px_2()
-        .py(px(3.))
+        .py(crate::theme::rem(3.))
         .rounded_md()
         .border_1()
-        .text_size(px(12.))
+        .text_size(crate::theme::rem(12.))
         .cursor_pointer()
         .child(text.into())
         .on_click(on_click)
@@ -100,8 +100,8 @@ pub fn segmented(id: &'static str, options: Vec<(SharedString, bool, OnClick)>) 
     div()
         .flex()
         .flex_none()
-        .p(px(2.))
-        .gap(px(2.))
+        .p(crate::theme::rem(2.))
+        .gap(crate::theme::rem(2.))
         .rounded_md()
         .border_1()
         .border_color(theme::border_strong())
@@ -114,9 +114,9 @@ pub fn segmented(id: &'static str, options: Vec<(SharedString, bool, OnClick)>) 
                     div()
                         .id((id, ix))
                         .px_2()
-                        .py(px(2.))
-                        .rounded(px(4.))
-                        .text_size(px(12.))
+                        .py(crate::theme::rem(2.))
+                        .rounded(crate::theme::rem(4.))
+                        .text_size(crate::theme::rem(12.))
                         .cursor_pointer()
                         .when(on, |d| d.bg(theme::accent_soft()).text_color(theme::fg()))
                         .when(!on, |d| {
@@ -138,7 +138,7 @@ pub fn pane_header(title: impl Into<SharedString>, subtitle: Option<String>) -> 
     let title: SharedString = title.into();
     div()
         .flex_none()
-        .h(px(HEADER_HEIGHT))
+        .h(crate::theme::rem(HEADER_HEIGHT))
         .px_5()
         .flex()
         .items_center()
@@ -148,7 +148,7 @@ pub fn pane_header(title: impl Into<SharedString>, subtitle: Option<String>) -> 
         .child(
             div()
                 .flex_none()
-                .text_size(px(15.))
+                .text_size(crate::theme::rem(15.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .child(title),
         )
@@ -158,7 +158,7 @@ pub fn pane_header(title: impl Into<SharedString>, subtitle: Option<String>) -> 
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_size(px(12.5))
+                .text_size(crate::theme::rem(12.5))
                 .text_color(theme::fg_faint())
                 .child(text)
         }))

@@ -2,7 +2,7 @@
 //! project (or one of the flow's folders), an agent, the CLI and its
 //! settings, and write the first message.
 
-use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*, px};
+use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*};
 use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
 use leon_domain::FlowId;
@@ -142,7 +142,7 @@ impl Workspace {
         let _ = window;
         let card = div()
             .w_full()
-            .max_w(px(560.))
+            .max_w(crate::theme::rem(560.))
             .p_4()
             .flex()
             .flex_col()
@@ -154,7 +154,7 @@ impl Workspace {
             .shadow_lg()
             .child(
                 div()
-                    .text_size(px(15.))
+                    .text_size(crate::theme::rem(15.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child(match &in_flow {
                         Some(view) => format!("New conversation in {}", view.flow.title),
@@ -172,9 +172,9 @@ impl Workspace {
             // agent does not move the form.
             .child(
                 div()
-                    .h(px(34.))
-                    .text_size(px(11.5))
-                    .line_height(px(17.))
+                    .h(crate::theme::rem(34.))
+                    .text_size(crate::theme::rem(11.5))
+                    .line_height(crate::theme::rem(17.))
                     .text_color(theme::fg_faint())
                     .line_clamp(2)
                     .text_ellipsis()
@@ -194,7 +194,7 @@ impl Workspace {
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .text_size(px(12.))
+                                .text_size(crate::theme::rem(12.))
                                 .text_color(theme::fg_muted())
                                 .child(icon(Icon::Issue, theme::fg_muted(), 13.))
                                 .child(format!("For issue {}", issue.text()))
@@ -228,7 +228,7 @@ impl Workspace {
             )
             .child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::fg_faint())
                     .child("Agents come from your agent files. No worktree is created here: the agent creates one when it needs it."),
             )
@@ -265,7 +265,7 @@ impl Workspace {
             .justify_center()
             .items_start()
             .px_4()
-            .pt(px(56.))
+            .pt(crate::theme::rem(56.))
             .pb_6()
             .child(card)
             .into_any_element()
@@ -428,10 +428,10 @@ fn field(name: &str, control: AnyElement) -> AnyElement {
         .min_w_0()
         .flex()
         .flex_col()
-        .gap(px(5.))
+        .gap(crate::theme::rem(5.))
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .text_color(theme::fg_muted())
                 .child(name.to_owned()),
         )

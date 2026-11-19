@@ -2,16 +2,19 @@
 //! change is saved at once into `config.toml`, keeping the rest of the file.
 
 use gpui::{
-    AnyElement, Context, Entity, FontWeight, IntoElement, Subscription, Window, div, prelude::*, px,
+    AnyElement, Context, Entity, FontWeight, IntoElement, SharedString, Subscription, Window, div,
+    prelude::*,
 };
 use gpui_component::input::{InputEvent, Textarea, TextareaState};
 use leon_core::Intent;
-use leon_domain::{ConversationDefaults, ConversationSettings, FoldPattern, Settings};
+use leon_domain::{
+    ConversationDefaults, ConversationSettings, FoldPattern, OpenOn, Settings, Zoom,
+};
 
 use crate::icons::{Icon, icon};
 use crate::picker::Look;
 use crate::theme;
-use crate::widgets::{button, pane_header, primary};
+use crate::widgets::{OnClick, button, pane_header, primary, segmented};
 use crate::workspace::{Workspace, text_of};
 
 /// The fold patterns box of Settings.
@@ -159,7 +162,7 @@ impl Workspace {
             ),
         };
         let body = div()
-            .max_w(px(760.))
+            .max_w(crate::theme::rem(760.))
             .w_full()
             .mx_auto()
             .px_6()
@@ -167,6 +170,18 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_4()
+            .child(section(
+                "Appearance",
+                "How big the app is, and what a flow shows first when you pick it in \
+                 the left pane: its diagram, or the conversation you started it with. \
+                 Its other tabs stay either way.",
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(field("Zoom", Self::zoom_choice(&settings, cx)))
+                    .child(field("Open a flow on", Self::open_on_choice(&settings, cx))),
+            ))
             .child(section(
                 "New flows",
                 "What the new-flow form starts with.",
@@ -207,9 +222,9 @@ impl Workspace {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(5.))
-                            .pl(px(146.))
-                            .text_size(px(12.))
+                            .gap(crate::theme::rem(5.))
+                            .pl(crate::theme::rem(146.))
+                            .text_size(crate::theme::rem(12.))
                             .text_color(status_color)
                             .when(status == FoldStatus::Saved, |d| {
                                 d.child(icon(Icon::Passed, status_color, 13.))
@@ -235,7 +250,7 @@ impl Workspace {
             ))
             .children(path.map(|path| {
                 div()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::fg_faint())
                     .child(format!("Saved in {path}. Your comments in it are kept."))
             }));
@@ -261,6 +276,58 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// The app's zooms, the one in use filled (SETTINGS-2).
+    fn zoom_choice(settings: &Settings, cx: &mut Context<Self>) -> AnyElement {
+        let options = Zoom::CHOICES
+            .into_iter()
+            .map(|size| {
+                let next = Settings {
+                    zoom: Zoom(size),
+                    ..settings.clone()
+                };
+                let click: OnClick = Box::new(cx.listener(move |this, _, _, _| {
+                    this.save(next.clone());
+                }));
+                (
+                    SharedString::from(format!("{size} %")),
+                    settings.zoom.0 == size,
+                    click,
+                )
+            })
+            .collect();
+        // As wide as its options, not the field.
+        div()
+            .flex()
+            .child(segmented("settings-zoom", options))
+            .into_any_element()
+    }
+
+    /// What a flow opens on from the left pane (SETTINGS-3).
+    fn open_on_choice(settings: &Settings, cx: &mut Context<Self>) -> AnyElement {
+        let options = [
+            (OpenOn::Flow, "Flow diagram"),
+            (OpenOn::Conversation, "Main conversation"),
+        ]
+        .into_iter()
+        .map(|(open_on, text)| {
+            let next = Settings {
+                open_on,
+                ..settings.clone()
+            };
+            let click: OnClick = Box::new(cx.listener(move |this, _, _, _| {
+                this.save(next.clone());
+            }));
+            (SharedString::from(text), settings.open_on == open_on, click)
+        })
+        .collect();
+        div()
+            .flex()
+            .child(segmented("settings-open-on", options))
+            .into_any_element()
+    }
+}
+
 /// A titled card with a one-line explanation.
 fn section(title: &'static str, about: &'static str, content: impl IntoElement) -> AnyElement {
     div()
@@ -279,13 +346,13 @@ fn section(title: &'static str, about: &'static str, content: impl IntoElement) 
                 .gap_1()
                 .child(
                     div()
-                        .text_size(px(14.))
+                        .text_size(crate::theme::rem(14.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(title),
                 )
                 .child(
                     div()
-                        .text_size(px(12.5))
+                        .text_size(crate::theme::rem(12.5))
                         .text_color(theme::fg_muted())
                         .child(about),
                 ),
@@ -302,10 +369,10 @@ fn field(name: &'static str, control: AnyElement) -> AnyElement {
         .gap_4()
         .child(
             div()
-                .w(px(130.))
+                .w(crate::theme::rem(130.))
                 .flex_none()
-                .pt(px(5.))
-                .text_size(px(13.))
+                .pt(crate::theme::rem(5.))
+                .text_size(crate::theme::rem(13.))
                 .text_color(theme::fg_muted())
                 .child(name),
         )

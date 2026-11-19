@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use gpui::{
     AnyElement, Context, Entity, FontWeight, IntoElement, SharedString, Subscription, Window, div,
-    prelude::*, px,
+    prelude::*,
 };
 use gpui_component::input::{InputEvent, TextareaState};
 use leon_core::Intent;
@@ -125,7 +125,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let frame = div()
-            .w(px(self.panes.right))
+            .w(crate::theme::rem(self.panes.right))
             .h_full()
             .flex_none()
             .flex()
@@ -191,9 +191,9 @@ impl Workspace {
         div()
             .flex()
             .flex_none()
-            .h(px(HEADER_HEIGHT))
+            .h(crate::theme::rem(HEADER_HEIGHT))
             .items_end()
-            .gap(px(2.))
+            .gap(crate::theme::rem(2.))
             .px_2()
             .border_b_1()
             .border_color(theme::border())
@@ -202,14 +202,14 @@ impl Workspace {
                 div()
                     .id(SharedString::from(format!("right-tab-{text}")))
                     .px_2()
-                    .pb(px(10.))
+                    .pb(crate::theme::rem(10.))
                     .border_b_2()
                     .border_color(if selected {
                         theme::accent()
                     } else {
                         gpui::transparent_black().into()
                     })
-                    .text_size(px(12.5))
+                    .text_size(crate::theme::rem(12.5))
                     .text_color(if selected {
                         theme::fg()
                     } else {
@@ -218,10 +218,10 @@ impl Workspace {
                     .cursor_pointer()
                     .hover(|s| s.text_color(theme::fg()))
                     .flex()
-                    .gap(px(5.))
+                    .gap(crate::theme::rem(5.))
                     .child(text)
                     .items_center()
-                    .children(n.map(|n| div().text_size(px(11.)).child(n)))
+                    .children(n.map(|n| div().text_size(crate::theme::rem(11.)).child(n)))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.right.tabs.insert(id, tab);
                         match tab {
@@ -238,8 +238,8 @@ impl Workspace {
             .child(
                 div()
                     .id("right-close")
-                    .mb(px(8.))
-                    .p(px(4.))
+                    .mb(crate::theme::rem(8.))
+                    .p(crate::theme::rem(4.))
                     .rounded_md()
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::surface_2()))
@@ -326,11 +326,11 @@ impl Workspace {
                 .flex_none()
                 .gap_2()
                 .px_3()
-                .py(px(9.))
+                .py(crate::theme::rem(9.))
                 .border_t_1()
                 .border_color(theme::border())
                 .bg(theme::surface())
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .child(
                     div()
                         .flex()

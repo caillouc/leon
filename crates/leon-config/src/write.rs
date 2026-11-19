@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use leon_core::ports::{ConfigFile, PortError};
-use leon_domain::{BackendKind, ConversationDefaults, Settings};
+use leon_domain::{BackendKind, ConversationDefaults, OpenOn, Settings, Zoom};
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 use crate::CURRENT_VERSION;
@@ -150,6 +150,24 @@ pub fn update(text: &str, settings: &Settings) -> Result<String, String> {
             value(ids.iter().collect::<Array>()),
         ),
     );
+    set(
+        &mut doc,
+        "ui",
+        "zoom",
+        changed(
+            settings.zoom == Zoom::default(),
+            value(i64::from(settings.zoom.0)),
+        ),
+    );
+    set(
+        &mut doc,
+        "ui",
+        "open_flows_on",
+        changed(
+            settings.open_on == OpenOn::default(),
+            value(settings.open_on.id()),
+        ),
+    );
     Ok(doc.to_string())
 }
 
@@ -233,6 +251,20 @@ mod tests {
                     cli_order: BackendKind::ALL.to_vec(),
                     ..Settings::default()
                 },
+                "version = 1\n",
+            ),
+            (
+                "",
+                Settings {
+                    zoom: leon_domain::Zoom(125),
+                    open_on: leon_domain::OpenOn::Conversation,
+                    ..Settings::default()
+                },
+                "version = 1\n\n[ui]\nzoom = 125\nopen_flows_on = \"conversation\"\n",
+            ),
+            (
+                "version = 1\n\n[ui]\nzoom = 125\n",
+                Settings::default(),
                 "version = 1\n",
             ),
         ];

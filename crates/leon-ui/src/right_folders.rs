@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui::{AnyElement, Context, FontWeight, IntoElement, div, prelude::*, px};
+use gpui::{AnyElement, Context, FontWeight, IntoElement, div, prelude::*};
 use leon_core::{GitView, Intent};
 use leon_domain::FlowId;
 
@@ -56,9 +56,9 @@ impl Workspace {
                 .id(("folder-chip", ix))
                 .flex()
                 .items_center()
-                .gap(px(5.))
+                .gap(crate::theme::rem(5.))
                 .px_2()
-                .py(px(3.))
+                .py(crate::theme::rem(3.))
                 .rounded_md()
                 .border_1()
                 .border_color(if selected && several {
@@ -71,7 +71,7 @@ impl Workspace {
                 } else {
                     theme::window()
                 })
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .when(several, |d| {
                     d.cursor_pointer().hover(|s| s.bg(theme::surface_2()))
                 })
@@ -84,7 +84,7 @@ impl Workspace {
                 .children(git.and_then(|g| g.branch.clone()).map(|branch| {
                     div()
                         .font_family(theme::MONO)
-                        .text_size(px(11.))
+                        .text_size(crate::theme::rem(11.))
                         .text_color(theme::fg_muted())
                         .child(branch)
                 }))
@@ -101,7 +101,7 @@ impl Workspace {
                 .flex()
                 .flex_none()
                 .flex_wrap()
-                .gap(px(6.))
+                .gap(crate::theme::rem(6.))
                 .px_3()
                 .py_2()
                 .border_b_1()
@@ -126,7 +126,7 @@ impl Workspace {
         let mono = |text: String, color| {
             div()
                 .font_family(theme::MONO)
-                .text_size(px(11.))
+                .text_size(crate::theme::rem(11.))
                 .text_color(color)
                 .overflow_hidden()
                 .whitespace_nowrap()
@@ -147,7 +147,7 @@ impl Workspace {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(3.))
+                .gap(crate::theme::rem(3.))
                 .pl_2()
                 .border_l_2()
                 .border_color(theme::accent())
@@ -156,8 +156,8 @@ impl Workspace {
                         .flex()
                         .flex_wrap()
                         .items_center()
-                        .gap(px(6.))
-                        .text_size(px(12.5))
+                        .gap(crate::theme::rem(6.))
+                        .text_size(crate::theme::rem(12.5))
                         .child(icon(Icon::Branch, theme::accent(), 13.))
                         .child(
                             div()
@@ -175,8 +175,8 @@ impl Workspace {
                         div()
                             .flex()
                             .flex_wrap()
-                            .gap(px(8.))
-                            .text_size(px(11.5))
+                            .gap(crate::theme::rem(8.))
+                            .text_size(crate::theme::rem(11.5))
                             .font_weight(FontWeight::MEDIUM)
                             .children(here.iter().map(|s| {
                                 div()
@@ -194,7 +194,7 @@ impl Workspace {
         div()
             .mx_3()
             .px_3()
-            .py(px(10.))
+            .py(crate::theme::rem(10.))
             .flex()
             .flex_col()
             .gap_3()
@@ -209,13 +209,13 @@ impl Workspace {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(crate::theme::rem(13.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child("Where"),
                     )
                     .children(project.map(|p| {
                         div()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::rem(12.))
                             .text_color(theme::fg_muted())
                             .child(format!("project {}", p.name))
                     })),
@@ -223,7 +223,7 @@ impl Workspace {
             .when(view.folders.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(crate::theme::rem(12.))
                         .text_color(theme::fg_faint())
                         .child("No worktree yet: one shows once an agent works in it."),
                 )

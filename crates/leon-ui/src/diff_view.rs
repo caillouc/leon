@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use gpui::{
     AnyElement, Context, Focusable, FontWeight, IntoElement, SharedString, Window, div, prelude::*,
-    px,
 };
 use leon_domain::{
     FileDiff, FlowId, FoldPattern, LineKind, ReviewComment, fold_reason, folded_last,
@@ -121,7 +120,7 @@ impl Workspace {
                 .items_center()
                 .gap_2()
                 .px_3()
-                .py(px(7.))
+                .py(crate::theme::rem(7.))
                 .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::surface_2()))
@@ -156,7 +155,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .text_size(px(12.5))
+                    .text_size(crate::theme::rem(12.5))
                     .child(
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
@@ -182,14 +181,14 @@ impl Workspace {
             .when(!fold.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_size(px(11.5))
+                        .text_size(crate::theme::rem(11.5))
                         .text_color(theme::fg_faint())
                         .child(format!("Folded by {}: change it in Settings.", fold_rule(&fold))),
                 )
             })
             .child(
                 div()
-                    .text_size(px(11.5))
+                    .text_size(crate::theme::rem(11.5))
                     .text_color(theme::fg_faint())
                     .child("Click a file to read the diffs. Hover a line there and click + to comment."),
             )
@@ -250,10 +249,10 @@ fn fold_rule(fold: &[FoldPattern]) -> String {
 fn tag(text: String) -> gpui::Div {
     div()
         .flex_none()
-        .px(px(6.))
-        .rounded(px(4.))
+        .px(crate::theme::rem(6.))
+        .rounded(crate::theme::rem(4.))
         .bg(theme::surface_2())
-        .text_size(px(10.5))
+        .text_size(crate::theme::rem(10.5))
         .text_color(theme::fg_muted())
         .child(text)
 }

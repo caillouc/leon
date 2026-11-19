@@ -3,7 +3,7 @@
 //! thread as comment cards with the code they are on, people as coloured
 //! avatars, and a box to comment.
 
-use gpui::{AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, div, prelude::*};
 use gpui_component::input::{Textarea, TextareaState};
 use leon_core::Intent;
 use leon_domain::{Check, CheckState, Comment, GhRef, PrState, PullRequest};
@@ -29,14 +29,14 @@ pub(crate) fn avatar(login: &str, size: f32) -> Div {
         .find(char::is_ascii_alphanumeric)
         .map_or('?', |c| c.to_ascii_uppercase());
     div()
-        .size(px(size))
+        .size(crate::theme::rem(size))
         .flex_none()
         .rounded_full()
         .bg(color)
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(size * 0.48))
+        .text_size(crate::theme::rem(size * 0.48))
         .font_weight(FontWeight::BOLD)
         .text_color(theme::on_accent())
         .child(initial.to_string())
@@ -49,12 +49,12 @@ fn state_pill(state: PrState) -> Div {
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(5.))
-        .px(px(10.))
-        .py(px(3.))
+        .gap(crate::theme::rem(5.))
+        .px(crate::theme::rem(10.))
+        .py(crate::theme::rem(3.))
         .rounded_full()
         .bg(color)
-        .text_size(px(12.5))
+        .text_size(crate::theme::rem(12.5))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(theme::on_accent())
         .child(icon(pr_glyph(state), theme::on_accent(), 14.))
@@ -64,12 +64,12 @@ fn state_pill(state: PrState) -> Div {
 /// A branch name, in code style and the accent colour.
 fn branch(name: &str) -> Div {
     div()
-        .px(px(6.))
-        .py(px(1.))
-        .rounded(px(6.))
+        .px(crate::theme::rem(6.))
+        .py(crate::theme::rem(1.))
+        .rounded(crate::theme::rem(6.))
         .bg(theme::accent_soft())
         .font_family(theme::MONO)
-        .text_size(px(11.5))
+        .text_size(crate::theme::rem(11.5))
         .text_color(theme::accent())
         .child(name.to_owned())
 }
@@ -82,18 +82,18 @@ fn heading(text: &str, count: Option<(String, Rgba)>) -> Div {
         .gap_2()
         .child(
             div()
-                .text_size(px(14.))
+                .text_size(crate::theme::rem(14.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(text.to_owned()),
         )
         .children(count.map(|(text, color)| {
             div()
-                .px(px(8.))
+                .px(crate::theme::rem(8.))
                 .rounded_full()
                 .border_1()
                 .border_color(tint(color, 0.6))
                 .bg(tint(color, 0.15))
-                .text_size(px(11.5))
+                .text_size(crate::theme::rem(11.5))
                 .text_color(color)
                 .child(text)
         }))
@@ -117,7 +117,7 @@ pub(crate) fn pr_header(pr: &PullRequest) -> Div {
                 .flex_wrap()
                 .items_baseline()
                 .gap_2()
-                .text_size(px(21.))
+                .text_size(crate::theme::rem(21.))
                 .child(
                     div()
                         .font_weight(FontWeight::SEMIBOLD)
@@ -142,7 +142,7 @@ pub(crate) fn pr_header(pr: &PullRequest) -> Div {
                         .flex_wrap()
                         .items_center()
                         .gap_2()
-                        .text_size(px(13.))
+                        .text_size(crate::theme::rem(13.))
                         .text_color(theme::fg_muted())
                         .child(state_pill(pr.state))
                         .when(!pr.author.is_empty(), |d| {
@@ -159,7 +159,11 @@ pub(crate) fn pr_header(pr: &PullRequest) -> Div {
                         .child(branch(&pr.branch)),
                 )
                 .when(!pr.labels.is_empty(), |d| {
-                    d.child(labels(&pr.labels).max_w(px(280.)).justify_end())
+                    d.child(
+                        labels(&pr.labels)
+                            .max_w(crate::theme::rem(280.))
+                            .justify_end(),
+                    )
                 }),
         )
 }
@@ -175,7 +179,7 @@ pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
     );
     let Some(state) = pr.checks_state() else {
         return div()
-            .text_size(px(12.5))
+            .text_size(crate::theme::rem(12.5))
             .text_color(theme::fg_faint())
             .child("No checks on this pull request.")
             .into_any_element();
@@ -268,7 +272,7 @@ fn merge_header(
         .bg(tint(color, 0.08))
         .child(
             div()
-                .size(px(30.))
+                .size(crate::theme::rem(30.))
                 .flex_none()
                 .rounded_full()
                 .bg(tint(color, 0.2))
@@ -283,13 +287,13 @@ fn merge_header(
                 .flex_col()
                 .child(
                     div()
-                        .text_size(px(13.5))
+                        .text_size(crate::theme::rem(13.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(title),
                 )
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(crate::theme::rem(12.))
                         .text_color(theme::fg_muted())
                         .child(detail),
                 ),
@@ -305,11 +309,11 @@ pub(crate) fn check_row(ix: usize, check: &Check) -> gpui::Stateful<Div> {
             "check-{ix}-{}",
             check.name
         )))
-        .py(px(7.))
+        .py(crate::theme::rem(7.))
         .flex()
         .items_center()
         .gap_2()
-        .text_size(px(12.5))
+        .text_size(crate::theme::rem(12.5))
         .child(icon(
             check_glyph(check.state),
             check_color(check.state),
@@ -327,7 +331,7 @@ pub(crate) fn check_row(ix: usize, check: &Check) -> gpui::Stateful<Div> {
         .child(
             div()
                 .flex_none()
-                .text_size(px(11.5))
+                .text_size(crate::theme::rem(11.5))
                 .text_color(theme::fg_faint())
                 .child(if check.state == CheckState::Fail {
                     "Failing"
@@ -430,14 +434,14 @@ impl Workspace {
                     .child(
                         div()
                             .px_3()
-                            .py(px(7.))
+                            .py(crate::theme::rem(7.))
                             .flex()
                             .items_center()
-                            .gap(px(5.))
+                            .gap(crate::theme::rem(5.))
                             .bg(theme::surface_2())
                             .border_b_1()
                             .border_color(theme::border())
-                            .text_size(px(12.5))
+                            .text_size(crate::theme::rem(12.5))
                             .child(
                                 div()
                                     .font_weight(FontWeight::SEMIBOLD)
@@ -445,7 +449,7 @@ impl Workspace {
                             )
                             .child(div().text_color(theme::fg_muted()).child(what.to_owned())),
                     )
-                    .child(div().px_3().py_2().text_size(px(13.)).child(
+                    .child(div().px_3().py_2().text_size(crate::theme::rem(13.)).child(
                         if body.trim().is_empty() {
                             div()
                                 .text_color(theme::fg_faint())
@@ -485,7 +489,7 @@ impl Workspace {
             .when(comments.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_size(px(12.5))
+                        .text_size(crate::theme::rem(12.5))
                         .text_color(theme::fg_faint())
                         .child("No comments yet."),
                 )
@@ -510,11 +514,11 @@ impl Workspace {
             .child(
                 div()
                     .px_3()
-                    .py(px(7.))
+                    .py(crate::theme::rem(7.))
                     .bg(theme::surface_2())
                     .border_b_1()
                     .border_color(theme::border())
-                    .text_size(px(12.5))
+                    .text_size(crate::theme::rem(12.5))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("Add a comment"),
             )
@@ -566,7 +570,7 @@ impl Workspace {
             .when(open == 0, |d| {
                 d.child(
                     div()
-                        .text_size(px(12.5))
+                        .text_size(crate::theme::rem(12.5))
                         .text_color(theme::fg_faint())
                         .child("No open thread."),
                 )

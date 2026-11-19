@@ -41,6 +41,6 @@ pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
-pub use settings::{ConversationDefaults, Settings};
+pub use settings::{ConversationDefaults, OpenOn, Settings, Zoom};
 pub use sprint::{Iteration, current_sprint};
 pub use transcript::{Entry, RunningTool, TimedEntry, Usage, activity, running_tools};

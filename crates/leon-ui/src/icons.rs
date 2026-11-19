@@ -4,7 +4,7 @@
 
 use std::borrow::Cow;
 
-use gpui::{AssetSource, Rgba, SharedString, Svg, prelude::*, px, svg};
+use gpui::{AssetSource, Rgba, SharedString, Svg, prelude::*, svg};
 
 /// The icons Leon uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,7 +76,7 @@ impl Icon {
 pub(crate) fn icon(icon: Icon, color: Rgba, size: f32) -> Svg {
     svg()
         .path(icon.path())
-        .size(px(size))
+        .size(crate::theme::rem(size))
         .flex_none()
         .text_color(color)
 }

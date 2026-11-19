@@ -2,7 +2,7 @@
 //! this moment — which commands it runs and for how long, its subagents, the
 //! answer it waits for — so a quiet agent is never a mystery.
 
-use gpui::{Div, FontWeight, SharedString, div, prelude::*, px};
+use gpui::{Div, FontWeight, SharedString, div, prelude::*};
 use leon_core::ConversationView;
 use leon_domain::{RunningTool, Status, running_tools};
 
@@ -17,7 +17,7 @@ impl Workspace {
         div()
             .mx_3()
             .px_3()
-            .py(px(10.))
+            .py(crate::theme::rem(10.))
             .flex()
             .flex_col()
             .gap_3()
@@ -27,7 +27,7 @@ impl Workspace {
             .bg(theme::window())
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::rem(13.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("Now"),
             )
@@ -45,7 +45,7 @@ impl Workspace {
         div()
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(crate::theme::rem(4.))
             .pl_2()
             .border_l_2()
             .border_color(agent)
@@ -54,7 +54,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .text_size(px(12.5))
+                    .text_size(crate::theme::rem(12.5))
                     .child(status_mark(
                         SharedString::from(format!("spin-now-{id}")),
                         s.status,
@@ -69,10 +69,10 @@ impl Workspace {
                     .child(
                         div()
                             .flex_none()
-                            .px(px(5.))
-                            .rounded(px(4.))
+                            .px(crate::theme::rem(5.))
+                            .rounded(crate::theme::rem(4.))
                             .bg(theme::surface_2())
-                            .text_size(px(10.5))
+                            .text_size(crate::theme::rem(10.5))
                             .text_color(theme::fg_muted())
                             .child(format!(
                                 "{} · {model}",
@@ -94,12 +94,12 @@ impl Workspace {
             .children(
                 self.live_lines("now", s)
                     .into_iter()
-                    .map(|line| line.pl(px(20.))),
+                    .map(|line| line.pl(crate::theme::rem(20.))),
             )
             .children(s.question.as_ref().map(|q| {
                 div()
-                    .pl(px(20.))
-                    .text_size(px(12.))
+                    .pl(crate::theme::rem(20.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::warn())
                     .child(format!("“{}”", q.title))
             }))
@@ -157,7 +157,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::fg_muted())
                     .child(status_mark(
                         SharedString::from(format!(
@@ -206,7 +206,7 @@ fn running_line(key: &str, tool: &RunningTool) -> Div {
         .flex()
         .items_center()
         .gap_2()
-        .text_size(px(12.))
+        .text_size(crate::theme::rem(12.))
         .child(spinner(
             SharedString::from(key.to_owned()),
             theme::accent(),
@@ -221,7 +221,7 @@ fn running_line(key: &str, tool: &RunningTool) -> Div {
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .font_family(theme::MONO)
-                .text_size(px(11.5))
+                .text_size(crate::theme::rem(11.5))
                 .text_color(theme::fg_muted())
                 .child(tool.detail.clone()),
         )
@@ -239,7 +239,7 @@ fn activity(key: &str, text: String) -> Div {
         .flex()
         .items_center()
         .gap_2()
-        .text_size(px(12.))
+        .text_size(crate::theme::rem(12.))
         .text_color(theme::fg_muted())
         .child(spinner(
             SharedString::from(key.to_owned()),

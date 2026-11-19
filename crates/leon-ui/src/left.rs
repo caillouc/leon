@@ -1,7 +1,7 @@
 //! Left pane (NAV-*): new flow, search, pinned flows, one
 //! group per project, the archive.
 
-use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
 use gpui_component::input::Input;
 use leon_core::{FlowView, Intent};
 use leon_domain::Attention;
@@ -96,14 +96,14 @@ impl Workspace {
                     .mx_1()
                     .mt_3()
                     .px_2()
-                    .py(px(5.))
+                    .py(crate::theme::rem(5.))
                     .rounded_md()
                     .flex()
                     .items_center()
                     .gap_2()
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::surface_2()))
-                    .text_size(px(12.5))
+                    .text_size(crate::theme::rem(12.5))
                     .text_color(theme::fg_muted())
                     .child(chevron(shown, theme::fg_muted(), 14.))
                     .child("Archived")
@@ -119,7 +119,7 @@ impl Workspace {
         }
 
         div()
-            .w(px(self.panes.left))
+            .w(crate::theme::rem(self.panes.left))
             .h_full()
             .flex_none()
             .flex()
@@ -130,7 +130,7 @@ impl Workspace {
             .child(
                 div()
                     .flex_none()
-                    .h(px(HEADER_HEIGHT))
+                    .h(crate::theme::rem(HEADER_HEIGHT))
                     .px_2()
                     .flex()
                     .items_center()
@@ -142,7 +142,7 @@ impl Workspace {
                         div()
                             .id("new-conversation")
                             .flex_none()
-                            .size(px(30.))
+                            .size(crate::theme::rem(30.))
                             .rounded_md()
                             .flex()
                             .items_center()
@@ -182,10 +182,10 @@ impl Workspace {
             .child(
                 div()
                     .id("add-project")
-                    .px(px(6.))
-                    .py(px(1.))
+                    .px(crate::theme::rem(6.))
+                    .py(crate::theme::rem(1.))
                     .rounded_md()
-                    .text_size(px(11.5))
+                    .text_size(crate::theme::rem(11.5))
                     .text_color(theme::fg_muted())
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
@@ -212,7 +212,7 @@ impl Workspace {
             .mx_1()
             .mt_2()
             .px_2()
-            .h(px(30.))
+            .h(crate::theme::rem(30.))
             .rounded_md()
             .flex()
             .items_center()
@@ -237,25 +237,25 @@ impl Workspace {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::rem(13.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child(project.name.clone()),
             )
             .children(
                 attention
                     .filter(|_| collapsed)
-                    .map(|color| div().size(px(8.)).rounded_full().bg(color)),
+                    .map(|color| div().size(crate::theme::rem(8.)).rounded_full().bg(color)),
             )
             .child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::fg_faint())
                     .child(count.to_string()),
             )
             .child(
                 div()
                     .id(SharedString::from(format!("new-in-{}", id.0)))
-                    .p(px(3.))
+                    .p(crate::theme::rem(3.))
                     .rounded_md()
                     .opacity(0.)
                     .group_hover(group, |s| s.opacity(1.))

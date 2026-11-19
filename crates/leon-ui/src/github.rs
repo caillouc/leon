@@ -7,7 +7,7 @@
 
 use gpui::{
     AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, SharedString, Window, div,
-    prelude::*, px,
+    prelude::*,
 };
 use gpui_component::input::TextareaState;
 use leon_core::Intent;
@@ -77,7 +77,7 @@ impl Workspace {
                 .id(SharedString::from(list.title()))
                 .mx_1()
                 .px_2()
-                .py(px(5.))
+                .py(crate::theme::rem(5.))
                 .rounded_md()
                 .flex()
                 .items_center()
@@ -163,7 +163,7 @@ impl Workspace {
             .child(
                 div().id("gh-list").flex_1().overflow_y_scroll().child(
                     div()
-                        .max_w(px(880.))
+                        .max_w(crate::theme::rem(880.))
                         .w_full()
                         .mx_auto()
                         .px_6()
@@ -188,7 +188,7 @@ impl Workspace {
         let color = status.map_or(theme::fg_faint(), |s| self.status_color(s));
         let name = status.map_or("No status", |s| s.name.as_str()).to_owned();
         let title = div()
-            .text_size(px(13.5))
+            .text_size(crate::theme::rem(13.5))
             .font_weight(FontWeight::SEMIBOLD)
             .child(name.clone());
         let rows = issues
@@ -206,7 +206,7 @@ impl Workspace {
             .flex()
             .items_center()
             .font_family(theme::MONO)
-            .text_size(px(13.))
+            .text_size(crate::theme::rem(13.))
             .child(
                 div()
                     .text_color(theme::fg_muted())
@@ -265,14 +265,14 @@ impl Workspace {
                         theme::fg_muted(),
                         15.,
                     ))
-                    .child(div().size(px(10.)).rounded_full().bg(color))
+                    .child(div().size(crate::theme::rem(10.)).rounded_full().bg(color))
                     .child(title)
                     .child(
                         div()
-                            .px(px(7.))
+                            .px(crate::theme::rem(7.))
                             .rounded_full()
                             .bg(theme::surface_2())
-                            .text_size(px(11.5))
+                            .text_size(crate::theme::rem(11.5))
                             .text_color(theme::fg_muted())
                             .child(count.to_string()),
                     )
@@ -340,7 +340,7 @@ impl Workspace {
             .child(
                 div()
                     .font_family(theme::MONO)
-                    .text_size(px(11.5))
+                    .text_size(crate::theme::rem(11.5))
                     .text_color(theme::fg_faint())
                     .child(format!("{} → {}", pr.branch, pr.base)),
             )
@@ -429,7 +429,7 @@ pub(crate) fn checks(state: CheckState) -> Div {
     div()
         .flex()
         .items_center()
-        .gap(px(4.))
+        .gap(crate::theme::rem(4.))
         .text_color(color)
         .child(icon(glyph, color, 12.))
         .child(text)
@@ -480,7 +480,7 @@ impl Row {
             .group(group.clone())
             .relative()
             .px_3()
-            .py(px(10.))
+            .py(crate::theme::rem(10.))
             .rounded_lg()
             .flex()
             .items_start()
@@ -490,14 +490,14 @@ impl Row {
             .on_click(cx.listener(move |this, _, _, _| {
                 this.core.send(Intent::ShowDetail(Some(item.clone())));
             }))
-            .child(div().pt(px(2.)).child(icon))
+            .child(div().pt(crate::theme::rem(2.)).child(icon))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap(px(5.))
+                    .gap(crate::theme::rem(5.))
                     .child(
                         div()
                             .flex()
@@ -507,7 +507,7 @@ impl Row {
                             .child(
                                 div()
                                     .flex_none()
-                                    .text_size(px(12.))
+                                    .text_size(crate::theme::rem(12.))
                                     .text_color(theme::fg_faint())
                                     .child(format!("#{number}")),
                             )
@@ -515,12 +515,15 @@ impl Row {
                             .child(
                                 div()
                                     .flex_none()
-                                    .text_size(px(11.5))
+                                    .text_size(crate::theme::rem(11.5))
                                     .text_color(theme::fg_faint())
                                     .child(age),
                             ),
                     )
-                    .child(meta.text_size(px(12.)).text_color(theme::fg_muted())),
+                    .child(
+                        meta.text_size(crate::theme::rem(12.))
+                            .text_color(theme::fg_muted()),
+                    ),
             )
             .children(hover.map(|action| {
                 div()
@@ -541,7 +544,7 @@ impl Row {
 fn repo_text(repo: &str) -> Div {
     div()
         .font_family(theme::MONO)
-        .text_size(px(11.5))
+        .text_size(crate::theme::rem(11.5))
         .child(repo.to_owned())
 }
 
@@ -551,7 +554,7 @@ fn flow_link(item: &GhRef, flow: FlowId, cx: &mut Context<Workspace>) -> AnyElem
         .id(SharedString::from(format!("gh-link-{}", item.text())))
         .flex()
         .items_center()
-        .gap(px(4.))
+        .gap(crate::theme::rem(4.))
         .text_color(theme::accent())
         .cursor_pointer()
         .hover(|s| s.opacity(0.8))

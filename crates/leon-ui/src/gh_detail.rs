@@ -3,7 +3,7 @@
 //! with what can be done from Leon — start or open the flow, request
 //! a Copilot review, comment — and a link to GitHub.
 
-use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, div, prelude::*};
 use leon_core::{Detail, Intent};
 use leon_domain::{GhKind, GhRef, Issue};
 
@@ -50,7 +50,7 @@ impl Workspace {
             .child(
                 div()
                     .font_family(theme::MONO)
-                    .text_size(px(12.5))
+                    .text_size(crate::theme::rem(12.5))
                     .text_color(theme::fg_muted())
                     .child(item.text()),
             )
@@ -68,7 +68,7 @@ impl Workspace {
             .pb_6()
             .child(
                 div()
-                    .max_w(px(theme::COLUMN))
+                    .max_w(crate::theme::rem(theme::COLUMN))
                     .w_full()
                     .mx_auto()
                     .child(body),
@@ -89,16 +89,16 @@ impl Workspace {
             div()
                 .flex()
                 .items_center()
-                .gap(px(5.))
-                .px(px(8.))
-                .py(px(1.))
+                .gap(crate::theme::rem(5.))
+                .px(crate::theme::rem(8.))
+                .py(crate::theme::rem(1.))
                 .rounded_full()
                 .border_1()
                 .border_color(gpui::Rgba { a: 0.6, ..color })
                 .bg(gpui::Rgba { a: 0.15, ..color })
-                .text_size(px(11.5))
+                .text_size(crate::theme::rem(11.5))
                 .text_color(color)
-                .child(div().size(px(7.)).rounded_full().bg(color))
+                .child(div().size(crate::theme::rem(7.)).rounded_full().bg(color))
                 .child(s.name.clone())
         });
         let fields = div()
@@ -122,7 +122,7 @@ impl Workspace {
                     .gap_3()
                     .child(
                         div()
-                            .text_size(px(17.))
+                            .text_size(crate::theme::rem(17.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(issue.title.clone()),
                     )
@@ -130,7 +130,7 @@ impl Workspace {
                     .when(!issue.assignees.is_empty(), |d| {
                         d.child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(crate::theme::rem(12.))
                                 .text_color(theme::fg_muted())
                                 .child(format!("Assigned to {}", issue.assignees.join(", "))),
                         )
@@ -148,7 +148,7 @@ impl Workspace {
                     .border_1()
                     .border_color(theme::border())
                     .bg(theme::panel())
-                    .text_size(px(13.))
+                    .text_size(crate::theme::rem(13.))
                     .child(self.rich_markdown(
                         &format!("issue-body-{}", item.text()),
                         &issue.body,
@@ -191,11 +191,11 @@ fn header_button(
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(5.))
+        .gap(crate::theme::rem(5.))
         .px_2()
-        .py(px(3.))
+        .py(crate::theme::rem(3.))
         .rounded_md()
-        .text_size(px(12.))
+        .text_size(crate::theme::rem(12.))
         .text_color(theme::fg_muted())
         .cursor_pointer()
         .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))

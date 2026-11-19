@@ -5,7 +5,7 @@
 
 use gpui::{
     AnyElement, Context, IntoElement, PromptLevel, Stateful, Window, anchored, deferred, div,
-    prelude::*, px,
+    prelude::*,
 };
 use gpui_component::input::{InputEvent, InputState};
 use leon_core::Intent;
@@ -45,7 +45,7 @@ impl Workspace {
         };
         let menu = div()
             .id("row-menu")
-            .min_w(px(180.))
+            .min_w(crate::theme::rem(180.))
             .p_1()
             .rounded_lg()
             .border_1()
@@ -63,7 +63,7 @@ impl Workspace {
             deferred(
                 anchored()
                     .position(at)
-                    .snap_to_window_with_margin(px(8.))
+                    .snap_to_window_with_margin(gpui::px(8.))
                     .child(menu),
             )
             .with_priority(2)
@@ -105,7 +105,7 @@ impl Workspace {
         items.push(
             div()
                 .my_1()
-                .h(px(1.))
+                .h(crate::theme::rem(1.))
                 .bg(theme::border())
                 .into_any_element(),
         );
@@ -238,9 +238,9 @@ fn menu_item(
     let item: Stateful<gpui::Div> = div()
         .id(key)
         .px_3()
-        .py(px(5.))
+        .py(crate::theme::rem(5.))
         .rounded_md()
-        .text_size(px(12.5))
+        .text_size(crate::theme::rem(12.5))
         .when(danger, |d| d.text_color(theme::err()))
         .cursor_pointer()
         .hover(|s| s.bg(theme::surface_2()))

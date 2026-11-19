@@ -1,9 +1,7 @@
 //! The message box under a transcript: question card, status line, text,
 //! pickers (CONV-3..6, CONV-9).
 
-use gpui::{
-    AnyElement, Context, Focusable, IntoElement, SharedString, Window, div, prelude::*, px,
-};
+use gpui::{AnyElement, Context, Focusable, IntoElement, SharedString, Window, div, prelude::*};
 use gpui_component::input::{IndentInline, Textarea};
 use leon_core::Intent;
 use leon_domain::{ConversationId, Status};
@@ -32,7 +30,7 @@ impl Workspace {
             .pb_4()
             .pt_1()
             .w_full()
-            .max_w(px(theme::COLUMN))
+            .max_w(crate::theme::rem(theme::COLUMN))
             .mx_auto()
             .flex()
             .flex_col()
@@ -67,7 +65,7 @@ impl Workspace {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(10.5))
+                            .text_size(crate::theme::rem(10.5))
                             .text_color(theme::warn())
                             .child("QUESTION"),
                     )
@@ -85,7 +83,7 @@ impl Workspace {
                                 .py_1()
                                 .rounded_md()
                                 .bg(theme::surface_2())
-                                .text_size(px(12.5))
+                                .text_size(crate::theme::rem(12.5))
                                 .text_color(theme::fg())
                                 .font_family(theme::MONO)
                                 .child(q.detail.clone()),
@@ -110,7 +108,7 @@ impl Workspace {
                     .rounded_lg()
                     .border_1()
                     .border_color(theme::warn())
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .child(div().flex_1().child(format!(
                         "Editing an earlier message: sending removes it and the {later} entries after it. Files the agent changed stay as they are."
                     )))
@@ -137,11 +135,17 @@ impl Workspace {
             self.waiting_lines("composer", &s)
         };
         if !live.is_empty() {
-            column = column.child(div().flex().flex_col().gap(px(4.)).children(live));
+            column = column.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(crate::theme::rem(4.))
+                    .children(live),
+            );
         } else if let Some(line) = Self::status_line(&s) {
             column = column.child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::fg_muted())
                     .child(line),
             );
@@ -211,14 +215,17 @@ impl Workspace {
                     .child(Textarea::new(&self.composer).appearance(false))
                     .children(ghost)
                     .child(
+                        // Wraps rather than overflow with large text
+                        // (SETTINGS-2).
                         div()
                             .flex()
+                            .flex_wrap()
                             .items_center()
                             .gap_1()
                             .child(
                                 div()
                                     .px_2()
-                                    .text_size(px(12.))
+                                    .text_size(crate::theme::rem(12.))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .child(agent),
                             )
@@ -226,11 +233,19 @@ impl Workspace {
                             .child(model)
                             .child(effort)
                             .child(permission)
-                            .child(div().flex_1())
                             // Back to the user's last message, by the send
-                            // button: it takes no room from the text.
-                            .children(jump)
-                            .child(action),
+                            // button: it takes no room from the text. Kept
+                            // right, also on a line of its own.
+                            .child(
+                                div()
+                                    .ml_auto()
+                                    .min_w_0()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .children(jump)
+                                    .child(action),
+                            ),
                     ),
             )
             .into_any_element()
@@ -310,7 +325,11 @@ fn plan_card(plan: &[leon_domain::PlanStep]) -> AnyElement {
             .flex()
             .items_start()
             .gap_2()
-            .child(div().pt(px(2.)).child(icon(glyph, color, 13.)))
+            .child(
+                div()
+                    .pt(crate::theme::rem(2.))
+                    .child(icon(glyph, color, 13.)),
+            )
             .child(
                 div()
                     .flex_1()
@@ -325,24 +344,24 @@ fn plan_card(plan: &[leon_domain::PlanStep]) -> AnyElement {
     });
     div()
         .id("plan")
-        .max_h(px(180.))
+        .max_h(crate::theme::rem(180.))
         .overflow_y_scroll()
         .px_3()
         .py_2()
         .flex()
         .flex_col()
-        .gap(px(5.))
+        .gap(crate::theme::rem(5.))
         .rounded_lg()
         .border_1()
         .border_color(theme::border())
         .bg(theme::panel())
-        .text_size(px(12.5))
+        .text_size(crate::theme::rem(12.5))
         .child(
             div()
                 .flex()
                 .items_center()
                 .gap_2()
-                .text_size(px(11.5))
+                .text_size(crate::theme::rem(11.5))
                 .text_color(theme::fg_muted())
                 .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child("Plan"))
                 .child(format!("{done}/{} done", plan.len())),

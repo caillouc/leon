@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use gpui::{
     AnyElement, Context, ElementId, IntoElement, ListOffset, SharedString, div, list, prelude::*,
-    px,
 };
 use leon_core::TranscriptView;
 use leon_domain::{ConversationId, Entry, TimedEntry};
@@ -69,9 +68,9 @@ impl Workspace {
                     .whitespace_nowrap()
                     .text_ellipsis()
                     .px_2()
-                    .py(px(3.))
+                    .py(crate::theme::rem(3.))
                     .rounded_md()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::fg_muted())
                     .cursor_pointer()
                     .hover(|s| s.text_color(theme::fg()).bg(theme::surface_2()))
@@ -79,7 +78,7 @@ impl Workspace {
                     .on_click(move |_, _, _| {
                         state.scroll_to(ListOffset {
                             item_ix,
-                            offset_in_item: px(0.),
+                            offset_in_item: gpui::px(0.),
                         });
                     })
                     .into_any_element()
@@ -105,7 +104,7 @@ impl Workspace {
                 .child(
                     div()
                         .w_full()
-                        .max_w(px(theme::COLUMN))
+                        .max_w(crate::theme::rem(theme::COLUMN))
                         .px_6()
                         .py_1()
                         .child(item),
@@ -164,7 +163,7 @@ fn entry_view(
             .bg(theme::surface())
             .child(
                 div()
-                    .text_size(px(11.5))
+                    .text_size(crate::theme::rem(11.5))
                     .text_color(theme::accent())
                     .child(format!("{what} {name}")),
             )
@@ -190,7 +189,7 @@ fn entry_view(
                 .relative()
                 .my_2()
                 .px_3()
-                .py(px(9.))
+                .py(crate::theme::rem(9.))
                 .rounded_lg()
                 .border_1()
                 .border_color(gpui::Rgba {
@@ -201,7 +200,7 @@ fn entry_view(
                 .group(group.clone())
                 .child(
                     div()
-                        .text_size(px(11.5))
+                        .text_size(crate::theme::rem(11.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme::accent())
                         .child("You"),
@@ -218,13 +217,13 @@ fn entry_view(
                     div()
                         .id(id("edit"))
                         .absolute()
-                        .top(px(6.))
-                        .right(px(8.))
+                        .top(crate::theme::rem(6.))
+                        .right(crate::theme::rem(8.))
                         .px_2()
-                        .py(px(2.))
+                        .py(crate::theme::rem(2.))
                         .rounded_md()
                         .bg(theme::surface_2())
-                        .text_size(px(11.5))
+                        .text_size(crate::theme::rem(11.5))
                         .text_color(theme::fg_muted())
                         .opacity(0.)
                         .group_hover(group, |s| s.opacity(1.))
@@ -264,7 +263,7 @@ fn entry_view(
             let view = view.clone();
             let mut tool = div()
                 .id(id("tool"))
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .text_color(if *failed {
                     theme::err()
                 } else {
@@ -312,7 +311,7 @@ fn entry_view(
                         .border_1()
                         .border_color(theme::border())
                         .font_family(theme::MONO)
-                        .text_size(px(11.5))
+                        .text_size(crate::theme::rem(11.5))
                         .child(text),
                 );
             }
@@ -322,7 +321,7 @@ fn entry_view(
             .my_1()
             .flex()
             .justify_center()
-            .text_size(px(12.))
+            .text_size(crate::theme::rem(12.))
             .text_color(theme::fg_faint())
             .child(text.clone())
             .into_any_element(),
@@ -333,15 +332,15 @@ fn entry_view(
             .rounded_lg()
             .border_1()
             .border_color(theme::err())
-            .text_size(px(12.5))
+            .text_size(crate::theme::rem(12.5))
             .child(text.clone())
             .into_any_element(),
         Entry::TurnEnd { usage } => {
             let text = usage.map_or_default(usage_text);
             div()
-                .h(px(14.))
+                .h(crate::theme::rem(14.))
                 .flex()
-                .text_size(px(10.5))
+                .text_size(crate::theme::rem(10.5))
                 .text_color(theme::fg_faint())
                 .child(text)
                 .into_any_element()
@@ -380,7 +379,7 @@ fn long_text(
             div()
                 .id(("fold", ix))
                 .mt_1()
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .text_color(theme::accent())
                 .cursor_pointer()
                 .child(if expanded {

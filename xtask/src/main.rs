@@ -6,6 +6,8 @@
 //!   `spec/architecture.md`.
 //! - `cargo xtask bundle [--install]`: builds Leon.app (macOS), and copies
 //!   it to /Applications with `--install`.
+//! - `cargo xtask release`: Leon.app signed with a Developer ID, in a
+//!   notarized `.dmg` to publish (macOS).
 
 #![allow(
     clippy::print_stdout,
@@ -15,6 +17,7 @@
 
 mod bundle;
 mod layers;
+mod release;
 
 use std::process::{Command, ExitCode};
 
@@ -23,8 +26,9 @@ fn main() -> ExitCode {
         Some("ci") => ci(),
         Some("layers") => layers::check(),
         Some("bundle") => bundle::bundle(std::env::args().any(|a| a == "--install")),
+        Some("release") => release::release(),
         _ => {
-            eprintln!("usage: cargo xtask <ci|layers|bundle [--install]>");
+            eprintln!("usage: cargo xtask <ci|layers|bundle [--install]|release>");
             false
         }
     };

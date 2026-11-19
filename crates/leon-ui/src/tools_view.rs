@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use gpui::{
-    AnyElement, Context, Entity, FontWeight, IntoElement, SharedString, Window, div, prelude::*, px,
+    AnyElement, Context, Entity, FontWeight, IntoElement, SharedString, Window, div, prelude::*,
 };
 use gpui_component::input::{Input, InputState};
 use leon_core::Intent;
@@ -118,7 +118,7 @@ impl Workspace {
             .child(
                 div().id("tools-body").flex_1().overflow_y_scroll().child(
                     div()
-                        .max_w(px(820.))
+                        .max_w(crate::theme::rem(820.))
                         .w_full()
                         .mx_auto()
                         .px_6()
@@ -126,7 +126,7 @@ impl Workspace {
                         .flex()
                         .flex_col()
                         .gap_4()
-                        .text_size(px(13.))
+                        .text_size(crate::theme::rem(13.))
                         .child(table)
                         .child(shared),
                 ),
@@ -152,7 +152,7 @@ impl Workspace {
             .filter_map(|c| {
                 c.problem.as_ref().map(|p| {
                     div()
-                        .text_size(px(12.))
+                        .text_size(crate::theme::rem(12.))
                         .text_color(theme::warn())
                         .child(format!("{}: {p}", c.backend.display_name()))
                 })
@@ -164,16 +164,16 @@ impl Workspace {
             .py_2()
             .border_b_1()
             .border_color(theme::border())
-            .text_size(px(12.))
+            .text_size(crate::theme::rem(12.))
             .text_color(theme::fg_muted())
             .child(div().flex_1().child("Connector"))
             .children(backends.iter().map(|b| {
                 div()
-                    .w(px(COLUMN))
+                    .w(crate::theme::rem(COLUMN))
                     .flex_none()
                     .flex()
                     .items_center()
-                    .gap(px(6.))
+                    .gap(crate::theme::rem(6.))
                     .when(pending.contains(b), |d| {
                         d.child(status_dot(Status::Running))
                     })
@@ -190,7 +190,7 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .px_4()
-                .py(px(8.))
+                .py(crate::theme::rem(8.))
                 .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
                 .child(
                     div()
@@ -205,7 +205,7 @@ impl Workspace {
                         )
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(crate::theme::rem(11.5))
                                 .text_color(theme::fg_faint())
                                 .child(kinds.join(" · ")),
                         ),
@@ -243,7 +243,7 @@ impl Workspace {
                     .border_color(theme::border())
                     .bg(theme::panel())
                     .overflow_hidden()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::rem(13.))
                     .child(head)
                     .children(body)
                     .when(count == 0, |d| d.child(empty(none))),
@@ -273,12 +273,12 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .py(px(5.))
+                    .py(crate::theme::rem(5.))
                     .border_b_1()
                     .border_color(theme::border())
                     .child(
                         div()
-                            .w(px(160.))
+                            .w(crate::theme::rem(160.))
                             .flex_none()
                             .font_weight(FontWeight::MEDIUM)
                             .child(name.clone()),
@@ -292,13 +292,13 @@ impl Workspace {
                             .child(
                                 div()
                                     .font_family(theme::MONO)
-                                    .text_size(px(12.))
+                                    .text_size(crate::theme::rem(12.))
                                     .child(command),
                             )
                             .when(!env.is_empty(), |d| {
                                 d.child(
                                     div()
-                                        .text_size(px(11.5))
+                                        .text_size(crate::theme::rem(11.5))
                                         .text_color(theme::fg_faint())
                                         .child(format!("Environment: {}", env.join(", "))),
                                 )
@@ -319,7 +319,7 @@ impl Workspace {
             .gap_2()
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(crate::theme::rem(14.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("Your own servers, for every CLI"),
             )
@@ -330,7 +330,7 @@ impl Workspace {
             .children(self.snapshot.shared_tools_error.as_ref().map(|e| {
                 div()
                     .text_color(theme::err())
-                    .text_size(px(12.))
+                    .text_size(crate::theme::rem(12.))
                     .child(format!("Could not read the list: {e}"))
             }))
             .children(rows)
@@ -350,7 +350,7 @@ impl Workspace {
                     .bg(theme::panel())
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::rem(12.))
                             .text_color(theme::fg_muted())
                             .child("Add a server"),
                     )
@@ -358,13 +358,17 @@ impl Workspace {
                         div()
                             .flex()
                             .gap_2()
-                            .child(div().w(px(200.)).child(Input::new(&form.name)))
+                            .child(
+                                div()
+                                    .w(crate::theme::rem(200.))
+                                    .child(Input::new(&form.name)),
+                            )
                             .child(div().flex_1().child(Input::new(&form.command))),
                     )
                     .child(Input::new(&form.env))
                     .children(form.error.as_ref().map(|e| {
                         div()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::rem(12.))
                             .text_color(theme::err())
                             .child(e.clone())
                     }))
@@ -412,19 +416,24 @@ fn kind_name(kind: ConnectorKind) -> &'static str {
 fn cell(entries: &[&Connector]) -> gpui::Div {
     let on = entries.iter().any(|c| c.state == ConnectorState::On);
     div()
-        .w(px(COLUMN))
+        .w(crate::theme::rem(COLUMN))
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(6.))
-        .text_size(px(12.5))
+        .gap(crate::theme::rem(6.))
+        .text_size(crate::theme::rem(12.5))
         .text_color(if on {
             theme::fg_muted()
         } else {
             theme::fg_faint()
         })
         .when(on, |d| {
-            d.child(div().size(px(8.)).rounded_full().bg(theme::ok()))
+            d.child(
+                div()
+                    .size(crate::theme::rem(8.))
+                    .rounded_full()
+                    .bg(theme::ok()),
+            )
         })
         .child(if on { "connected" } else { "—" })
 }
@@ -432,16 +441,16 @@ fn cell(entries: &[&Connector]) -> gpui::Div {
 /// A CLI still being asked: its column says so on every row.
 fn checking() -> gpui::Div {
     div()
-        .w(px(COLUMN))
+        .w(crate::theme::rem(COLUMN))
         .flex_none()
-        .text_size(px(12.5))
+        .text_size(crate::theme::rem(12.5))
         .text_color(theme::fg_faint())
         .child("checking…")
 }
 
 fn hint(text: &str) -> gpui::Div {
     div()
-        .text_size(px(12.))
+        .text_size(crate::theme::rem(12.))
         .text_color(theme::fg_faint())
         .child(text.to_owned())
 }

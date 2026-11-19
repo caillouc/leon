@@ -238,6 +238,14 @@ pub fn install(cx: &mut gpui::App) {
     gpui_component::Theme::sync_base(cx);
 }
 
+/// A size given in pixels at 100 %, which grows with the app's zoom
+/// (SETTINGS-2): the window's rem is 16 px times the zoom. Text, icons,
+/// spacing and widths use it; the flow diagram keeps pixels, under its own
+/// zoom.
+pub fn rem(size: f32) -> gpui::Rems {
+    gpui::rems(size / 16.)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{accent, err, fg_muted, github_color, merged, ok, rgb, status_colors, warn};

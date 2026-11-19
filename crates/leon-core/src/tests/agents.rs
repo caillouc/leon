@@ -422,6 +422,29 @@ async fn an_agent_links_issues_and_pull_requests() {
     assert_eq!(prs, [7]);
 }
 
+/// An answer that comes while Leon is behind another app is unread, even on
+/// its tab; coming back to Leon on that tab reads it (NAV-4).
+#[tokio::test(flavor = "multi_thread")]
+async fn coming_back_to_the_tab_reads_its_answer() {
+    let h = harness();
+    h.core.send(Intent::Read(Some(ConversationId(1))));
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    h.core.send(Intent::WindowActive(false));
+    end_turn(&h, 0, "Done.");
+    let s = until(&h.core, "unread while away", |s| {
+        s.conversations[&planner].conversation.unread
+    })
+    .await;
+    assert_eq!(s.notifications.len(), 1);
+    h.core.send(Intent::WindowActive(true));
+    let s = until(&h.core, "read on coming back", |s| {
+        !s.conversations[&planner].conversation.unread
+    })
+    .await;
+    assert!(!s.flows[0].flow.unread);
+}
+
 /// The user marks one agent unread: it is to review, and so is its flow,
 /// until they open its tab (NAV-4).
 #[tokio::test(flavor = "multi_thread")]

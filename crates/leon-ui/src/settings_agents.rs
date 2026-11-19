@@ -2,7 +2,7 @@
 //! agents and skills from, with what each holds, and the order in which CLIs
 //! are tried for an agent file's model (EXT-6).
 
-use gpui::{AnyElement, Context, div, prelude::*, px};
+use gpui::{AnyElement, Context, div, prelude::*};
 use leon_core::ports::AgentFolder;
 use leon_domain::{BackendKind, ConversationDefaults, Settings, full_cli_order};
 
@@ -75,7 +75,7 @@ impl Workspace {
             };
             let remove = div()
                 .id(("source-remove", ix))
-                .p(px(3.))
+                .p(crate::theme::rem(3.))
                 .rounded_md()
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::surface_2()))
@@ -92,7 +92,7 @@ impl Workspace {
             .when(rows.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_size(px(12.5))
+                        .text_size(crate::theme::rem(12.5))
                         .text_color(theme::fg_faint())
                         .child("No folder yet: ~/.agents, ~/.claude and ~/.github are read when they exist."),
                 )
@@ -188,7 +188,7 @@ fn cli_box(ix: usize, name: &str, lifted: bool) -> gpui::Div {
         .items_center()
         .gap_2()
         .px_3()
-        .py(px(6.))
+        .py(crate::theme::rem(6.))
         .rounded_lg()
         .border_1()
         .border_color(if lifted {
@@ -198,18 +198,18 @@ fn cli_box(ix: usize, name: &str, lifted: bool) -> gpui::Div {
         })
         .bg(theme::surface())
         .when(lifted, gpui::Styled::shadow_lg)
-        .text_size(px(13.))
+        .text_size(crate::theme::rem(13.))
         .child(div().text_color(theme::fg_faint()).child("⋮⋮"))
         .when(!lifted, |d| {
             d.child(
                 div()
-                    .size(px(18.))
+                    .size(crate::theme::rem(18.))
                     .rounded_full()
                     .bg(theme::surface_2())
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(11.))
+                    .text_size(crate::theme::rem(11.))
                     .text_color(theme::fg_muted())
                     .child(format!("{}", ix + 1)),
             )
@@ -241,7 +241,7 @@ fn row(label: &str, holds: Option<&AgentFolder>, remove: Option<AnyElement>) -> 
         .flex()
         .items_center()
         .gap_3()
-        .py(px(5.))
+        .py(crate::theme::rem(5.))
         .border_b_1()
         .border_color(theme::border())
         .child(
@@ -252,13 +252,13 @@ fn row(label: &str, holds: Option<&AgentFolder>, remove: Option<AnyElement>) -> 
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .font_family(theme::MONO)
-                .text_size(px(12.5))
+                .text_size(crate::theme::rem(12.5))
                 .child(label.to_owned()),
         )
         .child(
             div()
                 .flex_none()
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .text_color(theme::fg_muted())
                 .child(holds),
         )

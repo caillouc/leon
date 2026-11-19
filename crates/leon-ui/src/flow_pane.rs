@@ -2,7 +2,7 @@
 //! each conversation), transcript and composer.
 
 use gpui::{
-    AnyElement, ClipboardItem, Context, IntoElement, SharedString, Window, div, prelude::*, px,
+    AnyElement, ClipboardItem, Context, IntoElement, SharedString, Window, div, prelude::*,
 };
 use leon_core::ConversationView;
 use leon_domain::{ConversationId, FlowId, Status};
@@ -60,7 +60,7 @@ impl Workspace {
         let id = view.flow.id;
         let c = &view.flow;
         let title = div()
-            .text_size(px(15.))
+            .text_size(crate::theme::rem(15.))
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .overflow_hidden()
             .whitespace_nowrap()
@@ -79,12 +79,12 @@ impl Workspace {
             div()
                 .id("worktree-chip")
                 .px_2()
-                .py(px(2.))
+                .py(crate::theme::rem(2.))
                 .rounded_md()
                 .border_1()
                 .border_color(theme::border())
                 .bg(theme::surface())
-                .text_size(px(11.5))
+                .text_size(crate::theme::rem(11.5))
                 .text_color(theme::fg_muted())
                 .cursor_pointer()
                 .hover(|s| s.text_color(theme::fg()))
@@ -110,7 +110,7 @@ impl Workspace {
                 // (NAV-4).
                 view.flow.unread.then(|| {
                     div()
-                        .size(px(7.))
+                        .size(crate::theme::rem(7.))
                         .rounded_full()
                         .bg(theme::ok())
                         .into_any_element()
@@ -156,7 +156,7 @@ impl Workspace {
             .flex_col()
             .child(
                 div()
-                    .h(px(HEADER_HEIGHT))
+                    .h(crate::theme::rem(HEADER_HEIGHT))
                     .px_5()
                     .flex()
                     .items_center()
@@ -170,7 +170,7 @@ impl Workspace {
                         d.child(
                             div()
                                 .id("right-open")
-                                .p(px(4.))
+                                .p(crate::theme::rem(4.))
                                 .rounded_md()
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme::surface_2()))

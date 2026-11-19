@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use gpui::{AnyElement, Context, IntoElement, div, prelude::*, px};
+use gpui::{AnyElement, Context, IntoElement, div, prelude::*};
 
 use crate::theme;
 use crate::widgets::HEADER_HEIGHT;
@@ -53,9 +53,9 @@ impl Workspace {
         Some(
             div()
                 .absolute()
-                .top(px(HEADER_HEIGHT + 12.))
+                .top(crate::theme::rem(HEADER_HEIGHT + 12.))
                 .right_4()
-                .max_w(px(360.))
+                .max_w(crate::theme::rem(360.))
                 .px_3()
                 .py_2()
                 .rounded_lg()
@@ -63,7 +63,7 @@ impl Workspace {
                 .border_color(theme::border_strong())
                 .bg(theme::surface())
                 .shadow_lg()
-                .text_size(px(12.5))
+                .text_size(crate::theme::rem(12.5))
                 .child(text)
                 .into_any_element(),
         )

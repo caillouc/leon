@@ -258,6 +258,7 @@ impl Workspace {
             // Notifications from before this window opened are not shown again.
             self.shown_notifications = self.snapshot.notifications.last().map_or(0, |n| n.id);
         }
+        let mut new = false;
         for n in self
             .snapshot
             .notifications
@@ -270,6 +271,11 @@ impl Workspace {
                 body: n.body.clone().into(),
                 actions: Vec::new(),
             });
+            new = true;
+        }
+        // One short sound, however many came at once (NOTIF-1).
+        if new {
+            crate::sound::play();
         }
         self.shown_notifications = self
             .snapshot
@@ -288,7 +294,17 @@ impl Workspace {
     /// Shows a flow on its Flow tab (NAV-7, FLOW-4).
     pub(crate) fn select(&mut self, id: FlowId, cx: &mut Context<Self>) {
         self.screen = Screen::Flow(id);
-        self.tabs.remove(&id);
+        // On its Flow tab, or on the conversation the user started it with
+        // (SETTINGS-3); its other tabs stay.
+        let first = self
+            .snapshot
+            .flow(id)
+            .and_then(|f| f.conversations.first().copied())
+            .filter(|_| self.snapshot.settings.open_on == leon_domain::OpenOn::Conversation);
+        match first {
+            Some(c) => self.tabs.insert(id, Tab::Conversation(c)),
+            None => self.tabs.remove(&id),
+        };
         self.close_detail();
         self.open_picker = None;
         self.rename = None;
@@ -406,6 +422,8 @@ impl Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The app's text size (SETTINGS-2): text sizes are in rems.
+        window.set_rem_size(px(16. * self.snapshot.settings.zoom.factor()));
         if let Some(started) = self.started.take() {
             window.on_next_frame(move |_window, _cx| {
                 tracing::info!(startup_ms = started.elapsed().as_millis(), "first frame");
@@ -440,7 +458,7 @@ impl Render for Workspace {
             .flex_row()
             .bg(theme::window())
             .text_color(theme::fg())
-            .text_size(px(13.))
+            .text_size(crate::theme::rem(13.))
             .on_mouse_move(cx.listener(|this, e, window, cx| this.resize_panes(e, window, cx)))
             .on_mouse_up(
                 gpui::MouseButton::Left,

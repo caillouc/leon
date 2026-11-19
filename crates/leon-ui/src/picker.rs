@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, Context, IntoElement, SharedString, Window, anchored, deferred, div, prelude::*, px,
+    AnyElement, Context, IntoElement, SharedString, Window, anchored, deferred, div, prelude::*,
 };
 
 use crate::icons::{Icon, icon};
@@ -57,20 +57,20 @@ impl Workspace {
         let trigger = match look {
             Look::Inline => trigger
                 .px_2()
-                .py(px(2.))
+                .py(crate::theme::rem(2.))
                 .rounded_md()
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .text_color(theme::fg_muted())
                 .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
                 .when(open, |s| s.bg(theme::surface_2()))
                 .flex()
                 .items_center()
-                .gap(px(3.))
+                .gap(crate::theme::rem(3.))
                 .child(current.to_owned())
                 .child(icon(Icon::ChevronDown, theme::fg_faint(), 12.)),
             Look::Field => trigger
                 .w_full()
-                .h(px(32.))
+                .h(crate::theme::rem(32.))
                 .px_3()
                 .flex()
                 .items_center()
@@ -84,7 +84,7 @@ impl Workspace {
                     theme::border_strong()
                 })
                 .bg(theme::surface())
-                .text_size(px(13.))
+                .text_size(crate::theme::rem(13.))
                 .hover(|s| s.bg(theme::surface_2()))
                 .child(
                     div()
@@ -118,7 +118,7 @@ impl Workspace {
                     .px_2()
                     .py_1()
                     .rounded_md()
-                    .text_size(px(12.5))
+                    .text_size(crate::theme::rem(12.5))
                     .cursor_pointer()
                     .when(selected, |s| s.bg(theme::accent_soft()))
                     .hover(|s| s.bg(theme::surface_2()))
@@ -131,8 +131,8 @@ impl Workspace {
             });
             let list = div()
                 .id(SharedString::from(format!("{id}-list")))
-                .min_w(px(160.))
-                .max_h(px(320.))
+                .min_w(crate::theme::rem(160.))
+                .max_h(crate::theme::rem(320.))
                 .overflow_y_scroll()
                 .p_1()
                 .rounded_lg()
@@ -152,7 +152,7 @@ impl Workspace {
             // (bottom of the window) open upwards, a form's downwards.
             let (place, anchor) = match look {
                 Look::Inline => (
-                    div().absolute().top(px(-4.)).left_0(),
+                    div().absolute().top(crate::theme::rem(-4.)).left_0(),
                     gpui::Anchor::BottomLeft,
                 ),
                 Look::Field => (
@@ -165,7 +165,7 @@ impl Workspace {
                     deferred(
                         anchored()
                             .anchor(anchor)
-                            .snap_to_window_with_margin(px(8.))
+                            .snap_to_window_with_margin(gpui::px(8.))
                             .child(list),
                     )
                     .with_priority(1),

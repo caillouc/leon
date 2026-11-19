@@ -4,7 +4,6 @@
 
 use gpui::{
     AnyElement, Context, Div, IntoElement, Render, SharedString, Stateful, Window, div, prelude::*,
-    px,
 };
 use leon_domain::{CheckState, FlowId, GhRef, PrState, PullRequest};
 
@@ -40,14 +39,19 @@ pub(crate) fn flow_prs(id: FlowId, prs: Vec<PullRequest>) -> Option<AnyElement> 
             .flex()
             .flex_none()
             .items_center()
-            .gap(px(3.))
-            .px(px(4.))
-            .rounded(px(4.))
+            .gap(crate::theme::rem(3.))
+            .px(crate::theme::rem(4.))
+            .rounded(crate::theme::rem(4.))
             .text_color(pr_state(state).0)
             .hover(|s| s.bg(theme::surface_2()))
             .child(pr_icon(state, 13.))
             .child(prs.len().to_string())
-            .children(checks.map(|s| div().size(px(6.)).rounded_full().bg(check_color(s))))
+            .children(checks.map(|s| {
+                div()
+                    .size(crate::theme::rem(6.))
+                    .rounded_full()
+                    .bg(check_color(s))
+            }))
             .hoverable_tooltip(move |_, cx| cx.new(|_| PrList(prs.clone())).into())
             .into_any_element(),
     )
@@ -59,7 +63,7 @@ struct PrList(Vec<PullRequest>);
 impl Render for PrList {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
-            .w(px(380.))
+            .w(crate::theme::rem(380.))
             .p_1()
             .rounded_lg()
             .border_1()
@@ -87,15 +91,15 @@ fn row(ix: usize, pr: &PullRequest) -> Stateful<Div> {
     div()
         .id(ix)
         .px_3()
-        .py(px(6.))
+        .py(crate::theme::rem(6.))
         .rounded_md()
         .cursor_pointer()
         .hover(|s| s.bg(theme::accent_soft()))
         .flex()
         .flex_col()
-        .gap(px(2.))
+        .gap(crate::theme::rem(2.))
         .child(
-            ellipsis(div().text_size(px(13.)))
+            ellipsis(div().text_size(crate::theme::rem(13.)))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .child(pr.title.clone()),
         )
@@ -103,8 +107,8 @@ fn row(ix: usize, pr: &PullRequest) -> Stateful<Div> {
             div()
                 .flex()
                 .items_center()
-                .gap(px(5.))
-                .text_size(px(12.))
+                .gap(crate::theme::rem(5.))
+                .text_size(crate::theme::rem(12.))
                 .child(pr_icon(pr.state, 12.))
                 .child(div().flex_none().text_color(color).child(state))
                 .child(div().text_color(theme::fg_faint()).child("·"))

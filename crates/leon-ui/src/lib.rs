@@ -49,6 +49,7 @@ mod settings_agents;
 mod settings_pickers;
 mod settings_view;
 mod shortcuts;
+mod sound;
 mod spinner;
 mod sprints;
 mod theme;

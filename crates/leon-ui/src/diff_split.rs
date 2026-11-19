@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use gpui::{
     AnyElement, Bounds, Context, CursorStyle, IntoElement, MouseButton, MouseMoveEvent, Pixels,
-    canvas, div, prelude::*, px, relative,
+    canvas, div, prelude::*, relative,
 };
 
 use crate::diff_rows::Data;
@@ -48,12 +48,12 @@ pub(crate) fn pair(data: &Rc<Data>, old: AnyElement, new: AnyElement) -> AnyElem
         .child(
             div()
                 .id("diff-divider")
-                .w(px(DIVIDER))
+                .w(crate::theme::rem(DIVIDER))
                 .flex_none()
                 .flex()
                 .justify_center()
                 .cursor(CursorStyle::ResizeLeftRight)
-                .child(div().w(px(1.)).h_full().bg(theme::border()))
+                .child(div().w(crate::theme::rem(1.)).h_full().bg(theme::border()))
                 .hover(|s| s.bg(theme::accent_soft()))
                 .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                     cx.stop_propagation();
@@ -78,7 +78,7 @@ pub(crate) fn under_side(data: &Rc<Data>, removed: bool, row: AnyElement) -> Any
     div()
         .flex()
         .child(div().w(relative(ratio)).min_w_0().children(left))
-        .child(div().w(px(DIVIDER)).flex_none())
+        .child(div().w(crate::theme::rem(DIVIDER)).flex_none())
         .child(div().flex_1().min_w_0().children(right))
         .into_any_element()
 }

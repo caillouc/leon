@@ -4,7 +4,7 @@
 
 use gpui::{
     AnyElement, App, ClipboardItem, ContentMask, Context, Entity, Focusable, IntoElement,
-    SharedString, TextAlign, TextRun, Window, canvas, deferred, div, point, prelude::*, px,
+    SharedString, TextAlign, TextRun, Window, canvas, deferred, div, point, prelude::*,
 };
 use gpui_component::input::{InlineToken, InputContent, Paste, TextareaState};
 use leon_core::ports::SlashCommand;
@@ -130,7 +130,7 @@ impl Workspace {
                 .child(
                     div()
                         .font_family(theme::MONO)
-                        .text_size(px(12.))
+                        .text_size(crate::theme::rem(12.))
                         .child(format!("/{}", c.name)),
                 )
                 .child(
@@ -140,7 +140,7 @@ impl Workspace {
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(px(12.))
+                        .text_size(crate::theme::rem(12.))
                         .text_color(theme::fg_muted())
                         .child(c.description.clone()),
                 )
@@ -148,7 +148,7 @@ impl Workspace {
                     d.child(
                         div()
                             .flex_none()
-                            .text_size(px(11.))
+                            .text_size(crate::theme::rem(11.))
                             .text_color(theme::fg_faint())
                             .child("⇥ Tab"),
                     )

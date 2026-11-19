@@ -3,7 +3,7 @@
 //! stands out: its state's colour along its left side, its state, its title
 //! in bold, its lines and its checks that did not pass. An issue stays plain.
 
-use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, Stateful, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, FontWeight, IntoElement, Stateful, div, prelude::*};
 use leon_core::{FlowView, Intent};
 use leon_domain::{CheckState, GhRef, PrState};
 
@@ -28,25 +28,25 @@ impl Workspace {
                 card(("info-pr", ix), &item, cx)
                     .relative()
                     .overflow_hidden()
-                    .pl(px(15.))
+                    .pl(crate::theme::rem(15.))
                     .child(
                         div()
                             .absolute()
                             .left_0()
                             .top_0()
                             .bottom_0()
-                            .w(px(3.))
+                            .w(crate::theme::rem(3.))
                             .bg(color),
                     )
                     .child(
                         header(pr_icon(pr.state, 14.), "Pull request", &item).child(
                             div()
                                 .flex_none()
-                                .px(px(6.))
-                                .rounded(px(4.))
+                                .px(crate::theme::rem(6.))
+                                .rounded(crate::theme::rem(4.))
                                 .border_1()
                                 .border_color(color)
-                                .text_size(px(11.))
+                                .text_size(crate::theme::rem(11.))
                                 .text_color(color)
                                 .child(state),
                         ),
@@ -58,7 +58,7 @@ impl Workspace {
                             .gap_2()
                             .child(
                                 title(pr.title.clone())
-                                    .text_size(px(13.))
+                                    .text_size(crate::theme::rem(13.))
                                     .font_weight(FontWeight::SEMIBOLD),
                             )
                             .children(pr.lines.map(|(added, removed)| counts(added, removed))),
@@ -73,7 +73,7 @@ impl Workspace {
                                     .flex()
                                     .items_center()
                                     .gap_2()
-                                    .text_size(px(12.5))
+                                    .text_size(crate::theme::rem(12.5))
                                     .text_color(theme::err())
                                     .child(icon(Icon::Failed, theme::err(), 14.))
                                     .child(format!("Conflicts with {}", pr.base)),
@@ -110,7 +110,9 @@ impl Workspace {
                         "Issue",
                         item,
                     ))
-                    .children(known.map(|i| title(i.title.clone()).text_size(px(12.5))))
+                    .children(
+                        known.map(|i| title(i.title.clone()).text_size(crate::theme::rem(12.5))),
+                    )
                     .children(
                         known
                             .filter(|i| !i.labels.is_empty())
@@ -134,7 +136,7 @@ fn card(id: (&'static str, usize), item: &GhRef, cx: &mut Context<Workspace>) ->
         .py_2()
         .flex()
         .flex_col()
-        .gap(px(5.))
+        .gap(crate::theme::rem(5.))
         .rounded_lg()
         .border_1()
         .border_color(theme::border())
@@ -153,7 +155,12 @@ fn header(glyph: gpui::Svg, what: &'static str, item: &GhRef) -> Div {
         .items_center()
         .gap_2()
         .child(glyph)
-        .child(div().flex_none().text_size(px(12.5)).child(what))
+        .child(
+            div()
+                .flex_none()
+                .text_size(crate::theme::rem(12.5))
+                .child(what),
+        )
         .child(
             div()
                 .flex_1()
@@ -162,7 +169,7 @@ fn header(glyph: gpui::Svg, what: &'static str, item: &GhRef) -> Div {
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .font_family(theme::MONO)
-                .text_size(px(12.))
+                .text_size(crate::theme::rem(12.))
                 .text_color(theme::fg_muted())
                 .child(item.text()),
         )

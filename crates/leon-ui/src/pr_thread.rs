@@ -1,7 +1,7 @@
 //! An open review thread of a pull request, as on GitHub (GH-3, GH-8): the
 //! code it is on, its comments, and answering or resolving it from Leon.
 
-use gpui::{Context, Div, Focusable, FontWeight, SharedString, div, prelude::*, px};
+use gpui::{Context, Div, Focusable, FontWeight, SharedString, div, prelude::*};
 use gpui_component::input::Textarea;
 use leon_core::Intent;
 use leon_domain::{Comment, GhRef, PullRequest, ReviewThread};
@@ -33,7 +33,7 @@ impl Workspace {
             .child(
                 div()
                     .px_3()
-                    .py(px(7.))
+                    .py(crate::theme::rem(7.))
                     .flex()
                     .items_center()
                     .gap_2()
@@ -48,13 +48,13 @@ impl Workspace {
                             .whitespace_nowrap()
                             .text_ellipsis()
                             .font_family(theme::MONO)
-                            .text_size(px(12.))
+                            .text_size(crate::theme::rem(12.))
                             .child(thread.path.clone()),
                     )
                     .children(thread.line.map(|line| {
                         div()
                             .flex_none()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::rem(12.))
                             .text_color(theme::fg_muted())
                             .child(format!("line {line}"))
                     }))
@@ -62,11 +62,11 @@ impl Workspace {
                     .when(thread.line.is_none(), |d| {
                         d.child(
                             div()
-                                .px(px(7.))
+                                .px(crate::theme::rem(7.))
                                 .rounded_full()
                                 .border_1()
                                 .border_color(tint(theme::warn(), 0.6))
-                                .text_size(px(11.))
+                                .text_size(crate::theme::rem(11.))
                                 .text_color(theme::warn())
                                 .child("Outdated"),
                         )
@@ -80,7 +80,7 @@ impl Workspace {
                         .border_b_1()
                         .border_color(theme::border())
                         .font_family(theme::MONO)
-                        .text_size(px(11.5))
+                        .text_size(crate::theme::rem(11.5))
                         .children(
                             thread
                                 .code
@@ -110,7 +110,7 @@ impl Workspace {
         let item = GhRef::pull_request(&pr.repo, pr.number);
         let footer = div()
             .px_3()
-            .py(px(7.))
+            .py(crate::theme::rem(7.))
             .border_t_1()
             .border_color(theme::border())
             .flex()
@@ -197,8 +197,8 @@ impl Workspace {
                     .id(SharedString::from(format!("{id}-github")))
                     .flex()
                     .items_center()
-                    .gap(px(5.))
-                    .text_size(px(12.))
+                    .gap(crate::theme::rem(5.))
+                    .text_size(crate::theme::rem(12.))
                     .text_color(theme::accent())
                     .cursor_pointer()
                     .child(icon(Icon::External, theme::accent(), 12.))
@@ -228,13 +228,13 @@ impl Workspace {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap(px(2.))
+                    .gap(crate::theme::rem(2.))
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(5.))
-                            .text_size(px(12.5))
+                            .gap(crate::theme::rem(5.))
+                            .text_size(crate::theme::rem(12.5))
                             .child(
                                 div()
                                     .font_weight(FontWeight::SEMIBOLD)
@@ -242,11 +242,11 @@ impl Workspace {
                             )
                             .child(div().text_color(theme::fg_faint()).child(since(comment.at))),
                     )
-                    .child(div().text_size(px(13.)).child(self.rich_markdown(
-                        id,
-                        &comment.body,
-                        cx,
-                    ))),
+                    .child(
+                        div()
+                            .text_size(crate::theme::rem(13.))
+                            .child(self.rich_markdown(id, &comment.body, cx)),
+                    ),
             )
     }
 }
@@ -272,7 +272,7 @@ fn code_line(line: &str, last: bool) -> Div {
         })
         .child(
             div()
-                .w(px(22.))
+                .w(crate::theme::rem(22.))
                 .flex_none()
                 .text_center()
                 .text_color(sign_color)

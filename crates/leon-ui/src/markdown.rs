@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use gpui::{AnyElement, Context, ElementId, IntoElement, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, Context, ElementId, IntoElement, SharedString, div, prelude::*};
 use gpui_component::text::TextView;
 
 use crate::icons::{Icon, chevron, icon};
@@ -137,14 +137,14 @@ fn code_corner(lang: Option<SharedString>, code: SharedString) -> AnyElement {
         .items_center()
         .gap_2()
         .px_1()
-        .text_size(px(11.))
+        .text_size(crate::theme::rem(11.))
         .text_color(theme::fg_faint())
         .children(lang)
         .child(
             div()
                 .id("copy")
-                .p(px(3.))
-                .rounded(px(4.))
+                .p(crate::theme::rem(3.))
+                .rounded(crate::theme::rem(4.))
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::surface_2()))
                 .child(icon(Icon::Copy, theme::fg_muted(), 13.))
@@ -181,7 +181,7 @@ impl Workspace {
                             div()
                                 .id(key.clone())
                                 .px_2()
-                                .py(px(5.))
+                                .py(crate::theme::rem(5.))
                                 .flex()
                                 .items_center()
                                 .gap_2()

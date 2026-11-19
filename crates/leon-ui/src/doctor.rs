@@ -1,7 +1,7 @@
 //! The doctor view: what works, what is missing, and what to do, like
 //! `flutter doctor`. Opened from the bottom of the left pane.
 
-use gpui::{AnyElement, Context, FontWeight, IntoElement, Rgba, div, prelude::*, px};
+use gpui::{AnyElement, Context, FontWeight, IntoElement, Rgba, div, prelude::*};
 use leon_core::Intent;
 use leon_domain::{DoctorSection, Health};
 
@@ -89,10 +89,10 @@ impl Workspace {
                     .overflow_y_scroll()
                     .px_6()
                     .py_4()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::rem(13.))
                     .child(
                         div()
-                            .max_w(px(820.))
+                            .max_w(crate::theme::rem(820.))
                             .w_full()
                             .mx_auto()
                             .flex()
@@ -117,20 +117,24 @@ pub(crate) fn report(sections: &[DoctorSection]) -> Vec<AnyElement> {
                 let (glyph, color) = mark(check.health);
                 div()
                     .px_4()
-                    .py(px(8.))
+                    .py(crate::theme::rem(8.))
                     .flex()
                     .flex_col()
-                    .gap(px(6.))
+                    .gap(crate::theme::rem(6.))
                     .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
                     .child(
                         div()
                             .flex()
                             .items_start()
                             .gap_3()
-                            .child(div().pt(px(1.)).child(icon(glyph, color, 15.)))
                             .child(
                                 div()
-                                    .w(px(170.))
+                                    .pt(crate::theme::rem(1.))
+                                    .child(icon(glyph, color, 15.)),
+                            )
+                            .child(
+                                div()
+                                    .w(crate::theme::rem(170.))
                                     .flex_none()
                                     .text_color(theme::fg())
                                     .child(check.name.clone()),
@@ -145,14 +149,14 @@ pub(crate) fn report(sections: &[DoctorSection]) -> Vec<AnyElement> {
                     )
                     .children(check.fix.as_ref().map(|fix| {
                         div()
-                            .ml(px(27.))
+                            .ml(crate::theme::rem(27.))
                             .px_3()
-                            .py(px(6.))
+                            .py(crate::theme::rem(6.))
                             .rounded_md()
                             .bg(Rgba { a: 0.12, ..color })
                             .border_1()
                             .border_color(Rgba { a: 0.35, ..color })
-                            .text_size(px(12.5))
+                            .text_size(crate::theme::rem(12.5))
                             .child(fix.clone())
                     }))
             });
@@ -174,7 +178,7 @@ pub(crate) fn report(sections: &[DoctorSection]) -> Vec<AnyElement> {
                         .child(icon(glyph, color, 16.))
                         .child(
                             div()
-                                .text_size(px(14.))
+                                .text_size(crate::theme::rem(14.))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child(section.title.clone()),
                         ),
