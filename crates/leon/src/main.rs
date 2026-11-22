@@ -18,6 +18,11 @@ fn main() -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("mcp") {
         return leon_app_tools::bridge().context("running the MCP bridge for Leon's tools");
     }
+    // Leon runs each CLI under `leon hold <dir> -- <cli> <args…>`, which
+    // outlives Leon (I24).
+    if std::env::args().nth(1).as_deref() == Some("hold") {
+        return hold();
+    }
     let (settings, config, config_warnings) = load_settings();
     // Leon's shared MCP list (I14) sits next to the config file.
     let shared_tools = config
@@ -50,7 +55,9 @@ fn main() -> anyhow::Result<()> {
     let ports = leon_core::Ports {
         storage: Arc::new(store),
         backends: Arc::new(
-            leon_backends::Clis::new(login_path).with_skills_folder(data.join("skills")),
+            leon_backends::Clis::new(login_path)
+                .with_skills_folder(data.join("skills"))
+                .with_holders(exe.clone(), data.join("runs")),
         ),
         catalog: Arc::new(leon_catalog::AgentFiles::new(home, sources)),
         git: Arc::new(leon_git::GitCli::new(login_path)),
@@ -74,8 +81,25 @@ fn main() -> anyhow::Result<()> {
         }
         Err(error) => tracing::error!(%error, "agents cannot start other agents"),
     }
+    // Only now: the doctor checks Leon's tools listen.
+    core.send(leon_core::Intent::RunDoctor);
     leon_ui::run(core, started);
     Ok(())
+}
+
+/// `leon hold <dir> -- <cli> <args…>`: runs the CLI as its holder until it
+/// ends (I24).
+fn hold() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().skip(2).collect();
+    let (Some(dir), Some("--")) = (args.first(), args.get(1).map(String::as_str)) else {
+        anyhow::bail!("usage: leon hold <dir> -- <cli> <args…>");
+    };
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("starting the holder's runtime")?
+        .block_on(leon_backends::hold(std::path::Path::new(dir), &args[2..]))
+        .context("holding a CLI")
 }
 
 /// The user's shell `PATH`, read once on first use. An app started from

@@ -91,11 +91,18 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
     let (tools, tool_rx) = unbounded_channel();
     let ticker = internal_tx.clone();
     runtime.spawn(async move {
-        let mut every = tokio::time::interval(std::time::Duration::from_secs(120));
+        // Every 30 s the flow looked at, while its checks run; every
+        // 2 min everything.
+        let mut every = tokio::time::interval(std::time::Duration::from_secs(30));
         every.tick().await;
-        loop {
+        for n in 1_u64.. {
             every.tick().await;
-            if ticker.send(Internal::Tick).is_err() {
+            let tick = if n % 4 == 0 {
+                Internal::Tick
+            } else {
+                Internal::QuickTick
+            };
+            if ticker.send(tick).is_err() {
                 return;
             }
         }
@@ -164,7 +171,8 @@ pub(crate) struct Core {
     pub(crate) live: HashMap<ConversationId, UnboundedSender<BackendCommand>>,
     /// When each live CLI finished its last turn.
     pub(crate) idle_since: HashMap<ConversationId, i64>,
-    viewing: Option<FlowId>,
+    /// The flow the user looks at.
+    pub(crate) viewing: Option<FlowId>,
     /// The conversation whose messages are on screen.
     reading: Option<ConversationId>,
     /// Leon's window is the active one.
@@ -185,7 +193,7 @@ pub(crate) struct Core {
 }
 
 /// Runs a blocking store call without stalling the async workers.
-fn blocking<T>(f: impl FnOnce() -> T) -> T {
+pub(crate) fn blocking<T>(f: impl FnOnce() -> T) -> T {
     tokio::task::block_in_place(f)
 }
 
@@ -198,11 +206,13 @@ impl Core {
         mut tools: UnboundedReceiver<AppToolRequest>,
     ) {
         self.load();
+        self.reattach();
         self.publish();
         self.refresh_all_git();
         self.refresh_links();
         self.refresh_lists();
-        self.run_doctor();
+        // The doctor's first run waits for the binary: Leon's tools must
+        // listen first, or it reports them down at every start.
         loop {
             tokio::select! {
                 intent = intents.recv() => match intent {
@@ -235,7 +245,7 @@ impl Core {
         self.now()
     }
 
-    fn report<T>(result: Result<T, crate::ports::PortError>) -> Option<T> {
+    pub(crate) fn report<T>(result: Result<T, crate::ports::PortError>) -> Option<T> {
         result
             .map_err(|error| tracing::error!(%error, "store"))
             .ok()
@@ -259,6 +269,7 @@ impl Core {
                 .collect(),
         );
         self.state.flows = Self::report(flows).unwrap_or_default();
+        self.load_todos();
         for conversation in Self::report(conversations).unwrap_or_default() {
             self.state
                 .conversations
@@ -347,6 +358,16 @@ impl Core {
                 self.change_settings(conversation, &settings);
             }
             Intent::CollapseProject(id, collapsed) => self.collapse_project(id, collapsed),
+            Intent::OrderProjects(order) => self.order_projects(&order),
+            Intent::OrderTodoFlows(order) => self.order_todo_flows(&order),
+            Intent::AddTodo { flow, when, what } => {
+                if let Err(error) = self.add_todo(flow, (&when, &what), None) {
+                    tracing::warn!(flow = flow.0, %error, "adding a to-do");
+                }
+            }
+            Intent::SetTodoDone(id, done) => self.set_todo_done(id, done),
+            Intent::RemoveTodo(id) => self.remove_todo(id),
+            Intent::EditTodo { id, when, what } => self.edit_todo(id, (&when, &what)),
             Intent::RemoveProject(id) => self.remove_project(id),
             Intent::FoldGroup(key, folded) => self.fold_group(key, folded),
             Intent::Rename(id, title) => self.edit(id, |c| title.trim().clone_into(&mut c.title)),
@@ -400,6 +421,15 @@ impl Core {
             self.state.projects =
                 Arc::new(Self::report(blocking(|| storage.list_projects())).unwrap_or_default());
             self.refresh_agents();
+        }
+    }
+
+    /// Puts the projects in `order` and keeps it (NAV-2).
+    fn order_projects(&mut self, order: &[leon_domain::ProjectId]) {
+        let storage = Arc::clone(&self.ports.storage);
+        if Self::report(blocking(|| storage.set_project_order(order))).is_some() {
+            Arc::make_mut(&mut self.state.projects)
+                .sort_by_key(|p| order.iter().position(|id| *id == p.id));
         }
     }
 
@@ -465,13 +495,13 @@ impl Core {
         let Some(id) = id else { return };
         self.refresh_git(id);
         self.fetch_bases(id);
-        self.refresh_pr(id);
+        self.refresh_flow_github(id);
         for conversation in self.state.conversations_of(id) {
             self.load_transcript(conversation);
         }
     }
 
-    fn load_transcript(&mut self, id: ConversationId) {
+    pub(crate) fn load_transcript(&mut self, id: ConversationId) {
         if self
             .state
             .conversations
@@ -594,7 +624,7 @@ impl Core {
         let backends = Arc::clone(&self.ports.backends);
         let tx = self.internal_tx.clone();
         let (old, text) = (old.to_owned(), text.to_owned());
-        tokio::task::spawn_blocking(move || match backends.title(backend, &text) {
+        crate::jobs::spawn(move || match backends.title(backend, &text) {
             Ok(title) => {
                 let _ = tx.send(Internal::Title(id, old, title));
             }
@@ -666,10 +696,32 @@ impl Core {
         if self.live.get(&id).is_some_and(|c| !c.is_closed()) {
             return true;
         }
-        let Some(s) = self.state.conversations.get(&id) else {
+        let Some(spec) = self.session_spec(id) else {
             return false;
         };
-        let conversation = &s.conversation;
+        match self.ports.backends.start(spec) {
+            Ok(channel) => {
+                self.pump(id, channel);
+                true
+            }
+            Err(error) => {
+                self.record(
+                    id,
+                    Entry::Error {
+                        text: error.to_string(),
+                    },
+                );
+                if let Some(s) = self.state.conversations.get_mut(&id) {
+                    s.status = Status::Error;
+                }
+                false
+            }
+        }
+    }
+
+    /// What conversation `id`'s CLI is started with.
+    pub(crate) fn session_spec(&self, id: ConversationId) -> Option<SessionSpec> {
+        let conversation = &self.state.conversations.get(&id)?.conversation;
         let project = self
             .state
             .flows
@@ -693,7 +745,8 @@ impl Core {
                 catalog.instructions(),
             )
         });
-        let spec = SessionSpec {
+        Some(SessionSpec {
+            conversation: id,
             settings: conversation.settings.clone(),
             agent,
             working_dir: conversation.working_dir.clone(),
@@ -704,35 +757,23 @@ impl Core {
             skills,
             instructions,
             app_instructions: self.ports.app_tools.as_ref().map(|t| t.instructions()),
-        };
-        match self.ports.backends.start(spec) {
-            Ok(channel) => {
-                self.live.insert(id, channel.commands);
-                let tx = self.event_tx.clone();
-                let mut events = channel.events;
-                tokio::spawn(async move {
-                    while let Some(event) = events.recv().await {
-                        if tx.send((id, Some(event))).is_err() {
-                            return;
-                        }
-                    }
-                    let _ = tx.send((id, None));
-                });
-                true
-            }
-            Err(error) => {
-                self.record(
-                    id,
-                    Entry::Error {
-                        text: error.to_string(),
-                    },
-                );
-                if let Some(s) = self.state.conversations.get_mut(&id) {
-                    s.status = Status::Error;
+        })
+    }
+
+    /// Conversation `id`'s CLI is live on `channel`: its events reach the
+    /// core.
+    pub(crate) fn pump(&mut self, id: ConversationId, channel: crate::ports::BackendChannel) {
+        self.live.insert(id, channel.commands);
+        let tx = self.event_tx.clone();
+        let mut events = channel.events;
+        tokio::spawn(async move {
+            while let Some(event) = events.recv().await {
+                if tx.send((id, Some(event))).is_err() {
+                    return;
                 }
-                false
             }
-        }
+            let _ = tx.send((id, None));
+        });
     }
 
     /// Goes back to before entry `entry`, a message of the user, and sends
@@ -910,6 +951,8 @@ impl Core {
         let flow = s.conversation.flow;
         let failed = error.is_some() || s.status == Status::Error;
         s.status = if failed { Status::Error } else { Status::Idle };
+        // Nothing waits for a card's answer once the turn is over (CONV-9).
+        s.question = None;
         let storage = Arc::clone(&self.ports.storage);
         let entries: Vec<TimedEntry> = s.transcript.as_ref().map_or_default(|t| {
             pending

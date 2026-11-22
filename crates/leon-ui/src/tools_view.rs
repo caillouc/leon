@@ -12,12 +12,11 @@ use gpui_component::input::{Input, InputState};
 use leon_core::Intent;
 use leon_domain::{
     BackendKind, CliConnectors, Connector, ConnectorKind, ConnectorRow, ConnectorState, McpServer,
-    Status, connector_table, split_command,
+    connector_table, split_command,
 };
 
-use crate::left::since;
 use crate::theme;
-use crate::widgets::{button, empty, pane_header, primary, status_dot};
+use crate::widgets::{button, empty, pane_header, primary};
 use crate::workspace::{Workspace, value_of};
 
 /// The add form's inputs and its last error.
@@ -83,17 +82,17 @@ impl Workspace {
     pub(crate) fn render_tools(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let pending = &self.snapshot.tools_pending;
         let running = !pending.is_empty();
-        let subtitle = match &self.snapshot.tools {
-            _ if running => format!(
+        let subtitle = if running {
+            format!(
                 "What each coding CLI can reach · asking {}…",
                 pending
                     .iter()
                     .map(|b| b.display_name())
                     .collect::<Vec<_>>()
                     .join(", ")
-            ),
-            Some((at, _)) => format!("What each coding CLI can reach · checked {}", since(*at)),
-            None => "What each coding CLI can reach".to_owned(),
+            )
+        } else {
+            "What each coding CLI can reach".to_owned()
         };
         let header = pane_header("Connectors", Some(subtitle)).child(
             button(
@@ -174,8 +173,13 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap(crate::theme::rem(6.))
+                    // Still being asked: the working loader.
                     .when(pending.contains(b), |d| {
-                        d.child(status_dot(Status::Running))
+                        d.child(crate::spinner::spinner(
+                            gpui::SharedString::from(format!("spin-tools-{}", b.display_name())),
+                            theme::accent(),
+                            12.,
+                        ))
                     })
                     .child(b.display_name())
             }));
@@ -427,14 +431,7 @@ fn cell(entries: &[&Connector]) -> gpui::Div {
         } else {
             theme::fg_faint()
         })
-        .when(on, |d| {
-            d.child(
-                div()
-                    .size(crate::theme::rem(8.))
-                    .rounded_full()
-                    .bg(theme::ok()),
-            )
-        })
+        .when(on, |d| d.child(crate::widgets::mark(theme::ok(), 8.)))
         .child(if on { "connected" } else { "—" })
 }
 

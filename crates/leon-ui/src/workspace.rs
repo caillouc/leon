@@ -33,6 +33,8 @@ pub(crate) enum Screen {
     Tools,
     /// The user's settings (SETTINGS-1).
     Settings,
+    /// Every flow's to-dos (TODO-3).
+    Todos,
 }
 
 /// The tab shown for a flow (FLOW-3): its diagram, one of its conversations,
@@ -69,11 +71,16 @@ pub struct Workspace {
     pub(crate) composer_placeholder: SharedString,
     pub(crate) form_text: Entity<TextareaState>,
     pub(crate) search: Entity<InputState>,
+    /// The to-dos' box and list (TODO-1..TODO-3).
+    pub(crate) todos: crate::todos_view::TodoState,
     /// The flow being renamed in the left pane, its input, and the
     /// subscription that saves on Enter.
     pub(crate) rename: Option<(FlowId, Entity<InputState>, Subscription)>,
     /// The left-pane row whose right-click menu is open, and where.
     pub(crate) row_menu: Option<(crate::row_menu::MenuFor, gpui::Point<gpui::Pixels>)>,
+    /// A project being dragged, and the place it would take: the left pane
+    /// shows the projects in that order while the drag lasts (NAV-2).
+    pub(crate) project_drag: Option<(leon_domain::ProjectId, usize)>,
     pub(crate) form: NewForm,
     pub(crate) open_picker: Option<SharedString>,
     pub(crate) show_archived: bool,
@@ -105,7 +112,7 @@ pub struct Workspace {
     /// shows the user's last message first, once loaded (CONV-15).
     pub(crate) open_at_mine: Option<ConversationId>,
     /// The flows and tabs visited, for back and forward (NAV-12).
-    pub(crate) history: crate::history::History<(FlowId, Option<ConversationId>)>,
+    pub(crate) history: crate::history::History<crate::history::Place>,
     /// Each flow's agent tabs opened, the last one first: the tabs' order
     /// (FLOW-3).
     pub(crate) recent: HashMap<FlowId, Vec<ConversationId>>,
@@ -152,6 +159,7 @@ impl Workspace {
         });
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search flows"));
         let (right, right_subscriptions) = RightState::new(window, cx);
+        let (todos, todo_subscriptions) = crate::todos_view::TodoState::new(window, cx);
         let tools_form = crate::tools_view::ToolsForm::new(window, cx);
         let settings_form = crate::settings_view::SettingsForm::new(window, cx);
         let mut subscriptions = vec![
@@ -180,6 +188,7 @@ impl Workspace {
             }),
         ];
         subscriptions.extend(right_subscriptions);
+        subscriptions.extend(todo_subscriptions);
         subscriptions.push(Self::escape(cx));
         // An answer counts as seen only while this window is the active one.
         subscriptions.push(cx.observe_window_activation(window, |this, window, _| {
@@ -199,8 +208,10 @@ impl Workspace {
             composer_placeholder: crate::message_input::PLACEHOLDER.into(),
             form_text,
             search,
+            todos,
             rename: None,
             row_menu: None,
+            project_drag: None,
             form: NewForm {
                 project: None,
                 settings: ConversationSettings {
@@ -303,12 +314,11 @@ impl Workspace {
     pub(crate) fn select(&mut self, id: FlowId, cx: &mut Context<Self>) {
         self.screen = Screen::Flow(id);
         // On its Flow tab, or on the conversation the user started it with
-        // (SETTINGS-3); its other tabs stay.
+        // (SETTINGS-3, FLOW-4); its other tabs stay.
         let first = self
             .snapshot
             .flow(id)
-            .and_then(|f| f.conversations.first().copied())
-            .filter(|_| self.snapshot.settings.open_on == leon_domain::OpenOn::Conversation);
+            .and_then(|f| opening_conversation(&f.conversations, self.snapshot.settings.open_on));
         match first {
             Some(c) => self.tabs.insert(id, Tab::Conversation(c)),
             None => self.tabs.remove(&id),
@@ -439,8 +449,8 @@ impl Render for Workspace {
         }
         // An answer is read on its agent's tab, not on the Flow (NAV-4).
         let reading = self.current_conversation();
-        if let Screen::Flow(id) = self.screen {
-            self.history.visit((id, reading));
+        if let Some(place) = crate::history::Place::of(self.screen, reading) {
+            self.history.visit(place);
         }
         if reading != self.reading {
             self.reading = reading;
@@ -469,6 +479,7 @@ impl Render for Workspace {
             Screen::Doctor => self.render_doctor(cx),
             Screen::Tools => self.render_tools(cx),
             Screen::Settings => self.render_settings(cx),
+            Screen::Todos => self.render_todos(cx),
         };
         let root = self.shortcut_handlers(div(), cx);
         root.size_full()
@@ -490,12 +501,15 @@ impl Render for Workspace {
             .child(Self::pane_handle(Side::Left, cx))
             .child(
                 div()
+                    .relative()
                     .flex_1()
                     .min_w_0()
                     .h_full()
                     .flex()
                     .flex_col()
-                    .child(main),
+                    .child(main)
+                    // Every flow's to-dos, at its top right (TODO-3).
+                    .child(self.todos_corner(cx)),
             )
             .when(self.panes.right_open, |d| {
                 d.child(Self::pane_handle(Side::Right, cx))
@@ -510,6 +524,20 @@ impl Render for Workspace {
     }
 }
 
+/// The conversation a flow opens on: the first, the user's, when the
+/// settings say so or when it is the only one (no diagram for one agent);
+/// `None`: its Flow tab.
+fn opening_conversation(
+    conversations: &[ConversationId],
+    open_on: leon_domain::OpenOn,
+) -> Option<ConversationId> {
+    let first = conversations.first().copied();
+    match open_on {
+        leon_domain::OpenOn::Conversation => first,
+        leon_domain::OpenOn::Flow => first.filter(|_| conversations.len() == 1),
+    }
+}
+
 /// Text of a one-line input.
 pub(crate) fn value_of(input: &Entity<InputState>, cx: &App) -> String {
     input.read(cx).value().to_string()
@@ -518,4 +546,31 @@ pub(crate) fn value_of(input: &Entity<InputState>, cx: &App) -> String {
 /// Text of a multi-line input.
 pub(crate) fn text_of(input: &Entity<TextareaState>, cx: &App) -> String {
     input.read(cx).value().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use leon_domain::{ConversationId, OpenOn};
+
+    use super::opening_conversation;
+
+    #[test]
+    fn a_flow_of_one_agent_opens_on_it() {
+        let (one, two) = (ConversationId(1), ConversationId(2));
+        let cases: [(&[ConversationId], OpenOn, Option<ConversationId>); 6] = [
+            (&[one], OpenOn::Flow, Some(one)),
+            (&[one, two], OpenOn::Flow, None),
+            (&[], OpenOn::Flow, None),
+            (&[one], OpenOn::Conversation, Some(one)),
+            (&[one, two], OpenOn::Conversation, Some(one)),
+            (&[], OpenOn::Conversation, None),
+        ];
+        for (conversations, open_on, expected) in cases {
+            assert_eq!(
+                opening_conversation(conversations, open_on),
+                expected,
+                "{conversations:?} {open_on:?}"
+            );
+        }
+    }
 }

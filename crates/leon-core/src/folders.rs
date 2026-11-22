@@ -52,7 +52,7 @@ impl Core {
         let seq = self.next_lookup(conversation);
         let git = Arc::clone(&self.ports.git);
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let root = git.working_tree(&dir);
             let _ = tx.send(Internal::WorkingTree {
                 conversation,

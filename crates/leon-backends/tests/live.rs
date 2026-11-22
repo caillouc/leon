@@ -11,6 +11,7 @@ use leon_domain::{BackendKind, ConversationSettings};
 
 fn spec(backend: BackendKind, dir: &std::path::Path, resume: Option<String>) -> SessionSpec {
     SessionSpec {
+        conversation: leon_domain::ConversationId(1),
         settings: ConversationSettings {
             backend,
             agent: None,

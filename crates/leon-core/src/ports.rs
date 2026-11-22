@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use leon_domain::{
     BackendKind, Conversation, ConversationId, ConversationSettings, DoctorCheck, DoctorSection,
-    FileDiff, Flow, FlowId, Issue, McpServer, Project, ProjectId, PullRequest, TimedEntry, Usage,
+    FileDiff, Flow, FlowId, Issue, McpServer, Project, ProjectId, PullRequest, TimedEntry, Todo,
+    TodoId, Usage,
 };
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -40,8 +41,30 @@ pub trait Storage: Send + Sync + 'static {
     fn add_project(&self, name: &str, path: &Path, now: i64) -> Result<Project, PortError>;
     /// Folds or unfolds a project's flows in the left pane.
     fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError>;
+    /// Keeps the projects in `order`, the left pane's (NAV-2).
+    fn set_project_order(&self, order: &[ProjectId]) -> Result<(), PortError>;
     /// The GitHub lists' folded groups, by key (GH-2, GH-3).
     fn folded_groups(&self) -> Result<Vec<String>, PortError>;
+    /// Keeps the To do page's flow groups in `order` (TODO-3); other flows
+    /// keep their place there.
+    fn set_todo_order(&self, order: &[FlowId]) -> Result<(), PortError>;
+    /// Every flow's to-dos, in the order they were added (TODO-1).
+    fn todos(&self) -> Result<Vec<Todo>, PortError>;
+    /// Adds a to-do to flow `flow`, its `(when, what)`, by the agent of
+    /// conversation `by` or the user (`None`).
+    fn add_todo(
+        &self,
+        flow: FlowId,
+        when_what: (&str, &str),
+        by: Option<ConversationId>,
+        now: i64,
+    ) -> Result<Todo, PortError>;
+    /// Marks a to-do done, or open again.
+    fn set_todo_done(&self, id: TodoId, done: bool) -> Result<(), PortError>;
+    /// Removes a to-do for good.
+    fn remove_todo(&self, id: TodoId) -> Result<(), PortError>;
+    /// Changes a to-do's `(when, what)`.
+    fn edit_todo(&self, id: TodoId, when_what: (&str, &str)) -> Result<(), PortError>;
     /// Folds or unfolds a GitHub list's group.
     fn set_folded_group(&self, key: &str, folded: bool) -> Result<(), PortError>;
     /// Removes a project from Leon with its flows, their conversations
@@ -209,6 +232,8 @@ pub trait Catalog: Send + Sync + 'static {
 /// What a backend needs to start a CLI session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionSpec {
+    /// The conversation it runs for: its holder is found again by it (I24).
+    pub conversation: leon_domain::ConversationId,
     /// Backend, agent, model, effort, permission.
     pub settings: ConversationSettings,
     /// The agent's definition, when one is chosen.
@@ -297,6 +322,9 @@ pub enum BackendEvent {
     },
     /// The CLI failed; the conversation may be resumed with a new message.
     Failed(String),
+    /// How much of the user's plan limits the CLI says is used, each window
+    /// shortest first (DOCTOR-2).
+    Limits(Vec<leon_domain::LimitWindow>),
 }
 
 /// Something the core asks a running CLI session to do.
@@ -396,6 +424,26 @@ pub trait Backends: Send + Sync + 'static {
     /// Connectors view (TOOLS-1): `backend`'s plugins, MCP servers and
     /// account connectors, with their state. Blocks; can take seconds.
     fn connectors(&self, backend: BackendKind) -> leon_domain::CliConnectors;
+    /// The conversations whose CLI may still run from before Leon started
+    /// (I24).
+    fn held(&self) -> Vec<leon_domain::ConversationId> {
+        Vec::new()
+    }
+    /// The CLI of `spec`'s conversation, still running from before Leon
+    /// started (I24); `None` when there is none.
+    fn attach(&self, spec: SessionSpec) -> Option<Attached> {
+        let _ = spec;
+        None
+    }
+}
+
+/// A CLI found again when Leon starts (I24).
+#[derive(Debug)]
+pub struct Attached {
+    /// Its events, from the start of the turn it was in when Leon quit.
+    pub channel: BackendChannel,
+    /// It was in a turn: its events replay that turn.
+    pub busy: bool,
 }
 
 /// The `PATH` adapters start programs with: the user's login-shell `PATH`,
@@ -415,6 +463,9 @@ pub fn inherited_path() -> Option<&'static std::ffi::OsString> {
 pub trait Git: Send + Sync + 'static {
     /// Current branch name; `None` outside a repository or on a detached HEAD.
     fn branch(&self, dir: &Path) -> Option<String>;
+    /// `dir` is a repository's own checkout, not one of its linked
+    /// worktrees (CTX-2); `false` outside a repository.
+    fn is_main_checkout(&self, dir: &Path) -> bool;
     /// The branch to compare with when none was recorded: the remote's
     /// default branch, e.g. `origin/main`.
     fn default_base(&self, dir: &Path) -> Option<String>;
@@ -514,6 +565,15 @@ pub enum AppToolCall {
         /// `…/pull/12`.
         url: String,
     },
+    /// Add a to-do for the user to the flow (TODO-1).
+    AddTodo {
+        /// What it waits for: an event, a date, an answer.
+        when: String,
+        /// What the user will do then.
+        what: String,
+    },
+    /// List the flow's to-dos (TODO-1).
+    ListTodos,
 }
 
 /// An [`AppToolCall`] from a conversation, with where to send the result text

@@ -1,71 +1,78 @@
-//! Colours of the single dark theme (QUAL-3), same palette as the validated
-//! mock. Every colour in the UI comes from here.
+//! Colours of the single dark theme (QUAL-3): GitHub's Primer dark palette,
+//! as GitHub Copilot's app uses it (design.md, Colour). Every colour in the
+//! UI comes from here.
 
 use gpui::{Rgba, rgb, rgba};
 
 /// Window background.
 pub fn window() -> Rgba {
-    rgb(0x0015_181d)
+    rgb(0x000d_1117)
 }
 /// Side panes background.
 pub fn panel() -> Rgba {
-    rgb(0x0019_1c22)
+    rgb(0x0015_1b23)
 }
-/// Raised surfaces: cards, inputs, menus.
+/// Raised surfaces: inputs, buttons, chips.
 pub fn surface() -> Rgba {
-    rgb(0x001e_2229)
+    rgb(0x0021_2830)
 }
 /// Hovered rows and buttons.
 pub fn surface_2() -> Rgba {
-    rgb(0x0026_2a33)
+    rgb(0x0026_2c36)
+}
+/// Menus, pickers' lists and hover lists: darker than everything, with a
+/// strong border, as GitHub's overlays.
+pub fn overlay() -> Rgba {
+    rgb(0x0001_0409)
 }
 /// Hairlines.
 pub fn border() -> Rgba {
-    rgb(0x002a_2e37)
+    rgba(0x3d44_4d99)
 }
 /// Stronger borders: cards, menus.
 pub fn border_strong() -> Rgba {
-    rgb(0x0038_3d48)
+    rgb(0x003d_444d)
 }
 /// Main text.
 pub fn fg() -> Rgba {
-    rgb(0x00d8_dbe2)
+    rgb(0x00f0_f6fc)
 }
 /// Secondary text.
 pub fn fg_muted() -> Rgba {
-    rgb(0x0091_98a5)
+    rgb(0x0091_98a1)
 }
 /// Hints, empty states, section labels.
 pub fn fg_faint() -> Rgba {
-    rgb(0x0064_6b78)
+    rgb(0x0065_6c76)
 }
 /// Accent: selection, primary buttons, running.
 pub fn accent() -> Rgba {
-    rgb(0x007e_9cf2)
+    rgb(0x0044_93f8)
 }
 /// Accent wash behind selected rows.
 pub fn accent_soft() -> Rgba {
-    rgba(0x7e9c_f226)
+    rgba(0x388b_fd26)
 }
 /// Text on accent backgrounds.
 pub fn on_accent() -> Rgba {
-    rgb(0x000c_1120)
+    rgb(0x000d_1117)
 }
 /// Needs attention: questions, pending.
 pub fn warn() -> Rgba {
-    rgb(0x00e0_ae55)
+    rgb(0x00d2_9922)
 }
 /// Errors, removed lines.
 pub fn err() -> Rgba {
-    rgb(0x00e6_727b)
+    rgb(0x00f8_5149)
 }
 /// Success, added lines, open pull requests.
 pub fn ok() -> Rgba {
-    rgb(0x006d_be86)
+    // GitHub's success green (3fb950), a shade calmer.
+    rgb(0x0042_a353)
 }
 /// Merged pull requests.
 pub fn merged() -> Rgba {
-    rgb(0x00b1_8cf0)
+    rgb(0x00ab_7df8)
 }
 /// Background of an added line: a clear green, not the muted one of
 /// text, so it reads as green on the dark background.
@@ -117,9 +124,9 @@ pub fn status_colors(columns: &[(&str, usize)]) -> Vec<Rgba> {
         warn(),
         ok(),
         merged(),
-        rgb(0x0073_c6d9),
-        rgb(0x00f0_9a4f),
-        rgb(0x00e8_8fc4),
+        rgb(0x0039_c5cf),
+        rgb(0x00db_6d28),
+        rgb(0x00db_61a2),
     ];
     let mut order: Vec<usize> = (0..columns.len()).collect();
     order.sort_by_key(|&i| columns[i].1);
@@ -175,33 +182,40 @@ pub fn github_color(name: &str) -> Option<Rgba> {
         "BLUE" => accent(),
         "GREEN" => ok(),
         "YELLOW" => warn(),
-        "RED" => rgb(0x00e9_784e),
-        "ORANGE" => rgb(0x00f0_9a4f),
-        "PINK" => rgb(0x00e8_8fc4),
+        "RED" => rgb(0x00f7_794b),
+        "ORANGE" => rgb(0x00ed_8326),
+        "PINK" => rgb(0x00e5_7bb2),
         "PURPLE" => merged(),
         _ => return None,
     })
 }
 
-/// Dims the window behind a drawer.
+/// Dims the window behind a drawer: GitHub's overlay black.
 pub fn scrim() -> Rgba {
-    gpui::rgba(0x0000_0099)
+    gpui::rgba(0x0104_0999)
 }
 
 /// An agent's colour in the flow diagram, by its place among the
 /// flow's agents.
 pub fn agent_color(index: usize) -> Rgba {
+    // GitHub's label colours (dark).
     const PALETTE: [u32; 8] = [
-        0x007a_a2f7, // blue
-        0x00bb_9af7, // purple
-        0x0073_daca, // teal
-        0x00e0_af68, // amber
-        0x00f7_768e, // rose
-        0x009e_ce6a, // green
-        0x00ff_9e64, // orange
-        0x007d_cfff, // cyan
+        0x004d_a0ff, // blue
+        0x00b6_87f7, // purple
+        0x001c_b0ab, // teal
+        0x00d3_910d, // yellow
+        0x00e5_7bb2, // pink
+        0x0041_b445, // green
+        0x00ed_8326, // orange
+        0x0007_ace4, // cyan
     ];
     rgb(PALETTE[index % PALETTE.len()])
+}
+
+/// A colour of [`agent_color`]'s for a name (a repository, a login): the
+/// same name, the same colour, everywhere.
+pub fn name_color(name: &str) -> Rgba {
+    agent_color(name.bytes().map(usize::from).sum())
 }
 
 /// Gives the widget library (inputs, menus, scrollbars) Leon's colours:
@@ -216,7 +230,7 @@ pub fn install(cx: &mut gpui::App) {
     theme.border = hsla(border());
     theme.input = hsla(border_strong());
     theme.ring = hsla(accent());
-    theme.popover = hsla(surface());
+    theme.popover = hsla(overlay());
     theme.secondary = hsla(surface_2());
     theme.accent = hsla(surface_2());
     theme.caret = hsla(fg());
@@ -294,8 +308,9 @@ mod tests {
     #[test]
     fn github_colours_map_to_the_palette_without_red() {
         let cases = [
-            ("RED", Some(rgb(0x00e9_784e))),
-            ("orange", Some(rgb(0x00f0_9a4f))),
+            // GitHub's coral and orange label colours.
+            ("RED", Some(rgb(0x00f7_794b))),
+            ("orange", Some(rgb(0x00ed_8326))),
             ("YELLOW", Some(warn())),
             ("BLUE", Some(accent())),
             ("GREEN", Some(ok())),

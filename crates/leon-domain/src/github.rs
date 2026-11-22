@@ -19,8 +19,10 @@ pub enum PrState {
 /// Outcome of a check run (GH-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckState {
-    /// Passed (or skipped / neutral).
+    /// Passed (or neutral).
     Pass,
+    /// Skipped: it did not run.
+    Skipped,
     /// Failed, cancelled or timed out.
     Fail,
     /// Queued or running.
@@ -29,12 +31,14 @@ pub enum CheckState {
 
 impl CheckState {
     /// Several states summed up: failing if any fails, pending if any
-    /// runs, passing otherwise; `None` without any.
+    /// runs, passing if any passed, skipped when all were; `None` without
+    /// any.
     pub fn worst(states: impl IntoIterator<Item = Self>) -> Option<Self> {
         states.into_iter().max_by_key(|s| match s {
-            Self::Pass => 0,
-            Self::Pending => 1,
-            Self::Fail => 2,
+            Self::Skipped => 0,
+            Self::Pass => 1,
+            Self::Pending => 2,
+            Self::Fail => 3,
         })
     }
 }
@@ -406,6 +410,14 @@ mod tests {
         assert_eq!(
             pr(&[CheckState::Pending, CheckState::Fail]).checks_state(),
             Some(CheckState::Fail)
+        );
+        assert_eq!(
+            pr(&[CheckState::Skipped, CheckState::Pass]).checks_state(),
+            Some(CheckState::Pass)
+        );
+        assert_eq!(
+            pr(&[CheckState::Skipped, CheckState::Skipped]).checks_state(),
+            Some(CheckState::Skipped)
         );
         let listed = PullRequest {
             rollup: Some(CheckState::Pending),

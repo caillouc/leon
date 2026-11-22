@@ -23,6 +23,12 @@ pub(crate) enum Look {
     Inline,
     /// A full-width boxed field, for forms.
     Field,
+    /// A pane's title with a caret, opening downwards: which repository the
+    /// right pane shows, as Zed's repository picker.
+    Title,
+    /// Beside a title, mono and muted with a caret, opening downwards: which
+    /// worktree of it, by branch, as Zed's branch picker.
+    Branch,
 }
 
 impl Workspace {
@@ -95,6 +101,50 @@ impl Workspace {
                         .child(current.to_owned()),
                 )
                 .child(icon(Icon::ChevronDown, theme::fg_muted(), 14.)),
+            Look::Branch => trigger
+                .min_w_0()
+                .px_1()
+                .py(crate::theme::rem(2.))
+                .rounded_md()
+                .font_family(theme::MONO)
+                .text_size(crate::theme::rem(11.5))
+                .text_color(theme::fg_muted())
+                .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
+                .when(open, |s| s.bg(theme::surface_2()))
+                .flex()
+                .items_center()
+                .gap(crate::theme::rem(3.))
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .child(current.to_owned()),
+                )
+                .child(icon(Icon::ChevronDown, theme::fg_faint(), 12.)),
+            Look::Title => trigger
+                .min_w_0()
+                .px_1()
+                .py(crate::theme::rem(2.))
+                .rounded_md()
+                .text_size(crate::theme::rem(13.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(theme::fg())
+                .hover(|s| s.bg(theme::surface_2()))
+                .when(open, |s| s.bg(theme::surface_2()))
+                .flex()
+                .items_center()
+                .gap(crate::theme::rem(4.))
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .child(current.to_owned()),
+                )
+                .child(icon(Icon::ChevronDown, theme::fg_faint(), 12.)),
         };
         let trigger = trigger.on_click(cx.listener(move |this, _, _, cx| {
             this.open_picker = if this.open_picker.as_ref() == Some(&toggle_id) {
@@ -112,7 +162,13 @@ impl Workspace {
             let on_pick: Rc<OnPick> = Rc::new(on_pick);
             let items = choices.into_iter().enumerate().map(|(ix, (value, text))| {
                 let on_pick = Rc::clone(&on_pick);
-                let selected = text == current;
+                // A second line, after a line break: faint detail (a path).
+                let (main, detail) = text
+                    .split_once('\n')
+                    .map_or((text.clone(), None), |(m, d)| {
+                        (m.to_owned(), Some(d.to_owned()))
+                    });
+                let selected = main == current;
                 div()
                     .id(ix)
                     .px_2()
@@ -122,7 +178,14 @@ impl Workspace {
                     .cursor_pointer()
                     .when(selected, |s| s.bg(theme::accent_soft()))
                     .hover(|s| s.bg(theme::surface_2()))
-                    .child(text)
+                    .child(main)
+                    .children(detail.map(|d| {
+                        div()
+                            .font_family(theme::MONO)
+                            .text_size(crate::theme::rem(11.))
+                            .text_color(theme::fg_faint())
+                            .child(d)
+                    }))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.open_picker = None;
                         on_pick(this, value.clone(), window, cx);
@@ -131,14 +194,18 @@ impl Workspace {
             });
             let list = div()
                 .id(SharedString::from(format!("{id}-list")))
-                .min_w(crate::theme::rem(160.))
+                // The right pane's pickers hug their choices, no wider than
+                // needed; the others keep a minimum width.
+                .when(!matches!(look, Look::Title | Look::Branch), |d| {
+                    d.min_w(crate::theme::rem(160.))
+                })
                 .max_h(crate::theme::rem(320.))
                 .overflow_y_scroll()
                 .p_1()
                 .rounded_lg()
                 .border_1()
                 .border_color(theme::border_strong())
-                .bg(theme::surface())
+                .bg(theme::overlay())
                 .shadow_lg()
                 .children(items)
                 // A pick does not also click what lies under the list (it
@@ -155,7 +222,7 @@ impl Workspace {
                     div().absolute().top(crate::theme::rem(-4.)).left_0(),
                     gpui::Anchor::BottomLeft,
                 ),
-                Look::Field => (
+                Look::Field | Look::Title | Look::Branch => (
                     div().absolute().top(gpui::relative(1.)).mt_1().left_0(),
                     gpui::Anchor::TopLeft,
                 ),

@@ -98,6 +98,7 @@ pub fn git() -> Arc<HashMap<PathBuf, GitView>> {
             GitView {
                 repo: Some("acme/web-dashboard".into()),
                 branch: Some("show-webhook-retries".into()),
+                main: false,
                 base: Some("origin/main".into()),
                 changes: Arc::new(vec![file("src/Retries.tsx", FileStatus::Added, 40, 0)]),
                 branch_diff: Arc::new(vec![]),
@@ -109,6 +110,7 @@ pub fn git() -> Arc<HashMap<PathBuf, GitView>> {
             GitView {
                 repo: Some("acme/payments-api".into()),
                 branch: Some("fix-webhook-retry".into()),
+                main: false,
                 base: Some("origin/main".into()),
                 changes: Arc::new(vec![
                     file("Cargo.lock", FileStatus::Modified, 1, 1),
@@ -235,6 +237,25 @@ pub fn linked_prs() -> Arc<HashMap<leon_domain::GhRef, PullRequest>> {
         leon_domain::GhRef::pull_request("acme/payments-api", 398),
         merged,
     )]))
+}
+
+/// What the CLIs said of their plan limits (DOCTOR-2).
+pub fn limits() -> Arc<Vec<(leon_domain::BackendKind, Vec<leon_domain::LimitWindow>)>> {
+    let window = |minutes, used, hours: i64| leon_domain::LimitWindow {
+        minutes,
+        used,
+        resets_at: Some(crate::hours_ago(-hours)),
+    };
+    Arc::new(vec![
+        (
+            leon_domain::BackendKind::ClaudeCode,
+            vec![window(300, 34, 3), window(10_080, 81, 50)],
+        ),
+        (
+            leon_domain::BackendKind::Codex,
+            vec![window(300, 6, 4), window(10_080, 12, 120)],
+        ),
+    ])
 }
 
 fn label(name: &str, color: &str) -> Label {

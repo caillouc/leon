@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use gpui::{AnyElement, Context, ElementId, IntoElement, SharedString, div, prelude::*};
 use gpui_component::text::TextView;
 
-use crate::icons::{Icon, chevron, icon};
+use crate::icons::chevron;
 use crate::theme;
 use crate::workspace::Workspace;
 
@@ -140,18 +140,7 @@ fn code_corner(lang: Option<SharedString>, code: SharedString) -> AnyElement {
         .text_size(crate::theme::rem(11.))
         .text_color(theme::fg_faint())
         .children(lang)
-        .child(
-            div()
-                .id("copy")
-                .p(crate::theme::rem(3.))
-                .rounded(crate::theme::rem(4.))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::surface_2()))
-                .child(icon(Icon::Copy, theme::fg_muted(), 13.))
-                .on_click(move |_, window, cx| {
-                    crate::clipboard::copy(window, cx, code.to_string());
-                }),
-        )
+        .child(crate::clipboard::copy_button("copy", code))
         .into_any_element()
 }
 
@@ -289,9 +278,59 @@ fn closes(start: &str, line: &str) -> bool {
 /// Which folded sections are open, by id.
 pub(crate) type OpenDetails = HashSet<SharedString>;
 
+/// Text the user or an agent typed as a note (a message, a to-do), as
+/// markdown that keeps its line breaks: outside code blocks, a line followed
+/// by another ends with a hard break, as in a chat, instead of running on.
+pub(crate) fn hard_breaks(text: &str) -> String {
+    let is_fence = |line: &str| {
+        let start = line.trim_start();
+        start.starts_with("```") || start.starts_with("~~~")
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = String::with_capacity(text.len() + lines.len() * 2);
+    let mut fenced = false;
+    for (i, line) in lines.iter().enumerate() {
+        let fence = is_fence(line);
+        out.push_str(line);
+        let next_text = lines
+            .get(i + 1)
+            .is_some_and(|l| !l.trim().is_empty() && !is_fence(l));
+        if !fenced && !fence && !line.trim().is_empty() && next_text {
+            // Two spaces: a hard break, and nothing where a block ends.
+            out.push_str("  ");
+        }
+        if fence {
+            fenced = !fenced;
+        }
+        if i + 1 < lines.len() {
+            out.push('\n');
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Part, first_lines, parts};
+    use super::{Part, first_lines, hard_breaks, parts};
+
+    #[test]
+    fn typed_line_breaks_stay_outside_code() {
+        let cases = [
+            ("one line", "one line"),
+            ("first\nsecond", "first  \nsecond"),
+            // A paragraph break stays one.
+            ("a\n\nb", "a\n\nb"),
+            // Code keeps its lines as they are.
+            (
+                "run:\n```sh\nls\npwd\n```\ndone",
+                "run:\n```sh\nls\npwd\n```\ndone",
+            ),
+            ("- a\n- b", "- a  \n- b"),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(hard_breaks(text), expected, "{text:?}");
+        }
+    }
 
     #[test]
     fn a_fold_never_cuts_a_code_block() {

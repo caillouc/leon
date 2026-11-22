@@ -50,7 +50,7 @@ impl Workspace {
             .rounded_lg()
             .border_1()
             .border_color(theme::border_strong())
-            .bg(theme::surface())
+            .bg(theme::overlay())
             .shadow_lg()
             .children(items)
             // A pick does not also click the row under the menu.
@@ -121,8 +121,9 @@ impl Workspace {
         Some(items)
     }
 
-    /// Turns the row's title into an input; Enter saves.
-    fn start_rename(&mut self, id: FlowId, window: &mut Window, cx: &mut Context<Self>) {
+    /// Turns the row's title into an input, its text selected: typing
+    /// replaces it; Enter or a click elsewhere saves.
+    pub(crate) fn start_rename(&mut self, id: FlowId, window: &mut Window, cx: &mut Context<Self>) {
         let title = self
             .snapshot
             .flow(id)
@@ -133,11 +134,14 @@ impl Workspace {
             state
         });
         let subscription = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, _, cx| {
-            if matches!(event, InputEvent::PressEnter { .. }) {
+            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
                 this.finish_rename(cx);
             }
         });
-        input.update(cx, |state, cx| state.focus(window, cx));
+        input.update(cx, |state, cx| {
+            state.focus(window, cx);
+            state.select_all(window, cx);
+        });
         self.rename = Some((id, input, subscription));
         cx.notify();
     }

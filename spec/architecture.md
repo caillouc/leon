@@ -12,9 +12,25 @@ How the code is organised. Owned by agents; must follow
 - Each CLI starts `leon mcp` (the app's own binary) as a stdio MCP server; that
   bridge only pipes bytes between its stdio and the socket, after one line
   naming its conversation (`LEON_SESSION`, `LEON_SOCKET` in its environment).
-- One CLI child process per conversation while a turn runs or input is
-  awaited; stopped after an idle timeout, resumed by the CLI's session id. A CLI
-  crash sets that conversation to `error`; it never takes the app down.
+- One CLI process per conversation, under its **holder** (I24): `leon hold
+  <data>/runs/<conversation> -- <cli> <args…>`, the app's own binary, in its
+  own process group so it outlives the app (`leon-backends`: `holder.rs`
+  runs in the holder, `conn.rs` is the app's side). The holder keeps the
+  CLI's stdin open, appends its stdout to `out` and stderr to `err`, takes
+  the app's lines on the Unix socket `sock` (`>line` to stdin, `!stop`),
+  and writes `exit` once the CLI has ended and its output is whole. The app
+  reads `out` as it grows (every 30 ms when quiet) and writes through the
+  socket. It also keeps two marks there: `busy` while a turn runs (set on a
+  message, cleared on its end) and `turn`, the offset in `out` where that
+  turn began. When the app's last connection goes and no turn runs, the
+  holder ends the CLI and itself, so only working agents outlive the app.
+  At start, the core asks for the conversations with a folder in `runs`,
+  reconnects to each live holder, and for a busy one truncates the transcript
+  to the message that started the turn and replays `out` from `turn`, marked
+  working. A socket path must stay under the Unix limit (104 bytes on
+  macOS): `runs` sits in the data folder for that. Without holders (tests),
+  the CLI is the app's own child, on pipes. A CLI crash sets that
+  conversation to `error`; it never takes the app down.
 - `git` and `gh` spawned per query (P6, P7). GitHub goes through the `gh` CLI,
   not direct HTTPS calls (P7, D6).
 - Every adapter that starts a program gets the user's login-shell `PATH` from
@@ -104,6 +120,17 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    linked ones; its issues its linked ones, then those its pull requests
    close (`closingIssuesReferences`). The right pane shows one folder at a
    time (`crates/leon-ui/src/right_folders.rs`).
+   A flow's to-dos (TODO-1, `leon_domain::Todo`, SQLite `todos`) are added by
+   the user (`Intent::AddTodo`) or an agent (`add_todo`, the author kept as
+   its conversation), marked done by the user, all loaded at startup
+   (`crates/leon-core/src/todos.rs`); the UI shows them in Info, behind the
+   main pane's top-right button (the To do page, `Screen::Todos`) and as a
+   count on flow rows (`crates/leon-ui/src/todos_view.rs`).
+   Whom a conversation's answers go to — the agent whose request it works
+   on, or the user — is one rule over its transcript,
+   `leon_domain::answers_to`: the core routes answers by it
+   (`crates/leon-core/src/agents.rs`) and the Flow tab draws its arrows by
+   it (`crates/leon-ui/src/flow_model.rs`).
 8. Every conversation is told, in its CLI's system prompt or first message, to
    keep Leon up to date with these tools (`AppTools::instructions`, CTX-3;
    assembled in `crates/leon-backends/src/told.rs`).
@@ -138,6 +165,8 @@ ships.
 | Go back (CONV-7) | no flag in `--help` (local) ⚠️ — fallback: new session carrying the messages up to that point | `thread/revert { beforeTurnId }` (local schema) | ⚠️ |
 | Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ |
 | Suggested replies (CONV-10) | `--prompt-suggestions` → `prompt_suggestion` message (local) | ⚠️ | ⚠️ |
+| Questions and approvals (CONV-9) | `--permission-prompt-tool stdio`: `control_request` `can_use_tool` on stdout (`AskUserQuestion` or the tool to approve), `control_response` `allow` (with `updatedInput.answers` for questions) or `deny` on stdin (run 2026-11-20); without the flag `AskUserQuestion` is not offered and approvals are refused (I23) | `item/commandExecution/requestApproval`, `item/fileChange/requestApproval` (local schema) | ACP `session/request_permission` |
+| Usage limits (DOCTOR-2) | `rate_limit_event` on stream-json: `rate_limit_info.unifiedWindows.five_hour` / `.seven_day` (`utilization` 0–1, `resetsAt` s), else the top-level window (run 2026-11-20) | `account/rateLimits/updated`: `rateLimits.primary` / `.secondary` (`usedPercent`, `windowDurationMins`, `resetsAt` s) (recorded 0.160.0) | none found (ACP `usage_update` is the context window, not the plan) ⚠️ |
 | Title (NAV-9) | one-off `claude -p --model haiku --output-format text` (run 2026-11-17) | one-off `codex exec --skip-git-repo-check --ephemeral -s read-only` (run 2026-11-17) | none: the first line stays |
 | Permission | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` (local) | `-a`, `-s`, `--dangerously-bypass-approvals-and-sandbox` (local) | `--allow-all-tools`, `--allow-all` (I3) |
 | MCP list | `--mcp-config` + `--allowedTools mcp__leon` (local) | `thread/start.config.mcp_servers`, Leon's with `default_tools_approval_mode = "approve"` (live, 0.160.0) | ACP `mcpServers`; `--allow-tool=leon` ⚠️ |
@@ -214,7 +243,10 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   `origin/<PR base>` when the branch has a PR and that ref exists, else
   `origin/HEAD`, else the first of `origin/main`, `origin/master`, `main`,
   `master` that exists.
-- Read off the core's async workers (`spawn_blocking`); refreshes of one
+- Read off the core's async workers, through `jobs::spawn`: blocking jobs
+  (git, `gh`, the doctor) run a few at a time (6), so a burst of them at
+  launch or on a tick never runs out of open files (a macOS app gets 256);
+  refreshes of one
   flow coalesce. Triggers: opening the flow, clicking the
   Changes or Branch tab, an agent's edit or command finishing, the turn ending.
   No file watcher yet.
@@ -227,9 +259,12 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
 
 - `gh` with the user's own login; the app never reads the token
   (`crates/leon-github`). Reads are one `gh api graphql` query each.
-- A flow's PR: read when the flow is opened, when its branch changes, after a
-  review request or comment, and every 120 s for every open flow (one `gh`
-  call each, not batched yet).
+- A flow's PR: read when the flow is opened (its linked PRs too), when its
+  branch changes, after a review request or comment, every 30 s for the
+  flow looked at while one of its checks runs, and every 120 s for every
+  open flow (one `gh` call each, not batched yet). A PR read anywhere (its
+  details, a folder's branch, a link, my list) replaces every copy the core
+  keeps of it (`crates/leon-core/src/fresh.rs`), so no view lags another.
 - My issues and PRs: read at startup and when the list is opened. Issues
   come with their GitHub Project "Status", "Priority" (a board single-select
   or an organization issue field) and iterations

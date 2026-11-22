@@ -24,18 +24,13 @@ pub fn label(text: impl Into<SharedString>) -> Div {
 /// the core): a chevron, then what the caller adds. A click folds or
 /// unfolds it.
 pub fn fold_toggle(key: String, folded: bool) -> Stateful<Div> {
-    let chevron = if folded {
-        crate::icons::Icon::ChevronRight
-    } else {
-        crate::icons::Icon::ChevronDown
-    };
     div()
         .id(SharedString::from(format!("fold-{key}")))
         .flex()
         .items_center()
         .gap_2()
         .cursor_pointer()
-        .child(crate::icons::icon(chevron, theme::fg_muted(), 15.))
+        .child(crate::icons::chevron(!folded, theme::fg_muted(), 15.))
         .on_click(move |_, _, cx| {
             if let Some(core) = cx.try_global::<crate::markdown::Core>() {
                 core.0
@@ -66,30 +61,85 @@ pub fn centered(base: f32, content: impl IntoElement) -> Div {
         .child(div().flex_1())
 }
 
+/// `order` with `item` moved to place `to`: what a drag and drop of a box
+/// onto the one at `to` does (the CLI order, the projects).
+pub fn moved<T: Copy + PartialEq>(order: &[T], item: T, to: usize) -> Vec<T> {
+    let mut next: Vec<T> = order.iter().copied().filter(|x| *x != item).collect();
+    next.insert(to.min(next.len()), item);
+    next
+}
+
+/// Text edited where it reads — a flow's name, a to-do's part: a quiet box
+/// (`input` without its own look: no border, no focus ring) on a soft
+/// background, its text where it was and at the body's size.
+pub fn in_place<T: gpui_component::Sizable + Styled + IntoElement>(input: T) -> Div {
+    // The box's own inset (an extra-small one's, 4 px), taken back.
+    div()
+        .mx(gpui::px(-4.))
+        .rounded(crate::theme::rem(4.))
+        .bg(theme::surface_2())
+        .child(input.xsmall().text_size(crate::theme::rem(13.)))
+}
+
+/// Where an element is on screen, as [`probe`] last saw it.
+pub type Area = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>;
+
+/// An invisible element reporting its parent's place on screen each frame
+/// (the parent `relative`): what a drag reads, e.g. the diff list's width
+/// to turn the mouse's place into a share of it.
+pub fn probe(area: Area) -> AnyElement {
+    gpui::canvas(move |bounds, _, _| area.set(Some(bounds)), |_, (), _, _| {})
+        .absolute()
+        .size_full()
+        .into_any_element()
+}
+
 /// Faint text for empty states.
 pub fn empty(text: impl Into<SharedString>) -> AnyElement {
+    note(text.into(), theme::fg_faint())
+}
+
+/// What went wrong, where an empty state would show: in red, so it is not
+/// taken for "nothing here".
+pub fn problem(text: impl Into<SharedString>) -> AnyElement {
+    note(text.into(), theme::err())
+}
+
+fn note(text: SharedString, color: gpui::Rgba) -> AnyElement {
     div()
         .px_3()
         .py_2()
         .text_size(crate::theme::rem(12.5))
-        .text_color(theme::fg_faint())
-        .child(text.into())
+        .text_color(color)
+        .child(text)
         .into_any_element()
 }
 
-/// Status shape (NAV-5): ring when running, diamond when waiting for the
-/// user, filled red when failed, faint ring when idle. Colour and shape, no
-/// emoji (QUAL-3).
+/// A state's mark (design.md, Status): a small square, `size` wide, filled
+/// with the state's `color` — a check's result, a board column, connected.
+/// Round dots are for notifications only.
+pub fn mark(color: gpui::Rgba, size: f32) -> Div {
+    square(size).bg(color)
+}
+
+/// The empty square every status mark is drawn in.
+fn square(size: f32) -> Div {
+    div()
+        .size(crate::theme::rem(size))
+        .flex_none()
+        .rounded(crate::theme::rem(2.))
+}
+
+/// A conversation's status mark (NAV-5), a small square like the working
+/// loader: outlined in blue when running, filled amber when waiting for the
+/// user, filled red when failed, faint outline when idle. Colour and shape,
+/// no emoji (QUAL-3).
 pub fn status_dot(status: Status) -> Div {
-    let base = div().size(crate::theme::rem(9.)).flex_none();
     match status {
-        Status::Idle => base
-            .rounded_full()
-            .border_1()
-            .border_color(theme::fg_faint()),
-        Status::Running => base.rounded_full().border_2().border_color(theme::accent()),
-        Status::NeedsInput => base.rounded(crate::theme::rem(2.)).bg(theme::warn()),
-        Status::Error => base.rounded_full().bg(theme::err()),
+        Status::Idle => square(9.).border_1().border_color(theme::fg_faint()),
+        Status::Running => square(9.).border_2().border_color(theme::accent()),
+        Status::NeedsInput => mark(theme::warn(), 9.),
+        Status::Error => mark(theme::err(), 9.),
     }
 }
 
@@ -186,6 +236,8 @@ pub fn pane_header(title: impl Into<SharedString>, subtitle: Option<String>) -> 
         .flex_none()
         .h(crate::theme::rem(HEADER_HEIGHT))
         .px_5()
+        // The to-dos button's room, at the top right.
+        .pr(crate::theme::rem(crate::todos_view::BUTTON_ROOM))
         .flex()
         .items_center()
         .gap_3()
@@ -209,4 +261,23 @@ pub fn pane_header(title: impl Into<SharedString>, subtitle: Option<String>) -> 
                 .child(text)
         }))
         .child(div().flex_1())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::moved;
+
+    #[test]
+    fn a_dropped_box_takes_the_place_it_is_dropped_on() {
+        let order = ['a', 'b', 'c'];
+        let cases = [
+            ('c', 0, vec!['c', 'a', 'b']),
+            ('a', 2, vec!['b', 'c', 'a']),
+            ('b', 1, vec!['a', 'b', 'c']),
+            ('a', 9, vec!['b', 'c', 'a']),
+        ];
+        for (item, to, expected) in cases {
+            assert_eq!(moved(&order, item, to), expected, "{item} to {to}");
+        }
+    }
 }

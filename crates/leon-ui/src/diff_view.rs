@@ -128,49 +128,10 @@ impl Workspace {
             Err(text) => return empty(text),
         };
         let fold = Arc::clone(&self.snapshot.fold);
-        let shown = self.folder(id);
-        let review: Vec<&Pending> = self
-            .right
-            .review
-            .get(&id)
-            .map_or_default(|r| r.iter().filter(|p| p.folder == shown).collect());
         let added: u32 = diff.files.iter().map(|f| f.added).sum();
         let removed: u32 = diff.files.iter().map(|f| f.removed).sum();
         let n = diff.files.len();
-        let rows = diff.files.iter().enumerate().map(|(ix, file)| {
-            let folded = fold_reason(&fold, &file.path).is_some();
-            let comments = review
-                .iter()
-                .filter(|p| p.source == source && p.comment.path == file.path)
-                .count();
-            let path = file.path.clone();
-            div()
-                .id(("diff-index", ix))
-                .flex()
-                .items_center()
-                .gap_2()
-                .px_3()
-                .py(crate::theme::rem(7.))
-                .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::surface_2()))
-                .child(status_letter(file.status))
-                .child(path_text(&file.path).when(folded, |d| d.text_color(theme::fg_muted())))
-                .when(folded, |d| d.child(tag("folded".to_owned())))
-                .when(comments > 0, |d| {
-                    d.child(
-                        tag(format!(
-                            "{comments} comment{}",
-                            if comments == 1 { "" } else { "s" }
-                        ))
-                        .text_color(theme::warn()),
-                    )
-                })
-                .child(counts(file.added, file.removed))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.open_drawer(source, path.clone(), cx);
-                }))
-        });
+        let rows = self.file_rows(id, source, &diff.files, cx);
         div()
             .id(SharedString::from(format!("diff-files-{source:?}")))
             .flex_1()
@@ -223,6 +184,64 @@ impl Workspace {
                     .child("Click a file to read the diffs. Hover a line there and click + to comment."),
             )
             .into_any_element()
+    }
+
+    /// One row per file — its status, path, folded or commented, its lines
+    /// — opening the drawer at that file: in the Changes and Branch tabs,
+    /// and down the drawer's side (GIT-2).
+    pub(crate) fn file_rows(
+        &self,
+        id: FlowId,
+        source: DiffSource,
+        files: &[FileDiff],
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let fold = &self.snapshot.fold;
+        let shown = self.folder(id);
+        let review: Vec<&Pending> = self
+            .right
+            .review
+            .get(&id)
+            .map_or_default(|r| r.iter().filter(|p| p.folder == shown).collect());
+        files
+            .iter()
+            .enumerate()
+            .map(|(ix, file)| {
+                let folded = fold_reason(fold, &file.path).is_some();
+                let comments = review
+                    .iter()
+                    .filter(|p| p.source == source && p.comment.path == file.path)
+                    .count();
+                let path = file.path.clone();
+                div()
+                    .id(("diff-index", ix))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py(crate::theme::rem(7.))
+                    .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::surface_2()))
+                    .child(status_letter(file.status))
+                    .child(path_text(&file.path).when(folded, |d| d.text_color(theme::fg_muted())))
+                    .when(folded, |d| d.child(tag("folded".to_owned())))
+                    .when(comments > 0, |d| {
+                        d.child(
+                            tag(format!(
+                                "{comments} comment{}",
+                                if comments == 1 { "" } else { "s" }
+                            ))
+                            .text_color(theme::warn()),
+                        )
+                    })
+                    .child(counts(file.added, file.removed))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.open_drawer(source, path.clone(), cx);
+                    }))
+                    .into_any_element()
+            })
+            .collect()
     }
 
     pub(crate) fn start_comment(

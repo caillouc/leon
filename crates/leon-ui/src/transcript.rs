@@ -205,11 +205,12 @@ fn entry_view(
                         .text_color(theme::accent())
                         .child("You"),
                 )
+                // As typed: its line breaks kept.
                 .child(long_text(
                     conversation,
                     ix,
                     id("user"),
-                    text,
+                    &crate::markdown::hard_breaks(text),
                     expanded,
                     view,
                 ))

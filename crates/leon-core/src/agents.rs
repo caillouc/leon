@@ -85,6 +85,18 @@ impl Core {
                 self.link(flow, item);
                 Ok(format!("Linked {text} to the flow: Leon shows it in Info."))
             }
+            AppToolCall::AddTodo { when, what } => {
+                // An agent's to-do waits for something: a step the user can
+                // take now belongs in its answer (TODO-1).
+                if when.trim().is_empty() {
+                    return Err("`when` is empty: a to-do waits for something (a deploy, a \
+                        date, someone's answer). A step the user can take now goes in your \
+                        answer, not in a to-do."
+                        .to_owned());
+                }
+                self.add_todo(flow, (&when, &what), Some(caller))
+            }
+            AppToolCall::ListTodos => Ok(self.list_todos(flow)),
         }
     }
 
@@ -259,14 +271,17 @@ impl Core {
         }
     }
 
-    /// After a turn: the answer goes back to the conversation that asked, then the
-    /// next waiting message is sent. `true` when the answer went to another
+    /// After a turn: the answer goes back to the conversation that asked —
+    /// also for a turn its CLI started by itself — then the next waiting
+    /// message is sent. `true` when the answer went to another
     /// conversation rather than to the user.
     pub(crate) fn after_turn(&mut self, id: ConversationId, failed: bool) -> bool {
         let Some(s) = self.state.conversations.get_mut(&id) else {
             return false;
         };
-        let reply_to = s.reply_to.take();
+        // The asker waiting for this turn, else the one whose request it
+        // works on: a turn its CLI started by itself answers there too.
+        let reply_to = s.reply_to.take().or_else(|| works_for(s));
         let answer = reply_to.map(|_| last_answer(s, failed));
         let next = s.inbox.pop_front();
         if let (Some(to), Some(answer)) = (reply_to, answer) {
@@ -289,24 +304,44 @@ impl Core {
     }
 }
 
+/// The conversation whose request `s` works on, by its transcript
+/// ([`leon_domain::answers_to`]); `None` when it works for the user.
+fn works_for(s: &ConversationState) -> Option<ConversationId> {
+    s.transcript.as_ref().map_or_default(|t| {
+        t.entries
+            .iter()
+            .fold(None, |to, e| leon_domain::answers_to(to, &e.entry))
+    })
+}
+
 /// A conversation can take a message now: it is not in a turn.
 fn ready(status: Status) -> bool {
     matches!(status, Status::Idle | Status::Error)
 }
 
-/// The answer of the turn that just ended: its agent messages after the last
-/// message it received, plus its error when it failed.
+/// The answer of the turn that just ended: its agent messages since the
+/// last message it received or its previous turn's end (a turn its CLI
+/// started by itself), plus its error when it failed.
 fn last_answer(s: &ConversationState, failed: bool) -> String {
     let entries = s
         .transcript
         .as_ref()
         .map_or_default(|t| t.entries.as_slice());
+    // This turn's own end is already recorded: the turn before it ends
+    // further up.
+    let entries = match entries.split_last() {
+        Some((last, before)) if matches!(last.entry, Entry::TurnEnd { .. }) => before,
+        _ => entries,
+    };
     let start = entries
         .iter()
         .rposition(|e| {
             matches!(
                 e.entry,
-                Entry::User { .. } | Entry::FromAgent { .. } | Entry::ForYou { .. }
+                Entry::User { .. }
+                    | Entry::FromAgent { .. }
+                    | Entry::ForYou { .. }
+                    | Entry::TurnEnd { .. }
             )
         })
         .map_or(0, |i| i + 1);

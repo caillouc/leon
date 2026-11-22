@@ -1,12 +1,11 @@
 //! Side-by-side diffs (GIT-2): the divider between the old and the new
 //! side, dragged left or right, and comments under the side they are on.
 
-use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, Bounds, Context, CursorStyle, IntoElement, MouseButton, MouseMoveEvent, Pixels,
-    canvas, div, prelude::*, relative,
+    AnyElement, Context, CursorStyle, IntoElement, MouseButton, MouseMoveEvent, div, prelude::*,
+    relative,
 };
 
 use crate::diff_rows::Data;
@@ -19,18 +18,6 @@ const RANGE: (f32, f32) = (0.15, 0.85);
 const DIVIDER: f32 = 7.;
 /// The rows' side padding in the list.
 const PAD: f32 = 16.;
-
-/// Where the diff list is on screen, kept so a drag can turn the mouse's
-/// place into a share of the width.
-pub(crate) type Area = Rc<Cell<Option<Bounds<Pixels>>>>;
-
-/// An invisible element reporting the list's place on screen each frame.
-pub(crate) fn area_probe(area: Area) -> AnyElement {
-    canvas(move |bounds, _, _| area.set(Some(bounds)), |_, (), _, _| {})
-        .absolute()
-        .size_full()
-        .into_any_element()
-}
 
 /// One side-by-side row: the old line, the divider, the new line.
 pub(crate) fn pair(data: &Rc<Data>, old: AnyElement, new: AnyElement) -> AnyElement {

@@ -101,6 +101,9 @@ pub struct Flow {
     /// the issue it was started for (GH-2), then those its agents linked
     /// (CTX-2).
     pub links: Vec<crate::GhRef>,
+    /// Its group's place on the To do page, which the user changes by
+    /// dragging (TODO-3).
+    pub todo_position: i64,
 }
 
 /// Choices that shape an conversation (CONV-2..4).

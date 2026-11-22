@@ -54,7 +54,7 @@ impl Core {
         for backend in BackendKind::ALL {
             let backends = Arc::clone(&self.ports.backends);
             let tx = self.internal_tx.clone();
-            tokio::task::spawn_blocking(move || {
+            crate::jobs::spawn(move || {
                 let _ = tx.send(Internal::Tools(backends.connectors(backend)));
             });
         }

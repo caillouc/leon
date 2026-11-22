@@ -5,7 +5,6 @@ use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude:
 use leon_core::ConversationView;
 use leon_domain::{ConversationId, FlowId, Status};
 
-use crate::icons::{Icon, icon};
 use crate::spinner::status_mark;
 use crate::theme;
 use crate::widgets::{HEADER_HEIGHT, empty};
@@ -67,33 +66,6 @@ impl Workspace {
             .whitespace_nowrap()
             .text_ellipsis()
             .child(c.title.clone());
-        // The worktree shown (the agent's on its tab), its branch to copy;
-        // none while the flow has only its default checkout (CTX-2).
-        let chip = self.folder(id).map(|folder| {
-            let chip_text: SharedString = self
-                .folder_git(id)
-                .and_then(|g| g.branch.clone())
-                .or_else(|| folder.file_name().map(|n| n.to_string_lossy().into_owned()))
-                .unwrap_or_default()
-                .into();
-            let copy = chip_text.clone();
-            div()
-                .id("worktree-chip")
-                .px_2()
-                .py(crate::theme::rem(2.))
-                .rounded_md()
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::surface())
-                .text_size(crate::theme::rem(11.5))
-                .text_color(theme::fg_muted())
-                .cursor_pointer()
-                .hover(|s| s.text_color(theme::fg()))
-                .child(format!("⎇ {chip_text}"))
-                .on_click(move |_, window, cx| {
-                    crate::clipboard::copy(window, cx, copy.to_string());
-                })
-        });
         let current = self.current_conversation();
         let adding = self.tabs.get(&id) == Some(&Tab::New);
         // More tabs than the pane is wide scroll sideways, with a trackpad
@@ -125,20 +97,10 @@ impl Workspace {
         for sid in &tab_order(&view.conversations, recent) {
             if let Some(s) = self.snapshot.conversations.get(sid).cloned() {
                 let selected = current == Some(*sid);
-                // Its CLI after its agent; a conversation without an agent
-                // is named after its CLI already.
-                let text: SharedString = match s.conversation.settings.agent {
-                    Some(_) => format!(
-                        "{} · {}",
-                        s.name,
-                        s.conversation.settings.backend.display_name()
-                    ),
-                    None => s.name.clone(),
-                }
-                .into();
+                // Its name alone: the CLI shows in its message box.
                 tabs = tabs.child(Self::tab_button(
                     &format!("tab-{}", sid.0),
-                    text,
+                    s.name.clone().into(),
                     Some(status_mark(
                         SharedString::from(format!("spin-tab-{}", sid.0)),
                         s.status,
@@ -159,29 +121,18 @@ impl Workspace {
                 div()
                     .h(crate::theme::rem(HEADER_HEIGHT))
                     .px_5()
+                    // The top-right buttons' room: to-dos, and the right
+                    // pane's while it is closed.
+                    .pr(crate::theme::rem(
+                        crate::todos_view::BUTTON_ROOM
+                            + if self.panes.right_open { 0. } else { 36. },
+                    ))
                     .flex()
                     .items_center()
                     .gap_3()
                     .border_b_1()
                     .border_color(theme::border())
-                    .child(div().flex_1().min_w_0().child(title))
-                    .children(chip)
-                    // The right pane, closed: this opens it again.
-                    .when(!self.panes.right_open, |d| {
-                        d.child(
-                            div()
-                                .id("right-open")
-                                .p(crate::theme::rem(4.))
-                                .rounded_md()
-                                .cursor_pointer()
-                                .hover(|s| s.bg(theme::surface_2()))
-                                .child(icon(Icon::Panel, theme::fg_muted(), 16.))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.panes.right_open = true;
-                                    cx.notify();
-                                })),
-                        )
-                    }),
+                    .child(div().flex_1().min_w_0().child(title)),
             )
             .child(
                 div()

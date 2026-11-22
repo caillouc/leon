@@ -34,8 +34,15 @@ fn recorded_open_pull_request() {
         checks: vec![
             check("CodeQL-Build (go, manual, ./.github/codeql/codeql-config.yml)"),
             check("label-external / label_issues"),
-            check("label-external"),
-            check("label-external"),
+            // Recorded SKIPPED: shown as skipped, not passed.
+            Check {
+                state: CheckState::Skipped,
+                ..check("label-external")
+            },
+            Check {
+                state: CheckState::Skipped,
+                ..check("label-external")
+            },
         ],
         reviewers: vec!["reviewer-a".into(), "copilot-pull-request-reviewer".into()],
         comments: vec![],

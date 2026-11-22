@@ -1,6 +1,6 @@
-use leon_domain::{BackendKind, Health};
+use leon_domain::{BackendKind, DoctorSection, Health};
 
-use super::{claude_logged_in, codex_logged_in, section_with};
+use super::{claude_logged_in, codex_logged_in, require_one, section_with};
 use crate::process::{Output, RunError};
 
 const COPILOT_LOGGED_IN: &str = include_str!("../../fixtures/copilot/1.0.113/mcp-list.json");
@@ -99,4 +99,25 @@ fn copilot_login_is_read_from_its_server_list() {
         let version = section.checks.iter().find(|c| c.name == "Version");
         assert_eq!(version.map(|c| c.health), Some(Health::Ok), "case {ix}");
     }
+}
+
+#[test]
+fn a_cli_not_installed_is_a_problem_only_when_none_is() {
+    let missing = |b| section_with(b, |_| Err(RunError::NotFound));
+    let installed = section_with(BackendKind::ClaudeCode, |args| match args {
+        ["--version"] => Ok(said(true, "2.1.288 (Claude Code)\n", "")),
+        _ => Ok(said(true, r#"{"loggedIn": true}"#, "")),
+    });
+    let healths = |sections: &[DoctorSection]| -> Vec<Health> {
+        sections.iter().map(DoctorSection::health).collect()
+    };
+    let mut some = vec![installed, missing(BackendKind::Codex)];
+    require_one(&mut some);
+    assert_eq!(healths(&some), [Health::Ok, Health::Ok]);
+    let mut none = vec![
+        missing(BackendKind::ClaudeCode),
+        missing(BackendKind::Codex),
+    ];
+    require_one(&mut none);
+    assert_eq!(healths(&none), [Health::Problem, Health::Problem]);
 }

@@ -4,8 +4,9 @@
 use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
 use gpui_component::input::Input;
 use leon_core::{FlowView, Intent};
-use leon_domain::Attention;
+use leon_domain::{Attention, ProjectId};
 
+use crate::drag_line::{self, DragLine, DraggedProject, Lead};
 use crate::icons::{Icon, chevron, icon};
 use crate::row_menu::MenuFor;
 use crate::theme;
@@ -45,7 +46,24 @@ impl Workspace {
                 .children(pinned.into_iter().map(|c| self.row(c, true, cx)));
         }
         body = body.child(Self::projects_header(cx));
-        for project in snapshot.projects.iter() {
+        // While a project is dragged, the projects show in the order a drop
+        // would give them (NAV-2); a drag let go elsewhere changes nothing.
+        if !cx.has_active_drag() {
+            self.project_drag = None;
+        }
+        let order: Vec<ProjectId> = snapshot.projects.iter().map(|p| p.id).collect();
+        let shown = drag_line::shown(&order, self.project_drag);
+        let before: std::rc::Rc<[ProjectId]> = order.clone().into();
+        body = body.on_drop(drag_line::dropped::<DraggedProject, _>(
+            order,
+            |this| &mut this.project_drag,
+            Intent::OrderProjects,
+            cx,
+        ));
+        let projects = shown
+            .iter()
+            .filter_map(|id| snapshot.projects.iter().find(|p| p.id == *id));
+        for project in projects {
             let rows: Vec<_> = snapshot
                 .flows
                 .iter()
@@ -53,16 +71,27 @@ impl Workspace {
                 .filter(matches)
                 .collect();
             // A search shows matches even in a folded project, and a folded
-            // project still shows the open flow.
-            let folded = project.collapsed && query.is_empty();
+            // project still shows the open flow. The project being dragged
+            // shows its line alone, moving among the others.
+            let dragged = self.project_drag.is_some_and(|(id, _)| id == project.id);
             // A folded project shows its most pressing flow's colour.
             let attention = rows
                 .iter()
                 .map(|c| Attention::of(c.status, c.flow.unread))
                 .max()
                 .and_then(crate::flow_row::attention_color);
-            body = body.child(Self::project_header(project, rows.len(), attention, cx));
-            if folded {
+            body = body.child(Self::project_header(
+                project,
+                (std::rc::Rc::clone(&before), dragged),
+                rows.len(),
+                attention,
+                self.panes.left,
+                cx,
+            ));
+            if dragged {
+                continue;
+            }
+            if project.collapsed && query.is_empty() {
                 let open = rows
                     .into_iter()
                     .filter(|c| self.screen == Screen::Flow(c.flow.id));
@@ -195,22 +224,55 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// A project's row: click to fold or unfold its flows (NAV-2);
-    /// chevron, name, count, a dot when a folded flow needs you, +
-    /// (on hover) to start one in it (NAV-10); right-click to remove it.
+    /// A project's row: click to fold or unfold its flows (NAV-2); its
+    /// folder, open or closed, turning into the fold arrow on hover; name,
+    /// count, a dot when a folded flow needs you, + (on hover) to start one
+    /// in it (NAV-10); right-click to remove it; drag it among the others:
+    /// its line, folded, follows the mouse up and down while the others
+    /// make room, and stays where let go (`order`: the projects' as it was
+    /// before the drag; `dragged`: it is the one moving, its place left
+    /// empty; `pane`: the left pane's width).
     fn project_header(
         project: &leon_domain::Project,
+        (order, dragged): (std::rc::Rc<[ProjectId]>, bool),
         count: usize,
         attention: Option<gpui::Rgba>,
+        pane: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (id, collapsed) = (project.id, project.collapsed);
         let group = SharedString::from(format!("project-{}", id.0));
+        let name = SharedString::from(project.name.clone());
         div()
             .id(group.clone())
             .group(group.clone())
+            // Its place, kept empty: the line itself follows the mouse.
+            .when(dragged, |d| d.opacity(0.))
+            .on_drag(DraggedProject(id), move |_, grip, window, cx| {
+                // The row's width: the pane less its padding, the row's
+                // margins and its border.
+                let width = crate::theme::rem(pane - 17.).to_pixels(window.rem_size());
+                cx.new(|cx| {
+                    DragLine::new(
+                        (Lead::Folder, name.clone(), count),
+                        width,
+                        grip.x,
+                        window,
+                        cx,
+                    )
+                })
+            })
+            // Over this row, the dragged project takes its place.
+            .on_drag_move(drag_line::over(
+                id,
+                order,
+                |d: &DraggedProject| d.0,
+                |this| &mut this.project_drag,
+                cx,
+            ))
             .mx_1()
-            .mt_2()
+            // Projects well apart, so each flow's project is plain.
+            .mt_4()
             .px_2()
             .h(crate::theme::rem(30.))
             .rounded_md()
@@ -229,7 +291,30 @@ impl Workspace {
                     cx.notify();
                 }),
             )
-            .child(chevron(!collapsed, theme::fg_muted(), 14.))
+            .child(
+                div()
+                    .relative()
+                    .size(crate::theme::rem(15.))
+                    .flex_none()
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .group_hover(group.clone(), |s| s.opacity(0.))
+                            .child(crate::icons::folder(!collapsed, theme::fg_muted(), 15.)),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .opacity(0.)
+                            .group_hover(group.clone(), |s| s.opacity(1.))
+                            .child(chevron(!collapsed, theme::fg_muted(), 14.)),
+                    ),
+            )
             .child(
                 div()
                     .flex_1()
@@ -237,8 +322,11 @@ impl Workspace {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .text_size(crate::theme::rem(13.))
+                    // A heading over its flows, not one of them: smaller,
+                    // quieter.
+                    .text_size(crate::theme::rem(12.5))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme::fg_muted())
                     .child(project.name.clone()),
             )
             .children(
@@ -270,7 +358,6 @@ impl Workspace {
     }
 }
 
-/// "now", "5m", "3h", "2d".
 /// How long ago, as a phrase: "just now", "5m ago".
 pub(crate) fn since(at_ms: i64) -> String {
     match ago(at_ms).as_str() {
@@ -279,6 +366,7 @@ pub(crate) fn since(at_ms: i64) -> String {
     }
 }
 
+/// "now", "5m", "3h", "2d".
 pub(crate) fn ago(at_ms: i64) -> String {
     let minutes = (now_ms() - at_ms).max(0) / 60_000;
     match minutes {

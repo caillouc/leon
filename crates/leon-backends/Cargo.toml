@@ -11,7 +11,7 @@ publish.workspace = true
 leon-core.workspace = true
 leon-domain.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["process", "io-util", "rt", "sync", "time", "macros"] }
+tokio = { workspace = true, features = ["process", "io-util", "rt", "sync", "time", "macros", "net", "fs"] }
 tracing.workspace = true
 
 [dev-dependencies]

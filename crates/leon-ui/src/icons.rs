@@ -16,6 +16,14 @@ pub(crate) enum Icon {
     Issue,
     Working,
     Failed,
+    /// A CI check that did not run.
+    Skipped,
+    /// The user's to-dos (TODO-1).
+    Todo,
+    /// Removes something for good: a to-do.
+    Trash,
+    /// What a to-do waits for (TODO-1).
+    Hourglass,
     External,
     AddProject,
     Branch,
@@ -38,6 +46,10 @@ pub(crate) enum Icon {
     Doctor,
     Close,
     Panel,
+    /// A project, folded.
+    Folder,
+    /// A project, unfolded.
+    FolderOpen,
 }
 
 impl Icon {
@@ -45,11 +57,15 @@ impl Icon {
         match self {
             Self::ChevronDown => "icons/chevron-down.svg",
             Self::ChevronRight => "icons/chevron-right.svg",
-            Self::Pending => "icons/circle.svg",
-            Self::Passed => "icons/circle-check.svg",
+            Self::Pending => "icons/square.svg",
+            Self::Passed => "icons/square-check.svg",
             Self::Issue => "icons/circle-dot.svg",
-            Self::Working => "icons/loader-circle.svg",
-            Self::Failed => "icons/circle-x.svg",
+            Self::Working => "icons/square-dot.svg",
+            Self::Failed => "icons/square-x.svg",
+            Self::Skipped => "icons/square-slash.svg",
+            Self::Todo => "icons/list-todo.svg",
+            Self::Trash => "icons/trash-2.svg",
+            Self::Hourglass => "icons/hourglass.svg",
             Self::External => "icons/external-link.svg",
             Self::AddProject => "icons/folder-plus.svg",
             Self::Branch => "icons/git-branch.svg",
@@ -68,6 +84,8 @@ impl Icon {
             Self::Search => "icons/search.svg",
             Self::Settings => "icons/settings.svg",
             Self::NewFlow => "icons/square-pen.svg",
+            Self::Folder => "icons/folder.svg",
+            Self::FolderOpen => "icons/folder-open.svg",
             Self::Doctor => "icons/stethoscope.svg",
             Self::Close => "icons/x.svg",
             Self::Panel => "icons/panel-right.svg",
@@ -97,6 +115,15 @@ pub(crate) fn chevron(open: bool, color: Rgba, size: f32) -> Svg {
     )
 }
 
+/// A project's folder: open when its flows show (NAV-2).
+pub(crate) fn folder(open: bool, color: Rgba, size: f32) -> Svg {
+    icon(
+        if open { Icon::FolderOpen } else { Icon::Folder },
+        color,
+        size,
+    )
+}
+
 /// The embedded icons, as GPUI assets.
 pub struct Assets;
 
@@ -115,7 +142,7 @@ impl AssetSource for Assets {
     }
 }
 
-const ALL: [Icon; 28] = [
+const ALL: [Icon; 34] = [
     Icon::ChevronDown,
     Icon::ChevronRight,
     Icon::Pending,
@@ -123,6 +150,10 @@ const ALL: [Icon; 28] = [
     Icon::Issue,
     Icon::Working,
     Icon::Failed,
+    Icon::Skipped,
+    Icon::Todo,
+    Icon::Trash,
+    Icon::Hourglass,
     Icon::External,
     Icon::AddProject,
     Icon::Branch,
@@ -144,17 +175,23 @@ const ALL: [Icon; 28] = [
     Icon::Doctor,
     Icon::Close,
     Icon::Panel,
+    Icon::Folder,
+    Icon::FolderOpen,
 ];
 
 fn bytes(path: &str) -> Option<&'static [u8]> {
     Some(match path {
         "icons/chevron-down.svg" => include_bytes!("../../../assets/icons/chevron-down.svg"),
         "icons/chevron-right.svg" => include_bytes!("../../../assets/icons/chevron-right.svg"),
-        "icons/circle.svg" => include_bytes!("../../../assets/icons/circle.svg"),
-        "icons/circle-check.svg" => include_bytes!("../../../assets/icons/circle-check.svg"),
+        "icons/square.svg" => include_bytes!("../../../assets/icons/square.svg"),
+        "icons/square-check.svg" => include_bytes!("../../../assets/icons/square-check.svg"),
         "icons/circle-dot.svg" => include_bytes!("../../../assets/icons/circle-dot.svg"),
-        "icons/loader-circle.svg" => include_bytes!("../../../assets/icons/loader-circle.svg"),
-        "icons/circle-x.svg" => include_bytes!("../../../assets/icons/circle-x.svg"),
+        "icons/square-dot.svg" => include_bytes!("../../../assets/icons/square-dot.svg"),
+        "icons/square-x.svg" => include_bytes!("../../../assets/icons/square-x.svg"),
+        "icons/square-slash.svg" => include_bytes!("../../../assets/icons/square-slash.svg"),
+        "icons/list-todo.svg" => include_bytes!("../../../assets/icons/list-todo.svg"),
+        "icons/trash-2.svg" => include_bytes!("../../../assets/icons/trash-2.svg"),
+        "icons/hourglass.svg" => include_bytes!("../../../assets/icons/hourglass.svg"),
         "icons/external-link.svg" => include_bytes!("../../../assets/icons/external-link.svg"),
         "icons/folder-plus.svg" => include_bytes!("../../../assets/icons/folder-plus.svg"),
         "icons/git-branch.svg" => include_bytes!("../../../assets/icons/git-branch.svg"),
@@ -181,6 +218,10 @@ fn bytes(path: &str) -> Option<&'static [u8]> {
         "icons/square-pen.svg" => include_bytes!("../../../assets/icons/square-pen.svg"),
         "icons/stethoscope.svg" => include_bytes!("../../../assets/icons/stethoscope.svg"),
         "icons/x.svg" => include_bytes!("../../../assets/icons/x.svg"),
+        "icons/folder.svg" => include_bytes!("../../../assets/icons/folder.svg"),
+        "icons/folder-open.svg" => include_bytes!("../../../assets/icons/folder-open.svg"),
+        // Leon's logo, for the new-flow page.
+        "leon-hat.png" => include_bytes!("../../../assets/leon-hat.png"),
         "icons/panel-right.svg" => include_bytes!("../../../assets/icons/panel-right.svg"),
         _ => return None,
     })

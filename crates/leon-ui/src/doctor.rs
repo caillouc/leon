@@ -6,7 +6,6 @@ use leon_core::Intent;
 use leon_domain::{DoctorSection, Health};
 
 use crate::icons::{Icon, icon};
-use crate::left::since;
 use crate::theme;
 use crate::widgets::{button, empty, pane_header};
 use crate::workspace::Workspace;
@@ -55,9 +54,9 @@ impl Workspace {
     /// The report in the main pane.
     pub(crate) fn render_doctor(&self, cx: &mut Context<Self>) -> AnyElement {
         let running = self.snapshot.doctor_running;
-        let subtitle = self.snapshot.doctor.as_ref().map(|(at, sections)| {
+        let subtitle = self.snapshot.doctor.as_ref().map(|(_, sections)| {
             let (p, w) = counts(sections);
-            format!("{} · checked {}", summary(p, w), since(*at))
+            summary(p, w)
         });
         let header = pane_header("Doctor", subtitle).child(
             button(
@@ -92,7 +91,12 @@ impl Workspace {
                     .text_size(crate::theme::rem(13.))
                     .child(crate::widgets::centered(
                         820.,
-                        div().flex().flex_col().gap_4().children(body),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_4()
+                            .child(self.limits_card())
+                            .children(body),
                     )),
             )
             .into_any_element()

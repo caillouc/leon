@@ -84,6 +84,34 @@ const MIGRATIONS: &[&str] = &[
     // 11: the folder each conversation works in, so the right pane shows
     // only the worktrees an agent works in, across restarts (CTX-2, I20).
     "ALTER TABLE conversations ADD COLUMN folder TEXT;",
+    // 12: each project's place in the left pane, which the user changes by
+    // dragging (NAV-2, I25); first the order they showed in, by name.
+    "ALTER TABLE projects ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+    UPDATE projects SET position = (
+      SELECT COUNT(*) FROM projects AS other
+      WHERE other.name < projects.name COLLATE NOCASE
+         OR (other.name = projects.name COLLATE NOCASE AND other.id < projects.id)
+    );",
+    // 13: a flow's to-dos, added by the user or an agent (TODO-1).
+    "CREATE TABLE todos (
+        id INTEGER PRIMARY KEY,
+        flow_id INTEGER NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+        text TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        added_by INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
+        added_at INTEGER NOT NULL
+    ) STRICT;",
+    // 14: what a to-do waits for, its "when" (its "what" is `text`) (TODO-1).
+    "ALTER TABLE todos ADD COLUMN waits_for TEXT NOT NULL DEFAULT '';",
+    // 15: each flow's group's place on the To do page, which the user
+    // changes by dragging (TODO-3); first the order it showed in, the most
+    // recent first.
+    "ALTER TABLE flows ADD COLUMN todo_position INTEGER NOT NULL DEFAULT 0;
+    UPDATE flows SET todo_position = (
+      SELECT COUNT(*) FROM flows AS other
+      WHERE other.updated_at > flows.updated_at
+         OR (other.updated_at = flows.updated_at AND other.id > flows.id)
+    );",
 ];
 
 /// Latest schema version this build knows.
@@ -234,5 +262,55 @@ mod tests {
         conn.pragma_update(None, "user_version", latest() + 1)
             .unwrap();
         assert!(matches!(run(&mut conn), Err(StoreError::TooNew { .. })));
+    }
+
+    /// Projects keep the order they showed in, by name, as their place.
+    #[test]
+    fn projects_get_their_place_by_name() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..11] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 11).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, path, added_at) VALUES
+               (1, 'web', '/code/web', 0), (2, 'API', '/code/api', 0), (3, 'docs', '/code/docs', 0);",
+        )
+        .unwrap();
+        run(&mut conn).unwrap();
+        let names: Vec<String> = conn
+            .prepare("SELECT name FROM projects ORDER BY position")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(names, ["API", "docs", "web"]);
+    }
+
+    /// Flows keep the order the To do page showed them in, the most recent
+    /// first, as their place there (TODO-3).
+    #[test]
+    fn flows_get_their_to_do_place_by_last_activity() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..14] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 14).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, path, added_at) VALUES (1, 'api', '/code/api', 0);
+             INSERT INTO flows (id, project_id, title, updated_at) VALUES
+               (1, 1, 'old', 10), (2, 1, 'new', 30), (3, 1, 'tie', 10);",
+        )
+        .unwrap();
+        run(&mut conn).unwrap();
+        let titles: Vec<String> = conn
+            .prepare("SELECT title FROM flows ORDER BY todo_position")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(titles, ["new", "tie", "old"]);
     }
 }

@@ -6,11 +6,11 @@ Codex and Copilot CLI.
 
 Each flow's agents, and what they send each other:
 
-![A flow in Leon: the Flow tab with a planner, two coders and two reviewers around it, the prompts and reports between them, and the right pane's Info: the flow's pull requests, what each agent does now and where (sample data)](docs/flow.png)
+![A flow in Leon: the Flow tab with a planner, two coders and two reviewers around it, the prompts and reports between them, and the right pane's Info: the flow's to-dos, pull requests and issues (sample data)](docs/flow.png)
 
 One conversation per agent, as in its CLI:
 
-![A conversation in Leon: a reviewer's answer with its findings, your question, and its answer with code, above the message box with its CLI, model, effort and permission; on the right, the flow's pull requests and what each agent does now (sample data)](docs/conversation.png)
+![A conversation in Leon: a reviewer's answer with its findings, your question, and its answer with code, what the agent is doing now above the message box with its CLI, model, effort and permission; on the right, the flow's to-dos, pull requests and issues (sample data)](docs/conversation.png)
 
 ## Why Leon
 
@@ -18,7 +18,8 @@ Coding agents now work in teams: a planner hands work to coders and
 reviewers, often in several repositories at once. Leon gives each agent its
 own conversation, through the official CLI and your own login, draws the
 whole team as a live diagram, and shows what waits for you: answers to
-review, questions, each flow's changes and pull requests. Native and fast
+review, questions, the to-dos left for you, each flow's changes and pull
+requests. Native and fast
 (Rust and GPUI); it never calls a model API itself and keeps everything on
 your machine.
 

@@ -36,6 +36,8 @@ pub struct Snapshot {
     pub folders: Arc<Vec<crate::ports::AgentFolder>>,
     /// The GitHub lists' folded groups, by key (GH-2, GH-3).
     pub folded_groups: Arc<std::collections::HashSet<String>>,
+    /// Every flow's to-dos, in the order added (TODO-1).
+    pub todos: Arc<Vec<leon_domain::Todo>>,
     /// What each backend's pickers offer (CONV-4).
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     /// Git state of each folder of a flow (GIT-*, CONV-14, CTX-2).
@@ -79,6 +81,12 @@ pub struct Snapshot {
     pub tools: Option<(i64, Arc<Vec<leon_domain::CliConnectors>>)>,
     /// The CLIs still being asked: their columns show that they are loading.
     pub tools_pending: Vec<leon_domain::BackendKind>,
+    /// GitHub actions under way.
+    pub acting: Arc<std::collections::HashSet<Acting>>,
+    /// How much of each CLI's plan limits is used, as it last said, in
+    /// `BackendKind::ALL` order; a CLI that said nothing yet is absent
+    /// (DOCTOR-2).
+    pub limits: Arc<Vec<(leon_domain::BackendKind, Vec<leon_domain::LimitWindow>)>>,
     /// The GitHub repository (`owner/name`) of each project, from its
     /// `origin`: an issue starts a flow in its repository's project.
     pub project_repos: Arc<HashMap<ProjectId, String>>,
@@ -91,6 +99,14 @@ impl Snapshot {
     /// A flow by id.
     pub fn flow(&self, id: FlowId) -> Option<&FlowView> {
         self.flows.iter().find(|c| c.flow.id == id)
+    }
+
+    /// A flow's conversations, in the order they started.
+    pub fn conversations_of(&self, flow: &FlowView) -> Vec<&ConversationView> {
+        flow.conversations
+            .iter()
+            .filter_map(|c| self.conversations.get(c))
+            .collect()
     }
 
     /// A flow's pull requests, each once, the most active first: open, draft,
@@ -112,6 +128,22 @@ impl Snapshot {
         prs.sort_by_key(|p| p.state);
         prs
     }
+}
+
+/// A GitHub action under way, from its click to its result (GH-5..8): its
+/// button shows it working at once, the notice says how it went.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Acting {
+    /// Asking Copilot to review a pull request.
+    CopilotReview(GhRef),
+    /// Marking a pull request a draft, or ready.
+    Draft(GhRef),
+    /// Posting a comment on a pull request or an issue.
+    Comment(GhRef),
+    /// Answering a review thread, by its id (resolving it after or not).
+    Reply(String),
+    /// Resolving a review thread, by its id.
+    Resolve(String),
 }
 
 /// A flow with what the left pane shows about it.
@@ -197,6 +229,9 @@ pub struct GitView {
     pub repo: Option<String>,
     /// Current branch (CONV-14).
     pub branch: Option<String>,
+    /// The repository's own checkout, not a worktree of it: the right pane
+    /// names it "main · <branch>" (CTX-2).
+    pub main: bool,
     /// Branch the branch diff compares with.
     pub base: Option<String>,
     /// Uncommitted changes (GIT-1, GIT-2).
@@ -319,6 +354,7 @@ mod tests {
                 updated_at: 0,
                 folders: folders.clone(),
                 links: vec![],
+                todo_position: 0,
             },
             status: Status::Idle,
             conversations: vec![],

@@ -268,6 +268,22 @@ fn a_file_belongs_to_the_working_tree_holding_it() {
     }
     let outside = tempfile::tempdir().unwrap();
     assert_eq!(git.working_tree(&outside.path().join("a.rs")), None);
+    // The repository's own checkout, from its root or a subfolder, and not
+    // its worktree (CTX-2).
+    let main = [
+        (dir.path().to_path_buf(), true),
+        (dir.path().join("src"), true),
+        (dir.path().join("wt/fix"), false),
+        (outside.path().to_path_buf(), false),
+    ];
+    for (folder, expected) in main {
+        assert_eq!(
+            git.is_main_checkout(&folder),
+            expected,
+            "{}",
+            folder.display()
+        );
+    }
 }
 
 /// A fetch brings `origin/<branch>` up to date and nothing else: files, the

@@ -24,19 +24,23 @@ impl Workspace {
         let input = self.gh.comment.clone();
         let body: AnyElement = match &detail {
             Detail::Loading(_) => empty("Reading from GitHub…"),
-            Detail::Failed(_, error) => empty(format!("Could not read it: {error}")),
+            Detail::Failed(_, error) => {
+                crate::widgets::problem(format!("Could not read it: {error}"))
+            }
             Detail::Issue(issue) => self.issue_body(issue, cx).into_any_element(),
             Detail::PullRequest(pr) => self.pr_body(pr, &input, cx).into_any_element(),
         };
         // What Leon can do with it sits in the header, left of GitHub.
         let actions = match &detail {
             Detail::Issue(issue) => vec![self.issue_action(issue, cx)],
-            Detail::PullRequest(pr) => Self::pr_actions(pr, cx),
+            Detail::PullRequest(pr) => self.pr_actions(pr, cx),
             Detail::Loading(_) | Detail::Failed(..) => Vec::new(),
         };
+        // As every list shows it: an issue in its board column's colour.
         let glyph = match &detail {
             Detail::PullRequest(pr) => pr_icon(pr.state, 16.),
-            _ => match item.kind {
+            Detail::Issue(issue) => icon(Icon::Issue, self.issue_color(issue.status.as_ref()), 16.),
+            Detail::Loading(_) | Detail::Failed(..) => match item.kind {
                 GhKind::Issue => icon(Icon::Issue, theme::fg_muted(), 16.),
                 GhKind::PullRequest => icon(Icon::PullRequest, theme::fg_muted(), 16.),
             },
@@ -110,7 +114,7 @@ impl Workspace {
                 .bg(gpui::Rgba { a: 0.15, ..color })
                 .text_size(crate::theme::rem(11.5))
                 .text_color(color)
-                .child(div().size(crate::theme::rem(7.)).rounded_full().bg(color))
+                .child(crate::widgets::mark(color, 7.))
                 .child(s.name.clone())
         });
         let fields = div()

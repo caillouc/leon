@@ -1,6 +1,48 @@
 //! Back and forward through the places the user opened (NAV-12): a flow on
-//! its Flow tab or on one conversation's tab, in the order visited, like a
-//! browser's history.
+//! its Flow tab or on one conversation's tab, or a page (To do, a GitHub
+//! list…), in the order visited, like a browser's history.
+
+use leon_core::Snapshot;
+use leon_domain::{ConversationId, FlowId};
+
+use crate::workspace::Screen;
+
+/// A place back and forward go through (NAV-12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Place {
+    /// A flow, on its Flow tab or on a conversation's.
+    Flow(FlowId, Option<ConversationId>),
+    /// A page of its own: To do, a GitHub list, Doctor, Connectors, Settings.
+    Page(Screen),
+}
+
+impl Place {
+    /// Where the main pane is, showing `screen` (and `reading`'s tab on a
+    /// flow); `None` on what is no place to come back to: nothing, a new
+    /// flow's form.
+    pub(crate) fn of(screen: Screen, reading: Option<ConversationId>) -> Option<Self> {
+        match screen {
+            Screen::Flow(id) => Some(Self::Flow(id, reading)),
+            Screen::GitHub(_)
+            | Screen::Doctor
+            | Screen::Tools
+            | Screen::Settings
+            | Screen::Todos => Some(Self::Page(screen)),
+            Screen::Nothing | Screen::NewFlow => None,
+        }
+    }
+
+    /// Whether the place is still there: a flow not deleted, a tab whose
+    /// conversation is still in it; a page always is.
+    pub(crate) fn exists(self, snapshot: &Snapshot) -> bool {
+        match self {
+            Self::Flow(flow, tab) => snapshot
+                .flow(flow)
+                .is_some_and(|f| tab.is_none_or(|c| f.conversations.contains(&c))),
+            Self::Page(_) => true,
+        }
+    }
+}
 
 /// How many places are kept.
 const KEPT: usize = 50;
@@ -37,11 +79,6 @@ impl<T: PartialEq + Clone> History<T> {
         self.at = self.places.len() - 1;
     }
 
-    /// The place the user is at, if `there` says it still is.
-    pub(crate) fn current(&self, there: impl Fn(&T) -> bool) -> Option<T> {
-        self.places.get(self.at).filter(|p| there(p)).cloned()
-    }
-
     /// The place before, skipping those `there` says are gone.
     pub(crate) fn back(&mut self, there: impl Fn(&T) -> bool) -> Option<T> {
         let at = (0..self.at).rev().find(|&i| there(&self.places[i]))?;
@@ -59,7 +96,60 @@ impl<T: PartialEq + Clone> History<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::History;
+    use leon_core::{FlowView, Snapshot};
+    use leon_domain::{ConversationId, Flow, FlowId, ProjectId, Status};
+
+    use super::{History, Place};
+    use crate::workspace::Screen;
+
+    #[test]
+    fn a_page_is_a_place_and_gone_places_are_skipped() {
+        let flow = FlowView {
+            flow: Flow {
+                id: FlowId(1),
+                project: ProjectId(1),
+                title: "Flow".into(),
+                pinned: false,
+                archived: false,
+                unread: false,
+                updated_at: 0,
+                folders: Vec::new(),
+                links: Vec::new(),
+                todo_position: 0,
+            },
+            status: Status::Idle,
+            conversations: vec![ConversationId(10)],
+            folders: Vec::new(),
+            issues: Vec::new(),
+        };
+        let snapshot = Snapshot {
+            flows: vec![flow].into(),
+            ..Snapshot::default()
+        };
+        let there = |place: &Place| place.exists(&snapshot);
+        let on_flow = Place::Flow(FlowId(1), None);
+        let on_tab = Place::Flow(FlowId(1), Some(ConversationId(10)));
+        let todos = Place::of(Screen::Todos, None).expect("To do is a place");
+        assert_eq!(Place::of(Screen::NewFlow, None), None);
+        let mut h = History::default();
+        for place in [
+            on_flow,
+            // Deleted since.
+            Place::Flow(FlowId(2), None),
+            on_tab,
+            // A conversation no longer in the flow.
+            Place::Flow(FlowId(1), Some(ConversationId(11))),
+            todos,
+        ] {
+            h.visit(place);
+        }
+        assert_eq!(h.back(there), Some(on_tab));
+        assert_eq!(h.back(there), Some(on_flow));
+        assert_eq!(h.back(there), None);
+        assert_eq!(h.forward(there), Some(on_tab));
+        assert_eq!(h.forward(there), Some(todos));
+        assert_eq!(h.forward(there), None);
+    }
 
     #[test]
     fn back_and_forward_follow_the_places_visited() {
@@ -81,7 +171,7 @@ mod tests {
         h.visit(5);
         h.visit(6);
         assert_eq!(h.back(|p| *p != 5), Some(2));
-        assert_eq!(h.current(|_| true), Some(2));
+        assert_eq!(h.forward(|p| *p != 5), Some(6));
     }
 
     #[test]

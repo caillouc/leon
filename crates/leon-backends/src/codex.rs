@@ -12,9 +12,10 @@ use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, 
 use leon_domain::{Capability, PlanStep, StepStatus, Usage};
 use serde_json::{Value, json};
 
+use crate::conn::{Holders, Launch, Opening};
 use crate::options::codex_policy;
 use crate::process::clip;
-use crate::rpc::{self, Launch, Protocol};
+use crate::rpc::{self, Protocol};
 use crate::summary::{OUTPUT_MAX, compact, files_changed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,6 +294,11 @@ impl Session {
                 .collect(),
             "item/started" => self.item_started(&p["item"]),
             "item/completed" => self.item_completed(&p["item"]),
+            // How much of the plan is used (DOCTOR-2).
+            "account/rateLimits/updated" => crate::limits::codex(&p["rateLimits"])
+                .map(BackendEvent::Limits)
+                .into_iter()
+                .collect(),
             "turn/started" => {
                 self.turn = p["turn"]["id"].as_str().map(str::to_owned);
                 Vec::new()
@@ -489,10 +495,12 @@ fn limit(params: &mut Value, tools: &[Capability]) {
     }
 }
 
+/// Starts Codex for `spec`, under a holder when `holders` is set (I24).
 pub(crate) fn start(
     spec: &SessionSpec,
     path: Option<&OsString>,
     skills: Option<&Path>,
+    holders: Option<&Holders>,
 ) -> Result<BackendChannel, PortError> {
     let (session, first) = Session::new(spec, skills);
     let launch = Launch {
@@ -501,9 +509,25 @@ pub(crate) fn start(
         args: &["app-server".to_owned()],
         env: &[],
         cwd: &spec.working_dir,
-        label: "Codex",
     };
-    rpc::start(&launch, session, first)
+    let opening = crate::conn::open(holders, &spec.conversation.0.to_string(), &launch)
+        .map_err(|e| PortError::new("starting a CLI", format!("Codex: {e}")))?;
+    Ok(rpc::session(opening, "Codex", session, first))
+}
+
+/// Codex found again under its holder (I24): already set up, on its
+/// thread; nothing to send first.
+pub(crate) fn attach(
+    opening: Opening,
+    spec: &SessionSpec,
+    skills: Option<&Path>,
+) -> BackendChannel {
+    let (mut session, _) = Session::new(spec, skills);
+    session.thread.clone_from(&spec.resume);
+    // Far from the ids Codex may still answer from before.
+    session.next_id = 1_000_000;
+    session.pending.clear();
+    rpc::session(opening, "Codex", session, Vec::new())
 }
 
 impl Protocol for Session {
@@ -528,6 +552,7 @@ mod tests {
 
     fn spec(resume: Option<&str>) -> SessionSpec {
         SessionSpec {
+            conversation: leon_domain::ConversationId(1),
             settings: ConversationSettings {
                 backend: BackendKind::Codex,
                 agent: Some("coder".into()),
@@ -663,6 +688,12 @@ mod tests {
                 },
                 BackendEvent::TextDelta("pong".into()),
                 BackendEvent::Text("pong".into()),
+                // Its free plan's 30-day window (DOCTOR-2).
+                BackendEvent::Limits(vec![leon_domain::LimitWindow {
+                    minutes: 43_200,
+                    used: 1,
+                    resets_at: Some(1_797_093_720_000),
+                }]),
                 BackendEvent::TurnEnded {
                     stopped: false,
                     usage: Some(Usage {

@@ -119,6 +119,52 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     assert_eq!(s.flows[0].status, Status::Running);
 }
 
+/// A turn the CLI starts by itself — a background command it waited for
+/// has finished — still answers the agent that asked, not the user: the
+/// asker gets the real report and the conversation is not to review
+/// (NAV-4, FLOW-1).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_the_cli_starts_itself_answers_the_agent_that_asked() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    let start = AppToolCall::StartAgent {
+        agent: "coder".into(),
+        prompt: "Implement step 1".into(),
+        working_directory: None,
+        for_user: false,
+    };
+    call(&h, planner, start).await.unwrap();
+    started(&h, 2).await;
+    next_command(&h, 1).await;
+    end_turn(&h, 0, "Waiting for the coder.");
+    end_turn(&h, 1, "Waiting for the tests to finish.");
+    assert_eq!(
+        next_command(&h, 0).await,
+        BackendCommand::Send(
+            "[From coder · conversation 2]\n\nWaiting for the tests to finish.".into()
+        )
+    );
+    end_turn(&h, 0, "Fine.");
+    until(&h.core, "planner idle", |s| {
+        s.conversations[&planner].status == Status::Idle
+    })
+    .await;
+    // The coder's CLI wakes up on its own once its tests are done.
+    end_turn(&h, 1, "Step 1 done: the tests pass.");
+    assert_eq!(
+        next_command(&h, 0).await,
+        BackendCommand::Send(
+            "[From coder · conversation 2]\n\nStep 1 done: the tests pass.".into()
+        )
+    );
+    let s = until(&h.core, "coder idle", |s| {
+        s.conversations[&ConversationId(2)].status == Status::Idle
+    })
+    .await;
+    assert!(!s.conversations[&ConversationId(2)].conversation.unread);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn bad_tool_calls_explain_what_is_wrong() {
     let h = harness();

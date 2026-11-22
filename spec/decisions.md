@@ -283,3 +283,33 @@ per folder. Only `origin/<base>` moves: no file, local branch or
 was. The PR view needs none: it shows GitHub's own diff. Chosen by the
 maintainer on 2026-11-19, asked whether Leon should fetch the base when a
 branch diff opens: "Yes for background fetch when needed".
+
+**I23 — Claude Code's questions and approvals come to Leon (CONV-9).**
+Claude Code runs with `--permission-prompt-tool stdio`: its question tool
+(`AskUserQuestion`, which it removes without that flag) and every approval
+request (a command, a file change, an MCP tool) reach Leon as a
+`control_request`, shown as a card, and the answer goes back as a
+`control_response`. Several questions in one call show one after another;
+a message typed while a card shows answers it (for an approval: denies it
+with that message). Chosen by the maintainer on 2026-11-20, after an agent
+could not ask its questions and another's Metabase query was refused by an
+approval no one saw: "yes fix the claude questions, this is a very
+important feature".
+
+**I24 — Agents keep working when Leon quits.** Each conversation's CLI runs
+under a small holder process of Leon's own binary (`leon hold`), in its own
+process group, after derby's design: it keeps the CLI's input open, appends
+the CLI's output to a file in Leon's data folder and takes Leon's lines on a
+socket next to it. Quitting Leon leaves working agents running; reopening it
+reconnects to each holder and replays the current turn, so the UI shows each
+conversation as it is. Leon's own agent tools do not work while Leon is
+closed. Tested 2026-11-20: Claude Code finishes a turn after its input closes,
+Codex abandons it, hence the holder. Chosen by the maintainer on 2026-11-20:
+"yes for the background thing", "You do not have to copy Derby's setup
+exactly. I trust you suggestion".
+
+**I25 — Each project's place is saved (NAV-2).** SQLite `projects.position`
+(migration 12; first the order they showed in, by name); dragging a project
+rewrites the places, a new project comes last. Asked by the maintainer on
+2026-11-20: "allow me to reorder the project, via a nice drag and drop
+feature. The project position should be remembered".

@@ -3,7 +3,7 @@
 
 use gpui::{Context, Div, Focusable, FontWeight, SharedString, div, prelude::*};
 use gpui_component::input::Textarea;
-use leon_core::Intent;
+use leon_core::{Acting, Intent};
 use leon_domain::{Comment, GhRef, PullRequest, ReviewThread};
 
 use crate::icons::{Icon, icon};
@@ -128,7 +128,7 @@ impl Workspace {
                         if body.trim().is_empty() {
                             return;
                         }
-                        this.core.send(Intent::ReplyToThread {
+                        this.act(Intent::ReplyToThread {
                             pr: item.clone(),
                             thread: thread_id.clone(),
                             body: body.trim().to_owned(),
@@ -177,31 +177,57 @@ impl Workspace {
         let reply_to = thread.id.clone();
         let resolve = thread.id.clone();
         let url = pr.url.clone();
+        // An answer or a resolve under way shows at once (GH-8).
+        let answering = self
+            .snapshot
+            .acting
+            .contains(&Acting::Reply(thread.id.clone()));
+        let resolving = self
+            .snapshot
+            .acting
+            .contains(&Acting::Resolve(thread.id.clone()));
         footer
             .items_center()
             .when(!thread.id.is_empty(), |d| {
-                d.child(button(
-                    SharedString::from(format!("{id}-reply")),
-                    "Reply",
-                    cx.listener(move |this, _, window, cx| {
-                        this.right.replying = Some(reply_to.clone());
-                        this.right.thread_reply.focus_handle(cx).focus(window, cx);
-                        cx.notify();
-                    }),
-                ))
+                d.child(
+                    button(
+                        SharedString::from(format!("{id}-reply")),
+                        if answering {
+                            "Sending your answer…"
+                        } else {
+                            "Reply"
+                        },
+                        cx.listener(move |this, _, window, cx| {
+                            if answering {
+                                return;
+                            }
+                            this.right.replying = Some(reply_to.clone());
+                            this.right.thread_reply.focus_handle(cx).focus(window, cx);
+                            cx.notify();
+                        }),
+                    )
+                    .when(answering, |b| b.opacity(0.6)),
+                )
             })
             .when(thread.can_resolve, |d| {
                 let item = GhRef::pull_request(&pr.repo, pr.number);
-                d.child(button(
-                    SharedString::from(format!("{id}-resolve")),
-                    "Resolve conversation",
-                    cx.listener(move |this, _, _, _| {
-                        this.core.send(Intent::ResolveThread {
-                            pr: item.clone(),
-                            thread: resolve.clone(),
-                        });
-                    }),
-                ))
+                d.child(
+                    button(
+                        SharedString::from(format!("{id}-resolve")),
+                        if resolving {
+                            "Resolving…"
+                        } else {
+                            "Resolve as fixed"
+                        },
+                        cx.listener(move |this, _, _, _| {
+                            this.act(Intent::ResolveThread {
+                                pr: item.clone(),
+                                thread: resolve.clone(),
+                            });
+                        }),
+                    )
+                    .when(resolving, |b| b.opacity(0.6)),
+                )
             })
             .child(div().flex_1())
             .child(

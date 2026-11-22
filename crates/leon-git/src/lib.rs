@@ -78,6 +78,20 @@ impl Git for GitCli {
         (!name.is_empty() && name != "HEAD").then_some(name)
     }
 
+    fn is_main_checkout(&self, dir: &Path) -> bool {
+        // A linked worktree keeps its own git dir apart from the shared one.
+        let args = [
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-dir",
+            "--git-common-dir",
+        ];
+        git_line((self.path)(), dir, &args).is_ok_and(|out| {
+            let mut lines = out.lines();
+            matches!((lines.next(), lines.next()), (Some(own), Some(shared)) if own == shared)
+        })
+    }
+
     fn github_repo(&self, dir: &Path) -> Option<String> {
         let url = git_line((self.path)(), dir, &["remote", "get-url", "origin"]).ok()?;
         github_repo_of(&url)

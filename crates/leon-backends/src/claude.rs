@@ -1,8 +1,9 @@
 //! Claude Code over stream-json: `claude -p --input-format stream-json
 //! --output-format stream-json` (checked on 2.1.288, 2026-11-17).
 //!
-//! One process per conversation, kept between turns. Stopping a turn kills
-//! the process; the next message starts it again with `--resume`.
+//! One process per conversation, kept between turns, under a holder that
+//! outlives Leon (I24). Stopping a turn ends the process; the next message
+//! starts it again with `--resume`.
 
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -11,10 +12,10 @@ use std::path::Path;
 use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
 use leon_domain::{Capability, PlanStep, StepStatus, Usage};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
-use crate::process::{clip, spawn, stderr_tail};
+use crate::conn::{Holders, Input, Launch, Opening, Output, ended};
+use crate::process::clip;
 use crate::summary::{OUTPUT_MAX, claude_files, claude_tool, result_text};
 
 /// The command line; `skills` is the folder of Leon's generic skills made
@@ -31,6 +32,9 @@ pub(crate) fn args(spec: &SessionSpec, skills: Option<&Path>) -> Vec<String> {
         "--include-partial-messages",
         "--prompt-suggestions",
         "true",
+        // Questions and approval requests come to Leon (CONV-9).
+        "--permission-prompt-tool",
+        "stdio",
         "--permission-mode",
     ]
     .iter()
@@ -123,27 +127,47 @@ fn denied_tools(allowed: &[Capability]) -> Vec<&'static str> {
         .collect()
 }
 
+/// Starts Claude Code for `spec`, under a holder when `holders` is set
+/// (I24); `skills` is the folder of Leon's generic skills made for Claude
+/// Code (EXT-5), if any.
 pub(crate) fn start(
     spec: &SessionSpec,
     path: Option<&OsString>,
     skills: Option<&Path>,
+    holders: Option<&Holders>,
 ) -> Result<BackendChannel, PortError> {
-    let mut child = spawn(path, "claude", &args(spec, skills), &[], &spec.working_dir)
-        .map_err(|e| PortError::new("starting Claude Code", e))?;
-    let (Some(stdin), Some(stdout), Some(stderr)) =
-        (child.stdin.take(), child.stdout.take(), child.stderr.take())
-    else {
-        return Err(PortError::new("starting Claude Code", "no stdio pipes"));
+    let launch = Launch {
+        path,
+        program: "claude",
+        args: &args(spec, skills),
+        env: &[],
+        cwd: &spec.working_dir,
     };
+    let opening = crate::conn::open(holders, &spec.conversation.0.to_string(), &launch)
+        .map_err(|e| PortError::new("starting Claude Code", e))?;
+    Ok(session(opening))
+}
+
+/// Runs Claude Code's stream-json on the CLI `opening` started or found
+/// again (I24).
+pub(crate) fn session(opening: Opening) -> BackendChannel {
     let (commands, command_rx) = unbounded_channel();
     let (event_tx, events) = unbounded_channel();
     tokio::spawn(async move {
-        let tail = stderr_tail(stderr);
-        let outcome = run(stdin, stdout, command_rx, &event_tx).await;
-        let _ = child.start_kill();
-        let status = child.wait().await.ok();
-        let tail = tail.await.unwrap_or_default();
-        if outcome == Outcome::Exited && !status.is_some_and(|s| s.success()) {
+        let (mut input, mut output) = match opening.connect().await {
+            Ok(conn) => conn,
+            Err(error) => {
+                let _ = event_tx.send(BackendEvent::Failed(format!("Claude Code: {error}")));
+                return;
+            }
+        };
+        let outcome = run(&mut input, &mut output, command_rx, &event_tx).await;
+        if outcome == Outcome::Stopped {
+            input.stop().await;
+            return;
+        }
+        let (ok, tail) = ended(input, output).await;
+        if !ok {
             let message = if tail.is_empty() {
                 "Claude Code stopped".to_owned()
             } else {
@@ -152,7 +176,7 @@ pub(crate) fn start(
             let _ = event_tx.send(BackendEvent::Failed(message));
         }
     });
-    Ok(BackendChannel { commands, events })
+    BackendChannel { commands, events }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -164,49 +188,63 @@ enum Outcome {
 }
 
 async fn run(
-    mut stdin: tokio::process::ChildStdin,
-    stdout: tokio::process::ChildStdout,
+    input: &mut Input,
+    output: &mut Output,
     mut commands: UnboundedReceiver<BackendCommand>,
     events: &UnboundedSender<BackendEvent>,
 ) -> Outcome {
-    let mut lines = BufReader::new(stdout).lines();
     let mut parser = Parser::default();
     loop {
         tokio::select! {
-            line = lines.next_line() => match line {
-                Ok(Some(line)) => {
-                    for event in parser.parse(&line) {
-                        if events.send(event).is_err() {
-                            return Outcome::Stopped;
-                        }
+            line = output.next_line() => match line {
+                Some(line) => {
+                    if !forward(events, parser.parse(&line)) {
+                        return Outcome::Stopped;
                     }
                 }
-                _ => return Outcome::Exited,
+                None => return Outcome::Exited,
             },
-            command = commands.recv() => match command {
-                Some(BackendCommand::Send(text)) => {
-                    let message = json!({ "type": "user", "message": { "role": "user", "content": text } });
-                    let line = format!("{message}\n");
-                    if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
-                        return Outcome::Exited;
+            command = commands.recv() => {
+                let (new, line) = match command {
+                    // A message typed while a card shows answers it.
+                    Some(BackendCommand::Send(text)) if parser.asks.waiting() => {
+                        parser.asks.answer(None, &text)
                     }
-                }
-                Some(BackendCommand::Interrupt) => {
-                    let _ = events.send(BackendEvent::TurnEnded { stopped: true, usage: None });
+                    Some(BackendCommand::Send(text)) => {
+                        let message = json!({ "type": "user", "message": { "role": "user", "content": text } });
+                        (Vec::new(), Some(message.to_string()))
+                    }
+                    Some(BackendCommand::Answer { id, answer }) => parser.asks.answer(Some(&id), &answer),
+                    Some(BackendCommand::Interrupt) => {
+                        let _ = events.send(BackendEvent::TurnEnded { stopped: true, usage: None });
+                        return Outcome::Stopped;
+                    }
+                    None => return Outcome::Stopped,
+                };
+                if !forward(events, new) {
                     return Outcome::Stopped;
                 }
-                // Claude Code's print mode decides permissions itself.
-                Some(BackendCommand::Answer { .. }) => {}
-                None => return Outcome::Stopped,
-            },
+                if let Some(line) = line
+                    && !input.send(line.trim_end()).await
+                {
+                    return Outcome::Exited;
+                }
+            }
         }
     }
+}
+
+/// Sends `new` on to the core; `false` once it no longer listens.
+fn forward(events: &UnboundedSender<BackendEvent>, new: Vec<BackendEvent>) -> bool {
+    new.into_iter().all(|event| events.send(event).is_ok())
 }
 
 /// Turns stream-json lines into events. Subagent output (lines with a
 /// `parent_tool_use_id`) only feeds the subagent counts (CONV-13).
 #[derive(Debug, Default)]
 pub(crate) struct Parser {
+    /// The question or approval request Claude Code waits on (CONV-9).
+    pub(crate) asks: crate::claude_ask::Asks,
     subagents_running: HashSet<String>,
     subagents_started: u32,
     /// The agent's task list, by task id, in creation order (CONV-14).
@@ -247,6 +285,13 @@ impl Parser {
                 .map(|s| BackendEvent::Suggestion(s.trim().to_owned()))
                 .into_iter()
                 .collect(),
+            // How much of the plan is used (DOCTOR-2); seen on a real run of
+            // Claude Code 2.1.288, 2026-11-20.
+            Some("rate_limit_event") => crate::limits::claude(&v["rate_limit_info"])
+                .map(BackendEvent::Limits)
+                .into_iter()
+                .collect(),
+            Some("control_request") => self.asks.request(&v),
             Some("assistant") if top_level => self.assistant(&v),
             Some("user") if top_level => self.tool_results(&v),
             Some("result") => {
@@ -490,6 +535,7 @@ mod tests {
     #[test]
     fn args_pass_every_choice_explicitly() {
         let spec = SessionSpec {
+            conversation: leon_domain::ConversationId(1),
             settings: ConversationSettings {
                 backend: BackendKind::ClaudeCode,
                 agent: Some("planner".into()),
@@ -531,6 +577,8 @@ mod tests {
         assert_eq!(list[at + 2..at + 4], ["--allowedTools", "mcp__leon"]);
         let a = list.join(" ");
         assert!(a.contains("--permission-mode auto"));
+        // Questions and approvals come to Leon (CONV-9).
+        assert!(a.contains("--permission-prompt-tool stdio"));
         assert!(a.contains("--model opus"));
         assert!(a.contains("--effort high"));
         assert!(a.contains("--agent planner"));

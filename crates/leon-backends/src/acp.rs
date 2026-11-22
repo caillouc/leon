@@ -23,8 +23,9 @@ use leon_core::ports::{BackendChannel, PortError, SessionSpec};
 use leon_domain::{Capability, McpServer};
 use serde_json::json;
 
+use crate::conn::{Holders, Launch, Opening};
 use crate::options::copilot_flags;
-use crate::rpc::{self, Launch};
+use crate::rpc;
 use session::Session;
 
 /// How to start one ACP CLI.
@@ -127,10 +128,12 @@ pub(crate) fn copilot(spec: &SessionSpec, skills: Option<&Path>) -> Cli {
     }
 }
 
+/// Starts the CLI for `spec`, under a holder when `holders` is set (I24).
 pub(crate) fn start(
     spec: &SessionSpec,
     cli: &Cli,
     path: Option<&OsString>,
+    holders: Option<&Holders>,
 ) -> Result<BackendChannel, PortError> {
     let (session, first) = Session::new(spec, cli.label);
     let launch = Launch {
@@ -139,9 +142,21 @@ pub(crate) fn start(
         args: &cli.args,
         env: &cli.env,
         cwd: &spec.working_dir,
-        label: cli.label,
     };
-    rpc::start(&launch, session, first)
+    let opening = crate::conn::open(holders, &spec.conversation.0.to_string(), &launch)
+        .map_err(|e| PortError::new("starting a CLI", format!("{}: {e}", cli.label)))?;
+    Ok(rpc::session(opening, cli.label, session, first))
+}
+
+/// The CLI found again under its holder (I24): already set up, in its
+/// session; nothing to send first.
+pub(crate) fn attach(opening: Opening, spec: &SessionSpec, cli: &Cli) -> BackendChannel {
+    rpc::session(
+        opening,
+        cli.label,
+        Session::attached(spec, cli.label),
+        Vec::new(),
+    )
 }
 
 impl rpc::Protocol for Session {

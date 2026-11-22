@@ -51,7 +51,7 @@ impl Core {
     pub(crate) fn read_link(&self, item: GhRef) {
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let read = match item.kind {
                 GhKind::Issue => github
                     .issue(&item.repo, item.number)

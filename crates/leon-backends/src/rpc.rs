@@ -2,15 +2,11 @@
 //! per line on stdio (Codex app-server, ACP): write what the protocol state
 //! machine asks, feed it the CLI's lines and Leon's commands.
 
-use std::ffi::OsString;
-use std::path::Path;
-
-use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError};
+use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent};
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::unbounded_channel;
 
-use crate::process::{spawn, stderr_tail};
+use crate::conn::{Opening, ended};
 
 /// A protocol state machine, free of I/O.
 pub(crate) trait Protocol: Send + 'static {
@@ -20,53 +16,31 @@ pub(crate) trait Protocol: Send + 'static {
     fn command(&mut self, command: BackendCommand) -> Vec<Value>;
 }
 
-/// How to start the CLI.
-pub(crate) struct Launch<'a> {
-    pub path: Option<&'a OsString>,
-    pub program: &'a str,
-    pub args: &'a [String],
-    /// Environment variables added for it.
-    pub env: &'a [(String, String)],
-    pub cwd: &'a Path,
-    /// The CLI's name in messages, e.g. "Codex".
-    pub label: &'static str,
-}
-
-/// Starts the CLI and runs `protocol` on it, `first` being the messages to
-/// send at once. A CLI that stops on its own reports its last stderr lines.
-pub(crate) fn start(
-    launch: &Launch<'_>,
+/// Runs `protocol` on the CLI `opening` started or found again, `first`
+/// being the messages to send at once; `label` names the CLI in messages,
+/// e.g. "Codex". A CLI that stops on its own reports its last stderr lines;
+/// one Leon lets go of is stopped.
+pub(crate) fn session(
+    opening: Opening,
+    label: &'static str,
     mut protocol: impl Protocol,
     first: Vec<Value>,
-) -> Result<BackendChannel, PortError> {
-    let label = launch.label;
-    let failed = |cause: &dyn std::fmt::Display| {
-        PortError::new("starting a CLI", format!("{label}: {cause}"))
-    };
-    let mut child = spawn(
-        launch.path,
-        launch.program,
-        launch.args,
-        launch.env,
-        launch.cwd,
-    )
-    .map_err(|e| failed(&e))?;
-    let (Some(mut stdin), Some(stdout), Some(stderr)) =
-        (child.stdin.take(), child.stdout.take(), child.stderr.take())
-    else {
-        return Err(failed(&"no stdio pipes"));
-    };
+) -> BackendChannel {
     let (commands, mut command_rx) = unbounded_channel();
     let (events, event_rx) = unbounded_channel();
     tokio::spawn(async move {
-        let tail = stderr_tail(stderr);
-        let mut lines = BufReader::new(stdout).lines();
+        let (mut input, mut output) = match opening.connect().await {
+            Ok(conn) => conn,
+            Err(error) => {
+                let _ = events.send(BackendEvent::Failed(format!("{label}: {error}")));
+                return;
+            }
+        };
         let mut exited = false;
         let mut outgoing = first;
         loop {
             for msg in outgoing.drain(..) {
-                let line = format!("{msg}\n");
-                if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
+                if !input.send(&msg.to_string()).await {
                     exited = true;
                 }
             }
@@ -74,7 +48,7 @@ pub(crate) fn start(
                 break;
             }
             tokio::select! {
-                line = lines.next_line() => if let Ok(Some(line)) = line {
+                line = output.next_line() => if let Some(line) = line {
                     let Ok(msg) = serde_json::from_str::<Value>(&line) else { continue };
                     let (new_events, replies) = protocol.handle(&msg);
                     outgoing = replies;
@@ -91,10 +65,12 @@ pub(crate) fn start(
                 },
             }
         }
-        let _ = child.start_kill();
-        let _ = child.wait().await;
-        let tail = tail.await.unwrap_or_default();
-        if exited {
+        if !exited {
+            input.stop().await;
+            return;
+        }
+        let (ok, tail) = ended(input, output).await;
+        if !ok {
             let message = if tail.is_empty() {
                 format!("{label} stopped")
             } else {
@@ -103,8 +79,8 @@ pub(crate) fn start(
             let _ = events.send(BackendEvent::Failed(message));
         }
     });
-    Ok(BackendChannel {
+    BackendChannel {
         commands,
         events: event_rx,
-    })
+    }
 }

@@ -23,6 +23,28 @@ struct LastCopy {
 
 impl gpui::Global for LastCopy {}
 
+/// A small copy icon that puts `text` on the clipboard: a code block's,
+/// the right pane's branch.
+pub(crate) fn copy_button(
+    id: &'static str,
+    text: impl Into<gpui::SharedString>,
+) -> gpui::Stateful<gpui::Div> {
+    let text = text.into();
+    div()
+        .id(id)
+        .flex_none()
+        .p(crate::theme::rem(3.))
+        .rounded(crate::theme::rem(4.))
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::surface_2()))
+        .child(icon(Icon::Copy, theme::fg_muted(), 13.))
+        .on_click(move |_, window, cx| {
+            // Not also a click on what is around it.
+            cx.stop_propagation();
+            copy(window, cx, text.to_string());
+        })
+}
+
 /// Puts `text` on the clipboard and shows "Copied" where the user clicked.
 pub(crate) fn copy(window: &Window, cx: &mut App, text: String) {
     cx.write_to_clipboard(ClipboardItem::new_string(text));

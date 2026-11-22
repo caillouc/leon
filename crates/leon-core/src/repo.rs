@@ -11,7 +11,7 @@ use leon_domain::{FlowId, GhKind, GhRef, Issue, PullRequest};
 
 use crate::app::Core;
 use crate::ports::{GitHub, PortError};
-use crate::snapshot::{Detail, GitView};
+use crate::snapshot::{Acting, Detail, GitView};
 
 /// How long a fetched base stays fresh: no new fetch before (I22).
 const FETCH_EVERY_MS: i64 = 5 * 60 * 1000;
@@ -41,7 +41,7 @@ pub(crate) enum Internal {
     Lists(Result<(Vec<Issue>, Vec<PullRequest>), String>),
     /// A GitHub action on an item finished: say so, and read the item again
     /// where it shows.
-    Done(GhRef, String),
+    Done(GhRef, Acting, String),
     /// An item's details, read for the drawer.
     Detail(Detail),
     /// A pull request's changes, read from GitHub (GH-3).
@@ -52,6 +52,9 @@ pub(crate) enum Internal {
     LinkedPr(GhRef, Box<PullRequest>),
     /// Time to refresh pull request badges.
     Tick,
+    /// Between two ticks: time to refresh the flow looked at, if its checks
+    /// still run.
+    QuickTick,
     /// A title the CLI wrote for a flow (NAV-9), with the title it
     /// replaces.
     Title(FlowId, String, String),
@@ -78,8 +81,9 @@ impl Core {
         let git = Arc::clone(&self.ports.git);
         let tx = self.internal_tx.clone();
         let pr_base = self.pr_base(&dir);
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let branch = git.branch(&dir);
+            let main = git.is_main_checkout(&dir);
             // What its pull request merges into, as GitHub shows the diff
             // (GIT-3); without one, or when that branch is not fetched, the
             // remote's default branch.
@@ -99,6 +103,7 @@ impl Core {
             let view = GitView {
                 repo: git.github_repo(&dir),
                 branch,
+                main,
                 base,
                 changes: Arc::new(changes.unwrap_or_default()),
                 branch_diff: Arc::new(branch_diff.ok().flatten().unwrap_or_default()),
@@ -129,7 +134,7 @@ impl Core {
             self.fetched.insert(key, now);
             let git = Arc::clone(&self.ports.git);
             let tx = self.internal_tx.clone();
-            tokio::task::spawn_blocking(move || {
+            crate::jobs::spawn(move || {
                 if git.fetch(&dir, &branch).is_ok() {
                     let _ = tx.send(Internal::Fetched(dir));
                 } else {
@@ -151,7 +156,7 @@ impl Core {
 
     /// The branch the pull request of `dir`'s branch merges into, on the
     /// remote: the branch diff's base (GIT-3).
-    fn pr_base(&self, dir: &std::path::Path) -> Option<String> {
+    pub(crate) fn pr_base(&self, dir: &std::path::Path) -> Option<String> {
         self.state
             .prs
             .get(dir)
@@ -172,7 +177,7 @@ impl Core {
         };
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || match github.pull_request(&dir, &branch) {
+        crate::jobs::spawn(move || match github.pull_request(&dir, &branch) {
             Ok(pr) => {
                 let _ = tx.send(Internal::Pr(dir, pr.map(Box::new)));
             }
@@ -184,7 +189,7 @@ impl Core {
     pub(crate) fn refresh_lists(&mut self) {
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let lists = github
                 .my_issues()
                 .and_then(|issues| github.my_pull_requests().map(|prs| (issues, prs)))
@@ -196,6 +201,7 @@ impl Core {
     /// Asks Copilot to review a pull request (GH-5).
     pub(crate) fn request_review(&mut self, item: GhRef) {
         self.act(
+            Acting::CopilotReview(item.clone()),
             item,
             "Could not request a Copilot review",
             |github, item| {
@@ -208,16 +214,23 @@ impl Core {
 
     /// Posts a comment on a pull request or an issue (GH-6).
     pub(crate) fn comment(&mut self, item: GhRef, body: String) {
-        self.act(item, "Could not post the comment", move |github, item| {
-            github
-                .comment(&item.repo, item.number, &body)
-                .map(|()| format!("Comment posted on #{}", item.number))
-        });
+        let acting = Acting::Comment(item.clone());
+        self.act(
+            acting,
+            item,
+            "Could not post the comment",
+            move |github, item| {
+                github
+                    .comment(&item.repo, item.number, &body)
+                    .map(|()| format!("Comment posted on #{}", item.number))
+            },
+        );
     }
 
     /// Marks a pull request as a draft or ready for review (GH-7).
     pub(crate) fn set_draft(&mut self, item: GhRef, draft: bool) {
         self.act(
+            Acting::Draft(item.clone()),
             item,
             "Could not change the pull request",
             move |github, item| {
@@ -242,41 +255,58 @@ impl Core {
         body: String,
         resolve: bool,
     ) {
-        self.act(pr, "Could not answer the thread", move |github, _| {
-            github.reply_to_thread(&thread, &body)?;
-            if !resolve {
-                return Ok("Answer posted".to_owned());
-            }
-            github
-                .resolve_thread(&thread)
-                .map(|()| "Answered and resolved".to_owned())
-        });
+        let acting = Acting::Reply(thread.clone());
+        self.act(
+            acting,
+            pr,
+            "Could not answer the thread",
+            move |github, _| {
+                github.reply_to_thread(&thread, &body)?;
+                if !resolve {
+                    return Ok("Answer posted".to_owned());
+                }
+                github
+                    .resolve_thread(&thread)
+                    .map(|()| "Answered and resolved".to_owned())
+            },
+        );
     }
 
-    /// Resolves a review thread of pull request `pr` (GH-8).
+    /// Resolves a review thread of pull request `pr` as fixed: answers
+    /// "Fixed", then resolves it; a failed answer resolves nothing (GH-8).
     pub(crate) fn resolve_thread(&mut self, pr: GhRef, thread: String) {
-        self.act(pr, "Could not resolve the thread", move |github, _| {
-            github
-                .resolve_thread(&thread)
-                .map(|()| "Thread resolved".to_owned())
-        });
+        let acting = Acting::Resolve(thread.clone());
+        self.act(
+            acting,
+            pr,
+            "Could not resolve the thread",
+            move |github, _| {
+                github.reply_to_thread(&thread, "Fixed")?;
+                github
+                    .resolve_thread(&thread)
+                    .map(|()| "Resolved as fixed".to_owned())
+            },
+        );
     }
 
-    /// Runs a GitHub action on `item` in the background, then says how it
-    /// went (`run`'s message, or `failed` and why) and reads the item again
-    /// where it shows.
+    /// Runs a GitHub action on `item` in the background — its button shows
+    /// it under way (`acting`) at once — then says how it went (`run`'s
+    /// message, or `failed` and why) and reads the item again where it
+    /// shows.
     fn act(
-        &self,
+        &mut self,
+        acting: Acting,
         item: GhRef,
         failed: &'static str,
         run: impl FnOnce(&dyn GitHub, &GhRef) -> Result<String, PortError> + Send + 'static,
     ) {
+        Arc::make_mut(&mut self.state.acting).insert(acting.clone());
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let message =
                 run(github.as_ref(), &item).unwrap_or_else(|error| format!("{failed}: {error}"));
-            let _ = tx.send(Internal::Done(item, message));
+            let _ = tx.send(Internal::Done(item, acting, message));
         });
     }
 
@@ -303,7 +333,7 @@ impl Core {
         });
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let files = github
                 .pull_request_diff(&item.repo, item.number)
                 .map(Arc::new)
@@ -315,7 +345,7 @@ impl Core {
     fn load_detail(&self, item: GhRef) {
         let github = Arc::clone(&self.ports.github);
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let detail = match item.kind {
                 GhKind::Issue => github
                     .issue(&item.repo, item.number)
@@ -344,18 +374,7 @@ impl Core {
                 }
             }
             Internal::Fetched(dir) => self.refresh_folder(dir),
-            Internal::Pr(dir, pr) => {
-                let before = self.pr_base(&dir);
-                let prs = Arc::make_mut(&mut self.state.prs);
-                match pr {
-                    Some(pr) => prs.insert(dir.clone(), *pr),
-                    None => prs.remove(&dir),
-                };
-                // Another base: the branch diff is compared again (GIT-3).
-                if self.pr_base(&dir) != before {
-                    self.refresh_folder(dir);
-                }
-            }
+            Internal::Pr(dir, pr) => self.folder_pr_read(dir, pr.map(|pr| *pr)),
             Internal::WorkingTree {
                 conversation,
                 seq,
@@ -364,13 +383,10 @@ impl Core {
                 root,
                 keep,
             } => self.working_tree_found((conversation, seq), flow, dir, root, keep),
-            Internal::Lists(Ok((issues, prs))) => {
-                self.state.my_issues = Arc::new(issues);
-                self.state.my_prs = Arc::new(prs);
-                self.state.github_error = None;
-            }
+            Internal::Lists(Ok((issues, prs))) => self.lists_read(issues, prs),
             Internal::Lists(Err(error)) => self.state.github_error = Some(error),
-            Internal::Done(item, message) => {
+            Internal::Done(item, acting, message) => {
+                Arc::make_mut(&mut self.state.acting).remove(&acting);
                 self.flash(message);
                 let shown: Vec<PathBuf> = self
                     .state
@@ -392,6 +408,9 @@ impl Core {
             Internal::Detail(detail) => {
                 // Only the item still shown, not one closed or replaced since.
                 if self.state.detail.as_ref().map(Detail::item) == Some(detail.item()) {
+                    if let Detail::PullRequest(pr) = &detail {
+                        self.fresh_pr(pr);
+                    }
                     self.state.detail = Some(detail);
                 }
             }
@@ -415,8 +434,10 @@ impl Core {
                 Arc::make_mut(&mut self.state.linked_issues).insert(item, *issue);
             }
             Internal::LinkedPr(item, pr) => {
+                self.fresh_pr(&pr);
                 Arc::make_mut(&mut self.state.linked_prs).insert(item, *pr);
             }
+            Internal::QuickTick => self.quick_refresh(),
             Internal::Tick => {
                 self.stop_idle_clis();
                 for dir in self.open_folders() {

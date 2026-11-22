@@ -2,7 +2,8 @@
 //! commands checked on 2026-11-17: `claude auth status` prints JSON with
 //! `loggedIn` (2.1.288); `codex login status` prints "Logged in using …"
 //! (0.160.0). Copilot CLI has none (1.0.113, checked on 2026-11-18): its MCP
-//! listing tells instead.
+//! listing tells instead. Each CLI is optional: one not installed is only a
+//! fact, unless none is.
 
 use std::ffi::OsString;
 use std::time::Duration;
@@ -25,6 +26,23 @@ fn checked_with(backend: BackendKind) -> &'static str {
     }
 }
 
+const INSTALLED: &str = "Installed";
+const NOT_INSTALLED: &str = "no (optional)";
+
+/// Leon needs one coding CLI: when none is installed, each "not installed"
+/// is a problem.
+pub(crate) fn require_one(sections: &mut [DoctorSection]) {
+    let missing = |c: &DoctorCheck| c.name == INSTALLED && c.detail == NOT_INSTALLED;
+    if sections.iter().all(|s| s.checks.iter().any(missing)) {
+        for check in sections.iter_mut().flat_map(|s| &mut s.checks) {
+            if missing(check) {
+                check.health = Health::Problem;
+                "no: Leon needs at least one coding CLI".clone_into(&mut check.detail);
+            }
+        }
+    }
+}
+
 pub(crate) fn section(path: Option<&OsString>, backend: BackendKind) -> DoctorSection {
     let program = program(backend);
     section_with(backend, |args| run(path, program, &strings(args), TIMEOUT))
@@ -41,13 +59,8 @@ fn section_with(
     match run(&["--version"]) {
         Err(RunError::NotFound) => {
             checks.push(
-                DoctorCheck::new(
-                    Health::Problem,
-                    "Installed",
-                    format!("`{program}` not found"),
-                )
-                .fix(format!(
-                    "Install {name} so that `{program}` is on your PATH, then run the doctor again"
+                DoctorCheck::new(Health::Info, INSTALLED, NOT_INSTALLED).fix(format!(
+                    "To use it, install {name} so that `{program}` is on your PATH"
                 )),
             );
             return DoctorSection {
@@ -57,7 +70,7 @@ fn section_with(
         }
         Err(error) => checks.push(DoctorCheck::new(
             Health::Problem,
-            "Installed",
+            INSTALLED,
             format!("`{program} --version`: {error:?}"),
         )),
         Ok(out) => {

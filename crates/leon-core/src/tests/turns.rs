@@ -362,6 +362,80 @@ async fn removing_a_project_forgets_it_and_its_flows() {
     assert!(h.storage.flows.lock().unwrap().is_empty());
 }
 
+/// A turn that ends while a card waits — the user stopped it — takes the
+/// card away: nothing waits for its answer any more (CONV-9).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stopped_turn_takes_its_question_away() {
+    let h = harness();
+    let id = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    emit(
+        &h,
+        0,
+        BackendEvent::Question {
+            id: "q1".into(),
+            title: "Pick a colour".into(),
+            detail: String::new(),
+            options: vec!["Red".into(), "Blue".into()],
+        },
+    );
+    until(&h.core, "card", |s| s.conversations[&id].question.is_some()).await;
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: true,
+            usage: None,
+        },
+    );
+    let s = until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
+    assert_eq!(s.conversations[&id].question, None);
+}
+
+/// What a CLI says of the plan's limits is kept for that CLI, the latest
+/// replacing the one before (DOCTOR-2).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_clis_latest_limits_are_shown() {
+    let h = harness();
+    new_flow(&h, BackendKind::Codex).await;
+    started(&h, 1).await;
+    let window = |used| leon_domain::LimitWindow {
+        minutes: 300,
+        used,
+        resets_at: Some(1_000),
+    };
+    emit(&h, 0, BackendEvent::Limits(vec![window(10)]));
+    until(&h.core, "first limits", |s| !s.limits.is_empty()).await;
+    emit(&h, 0, BackendEvent::Limits(vec![window(42)]));
+    let s = until(&h.core, "latest limits", |s| {
+        s.limits.first().is_some_and(|(_, w)| w[0].used == 42)
+    })
+    .await;
+    assert_eq!(*s.limits, [(BackendKind::Codex, vec![window(42)])]);
+}
+
+/// Projects take the order the user drags them into, kept by the store
+/// (NAV-2).
+#[tokio::test(flavor = "multi_thread")]
+async fn projects_take_the_order_given() {
+    let h = harness();
+    until(&h.core, "loaded", |s| s.loaded).await;
+    h.core.send(Intent::AddProject(PathBuf::from("/code/web")));
+    let s = until(&h.core, "two projects", |s| s.projects.len() == 2).await;
+    let (api, web) = (s.projects[0].id, s.projects[1].id);
+    h.core.send(Intent::OrderProjects(vec![web, api]));
+    let s = until(&h.core, "ordered", |s| s.projects[0].id == web).await;
+    assert_eq!(s.projects[1].id, api);
+    let stored: Vec<_> = h
+        .storage
+        .list_projects()
+        .unwrap()
+        .iter()
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(stored, [web, api]);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn folded_groups_are_saved() {
     let h = harness();

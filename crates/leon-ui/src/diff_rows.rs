@@ -226,7 +226,7 @@ impl Workspace {
             .on_mouse_move(cx.listener(|this, e: &gpui::MouseMoveEvent, _, cx| {
                 this.drag_split(e, cx);
             }))
-            .child(crate::diff_split::area_probe(area))
+            .child(crate::widgets::probe(area))
             .child(rows)
             .into_any_element()
     }

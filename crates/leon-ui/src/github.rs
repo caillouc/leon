@@ -6,20 +6,19 @@
 //! to, or opens the one already started for it.
 
 use gpui::{
-    AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, SharedString, Window, div,
-    prelude::*,
+    AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, SharedString, Stateful,
+    Window, div, prelude::*,
 };
 use gpui_component::input::TextareaState;
 use leon_core::Intent;
 use leon_domain::{
-    BoardOption, CheckState, FlowId, GhRef, Issue, PrState, ProjectId, PullRequest,
-    issues_by_status,
+    BoardOption, FlowId, GhRef, Issue, PrState, ProjectId, PullRequest, issues_by_status,
 };
 
+use crate::gh_rows::{flow_link, pr_row};
 use crate::icons::{Icon, icon};
-use crate::left::since;
-use crate::pr_view::{check_color, labels, pr_state};
-use crate::sprints::{SprintFilter, board_chips, in_sprint, today};
+use crate::pr_view::pr_state;
+use crate::sprints::{SprintFilter, in_sprint, today};
 use crate::theme;
 use crate::widgets::{button, empty, label, pane_header};
 use crate::workspace::{Screen, Workspace};
@@ -113,7 +112,7 @@ impl Workspace {
                 self.snapshot
                     .github_error
                     .as_ref()
-                    .map(|e| empty(e.clone())),
+                    .map(|e| crate::widgets::problem(e.clone())),
             )
             .into_any_element()
     }
@@ -144,7 +143,7 @@ impl Workspace {
                 .collect(),
         };
         let empty_text = match (&self.snapshot.github_error, list) {
-            (Some(error), _) => Some(error.clone()),
+            (Some(_), _) => None,
             (None, _) if count > 0 => None,
             (None, GhList::Issues) if shown.is_some() => {
                 Some("No open issue of yours in this sprint.".to_owned())
@@ -173,6 +172,12 @@ impl Workspace {
                             .flex()
                             .flex_col()
                             .gap_5()
+                            .children(
+                                self.snapshot
+                                    .github_error
+                                    .clone()
+                                    .map(crate::widgets::problem),
+                            )
                             .children(empty_text.map(empty))
                             .children(sections),
                     )),
@@ -193,11 +198,8 @@ impl Workspace {
             .text_size(crate::theme::rem(13.5))
             .font_weight(FontWeight::SEMIBOLD)
             .child(name.clone());
-        let rows = issues
-            .iter()
-            .map(|i| self.issue_row(i, color, cx))
-            .collect();
-        self.group(name, color, title.into_any_element(), rows)
+        let rows = issues.iter().map(|i| self.issue_row(i, true, cx)).collect();
+        self.group(name, color, title.into_any_element(), issues.len(), rows)
     }
 
     /// One repository of my pull requests: a foldable header, then its pull
@@ -208,38 +210,60 @@ impl Workspace {
             .text_size(crate::theme::rem(13.))
             .font_weight(FontWeight::SEMIBOLD)
             .child(leon_domain::repo_name(repo).to_owned());
-        let color = theme::agent_color(repo.bytes().map(usize::from).sum());
-        let rows = prs.iter().map(|pr| self.pr_row(pr, cx)).collect();
+        let color = theme::name_color(repo);
+        let rows = prs
+            .iter()
+            .map(|pr| {
+                let item = GhRef::pull_request(&pr.repo, pr.number);
+                let link = self.flow_for_pr(pr).map(|f| flow_link(&item.text(), f, cx));
+                pr_row(pr, crate::gh_rows::Fold::Never, link)
+            })
+            .collect();
         self.group(
             format!("repo:{repo}"),
             color,
             title.into_any_element(),
+            prs.len(),
             rows,
         )
     }
 
-    /// A foldable group of rows: chevron, a dot in `color`, `title`, the
-    /// count; `key` keeps it folded across restarts.
-    fn group(
+    /// A foldable group of rows: chevron, a dot in `color`, `title`, how
+    /// many (`count`); `key` keeps it folded across restarts.
+    pub(crate) fn group(
         &self,
         key: String,
         color: Rgba,
         title: AnyElement,
+        count: usize,
         rows: Vec<AnyElement>,
     ) -> AnyElement {
+        self.group_with(key, color, title, count, rows, |header| header)
+    }
+
+    /// [`Self::group`], its header made by `header` from the usual one
+    /// (e.g. to drag the group by it).
+    pub(crate) fn group_with(
+        &self,
+        key: String,
+        color: Rgba,
+        title: AnyElement,
+        count: usize,
+        rows: Vec<AnyElement>,
+        header: impl FnOnce(Stateful<Div>) -> Stateful<Div>,
+    ) -> AnyElement {
         let folded = self.snapshot.folded_groups.contains(&key);
-        let count = rows.len();
         div()
             .flex()
             .flex_col()
             .gap_1()
-            .child(
+            .child(header(
                 crate::widgets::fold_toggle(key, folded)
                     .px_2()
                     .py_1()
                     .rounded_md()
                     .hover(|s| s.bg(theme::surface()))
-                    .child(div().size(crate::theme::rem(10.)).rounded_full().bg(color))
+                    .child(crate::widgets::mark(color, 10.))
                     .child(title)
                     .child(
                         div()
@@ -250,34 +274,9 @@ impl Workspace {
                             .text_color(theme::fg_muted())
                             .child(count.to_string()),
                     ),
-            )
+            ))
             .when(!folded, |d| d.children(rows))
             .into_any_element()
-    }
-
-    fn issue_row(&self, issue: &Issue, color: Rgba, cx: &mut Context<Self>) -> AnyElement {
-        let meta = div()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap_2()
-            .child(repo_text(&issue.repo))
-            .children(board_chips(issue))
-            .child(labels(&issue.labels));
-        let item = GhRef::issue(&issue.repo, issue.number);
-        // A linked flow is a link in the details line; otherwise
-        // "Start flow" floats over the row's end on hover.
-        let linked = self.flow_for_issue(&item);
-        let meta = meta.children(linked.map(|c| flow_link(&item, c, cx)));
-        Row {
-            hover: linked.is_none().then(|| self.issue_action(issue, cx)),
-            item,
-            icon: icon(Icon::Issue, color, 16.).into_any_element(),
-            title: issue.title.clone(),
-            age: since(issue.updated_at),
-            meta,
-        }
-        .render(cx)
     }
 
     /// "Open flow" when one was started for the issue, else "Start
@@ -301,34 +300,6 @@ impl Workspace {
         .into_any_element()
     }
 
-    fn pr_row(&self, pr: &PullRequest, cx: &mut Context<Self>) -> AnyElement {
-        let meta = div()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .font_family(theme::MONO)
-                    .text_size(crate::theme::rem(11.5))
-                    .text_color(theme::fg_faint())
-                    .child(format!("{} → {}", pr.branch, pr.base)),
-            )
-            .children(pr.checks_state().map(checks))
-            .child(labels(&pr.labels));
-        let item = GhRef::pull_request(&pr.repo, pr.number);
-        let meta = meta.children(self.flow_for_pr(pr).map(|c| flow_link(&item, c, cx)));
-        Row {
-            hover: None,
-            item,
-            icon: pr_icon(pr.state, 16.).into_any_element(),
-            title: pr.title.clone(),
-            age: pr_state(pr.state).1.to_owned(),
-            meta,
-        }
-        .render(cx)
-    }
-
     /// The project whose `origin` is `repo` on GitHub.
     fn project_for_repo(&self, repo: &str) -> Option<ProjectId> {
         self.snapshot
@@ -338,7 +309,7 @@ impl Workspace {
             .map(|(id, _)| *id)
     }
 
-    fn flow_for_issue(&self, item: &GhRef) -> Option<FlowId> {
+    pub(crate) fn flow_for_issue(&self, item: &GhRef) -> Option<FlowId> {
         self.snapshot
             .flows
             .iter()
@@ -388,23 +359,6 @@ pub(crate) fn pr_icon(state: PrState, size: f32) -> gpui::Svg {
     icon(pr_glyph(state), pr_state(state).0, size)
 }
 
-/// The checks summed up: an icon in their colour and what it means.
-pub(crate) fn checks(state: CheckState) -> Div {
-    let color = check_color(state);
-    let (glyph, text) = match state {
-        CheckState::Pass => (Icon::Passed, "Checks passing"),
-        CheckState::Fail => (Icon::Failed, "Checks failing"),
-        CheckState::Pending => (Icon::Pending, "Checks running"),
-    };
-    div()
-        .flex()
-        .items_center()
-        .gap(crate::theme::rem(4.))
-        .text_color(color)
-        .child(icon(glyph, color, 12.))
-        .child(text)
-}
-
 /// The list's title, its size and what it holds, the filter and Refresh.
 fn header(
     list: GhList,
@@ -419,120 +373,4 @@ fn header(
             "Refresh",
             cx.listener(|this, _, _, _| this.core.send(Intent::RefreshGitHub)),
         ))
-}
-
-/// A list row: icon, title, age; under it the details. Clicking it opens
-/// the item's details. `hover` floats over the row's right end while the
-/// mouse is on the row, so it takes no room otherwise.
-struct Row {
-    item: GhRef,
-    hover: Option<AnyElement>,
-    icon: AnyElement,
-    title: String,
-    age: String,
-    meta: Div,
-}
-
-impl Row {
-    fn render(self, cx: &mut Context<Workspace>) -> AnyElement {
-        let Self {
-            item,
-            hover,
-            icon,
-            title,
-            age,
-            meta,
-        } = self;
-        let number = item.number;
-        let group = SharedString::from(format!("gh-row-{}", item.text()));
-        div()
-            .id(group.clone())
-            .group(group.clone())
-            .relative()
-            .px_3()
-            .py(crate::theme::rem(10.))
-            .rounded_lg()
-            .flex()
-            .items_start()
-            .gap_3()
-            .cursor_pointer()
-            .hover(|s| s.bg(theme::surface()))
-            .on_click(cx.listener(move |this, _, _, _| {
-                this.core.send(Intent::ShowDetail(Some(item.clone())));
-            }))
-            .child(div().pt(crate::theme::rem(2.)).child(icon))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(crate::theme::rem(5.))
-                    .child(
-                        div()
-                            .flex()
-                            .items_baseline()
-                            .gap_2()
-                            .child(div().min_w_0().font_weight(FontWeight::MEDIUM).child(title))
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .text_size(crate::theme::rem(12.))
-                                    .text_color(theme::fg_faint())
-                                    .child(format!("#{number}")),
-                            )
-                            .child(div().flex_1())
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .text_size(crate::theme::rem(11.5))
-                                    .text_color(theme::fg_faint())
-                                    .child(age),
-                            ),
-                    )
-                    .child(
-                        meta.text_size(crate::theme::rem(12.))
-                            .text_color(theme::fg_muted()),
-                    ),
-            )
-            .children(hover.map(|action| {
-                div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .right_3()
-                    .flex()
-                    .items_center()
-                    .opacity(0.)
-                    .group_hover(group, |s| s.opacity(1.))
-                    .child(div().pl_4().bg(theme::surface()).child(action))
-            }))
-            .into_any_element()
-    }
-}
-
-fn repo_text(repo: &str) -> Div {
-    div()
-        .font_family(theme::MONO)
-        .text_size(crate::theme::rem(11.5))
-        .child(leon_domain::repo_name(repo).to_owned())
-}
-
-/// "Open flow" as a link in a row's details line.
-fn flow_link(item: &GhRef, flow: FlowId, cx: &mut Context<Workspace>) -> AnyElement {
-    div()
-        .id(SharedString::from(format!("gh-link-{}", item.text())))
-        .flex()
-        .items_center()
-        .gap(crate::theme::rem(4.))
-        .text_color(theme::accent())
-        .cursor_pointer()
-        .hover(|s| s.opacity(0.8))
-        .child(icon(Icon::Flow, theme::accent(), 12.))
-        .child("Open flow")
-        .on_click(cx.listener(move |this, _, _, cx| {
-            cx.stop_propagation();
-            this.select(flow, cx);
-        }))
-        .into_any_element()
 }

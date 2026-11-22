@@ -27,6 +27,62 @@ fn models(items: &[(&str, &str)]) -> Vec<leon_core::ports::ModelOption> {
         .collect()
 }
 
+/// To-dos of the first two flows, one added by an agent, one done, one
+/// with a long when and a what of several lines (TODO-1).
+fn todos() -> Vec<leon_domain::Todo> {
+    let todo = |id, flow, (when, what): (&str, &str), done, by: Option<i64>| leon_domain::Todo {
+        id: leon_domain::TodoId(id),
+        flow: FlowId(flow),
+        when: when.into(),
+        what: what.into(),
+        done,
+        by: by.map(ConversationId),
+        added_at: 0,
+    };
+    vec![
+        todo(
+            1,
+            1,
+            ("Once the deploy is done", "Run the backfill"),
+            false,
+            None,
+        ),
+        todo(
+            2,
+            1,
+            (
+                "After the release sign-off, outside the nightly test runs and the morning deploy window",
+                "Merge #412, then:\n- close the release issue\n- tell the team the fix is live",
+            ),
+            false,
+            Some(1),
+        ),
+        todo(3, 1, ("", "Tell support about the new delay"), true, None),
+        todo(4, 2, ("Next Monday", "Rotate the token"), false, None),
+        todo(
+            5,
+            2,
+            (
+                "Once the deploy is green",
+                "Run:\n```sh\nleon-cli migrate --env prod\n```\nthen tell `#ops`.",
+            ),
+            false,
+            Some(5),
+        ),
+    ]
+}
+
+/// A mouse pressed at `x`, `y` then moved down `step` a frame, and a little
+/// to the right, ten times.
+fn down_and_right(x: f32, y: f32, step: f32) -> Vec<(f32, f32)> {
+    let mut path = vec![(x, y), (x + 1., y + 2.)];
+    path.extend((1..=10_u8).map(|i| {
+        let i = f32::from(i);
+        (x + 1. + 3. * i, y + 2. + step * i)
+    }));
+    path
+}
+
 fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| (*s).to_owned()).collect()
 }
@@ -133,6 +189,7 @@ fn flow(id: i64, project: i64, title: &str, unread: bool, pinned: bool) -> Flow 
         } else {
             Vec::new()
         },
+        todo_position: id,
     }
 }
 
@@ -468,8 +525,10 @@ fn sample() -> Snapshot {
         git: repo::git(),
         prs: repo::prs(),
         linked_prs: repo::linked_prs(),
+        limits: repo::limits(),
         my_issues: repo::my_issues(),
         my_prs: repo::my_prs(),
+        todos: Arc::new(todos()),
         fold: repo::fold(),
         doctor: Some(repo::doctor()),
         shared_tools: repo::shared_tools(),
@@ -544,7 +603,23 @@ fn main() {
         ("my-issues".to_owned(), Shot::MyIssues),
         ("settings".to_owned(), Shot::Settings),
         ("doctor".to_owned(), Shot::Doctor),
+        ("todos".to_owned(), Shot::Todos),
+        // Drags under way: a project, then the first flow's to-dos, down
+        // past the next ones and a little to the right.
+        (
+            "drag-project".to_owned(),
+            Shot::Drag(Box::new(Shot::Todos), down_and_right(110., 291., 12.)),
+        ),
+        (
+            "drag-todos".to_owned(),
+            Shot::Drag(Box::new(Shot::Todos), down_and_right(380., 83., 14.)),
+        ),
         ("row-menu".to_owned(), Shot::RowMenu(FlowId(1))),
+        ("rename".to_owned(), Shot::Rename(FlowId(1))),
+        (
+            "edit-todo".to_owned(),
+            Shot::EditTodo(leon_domain::TodoId(2)),
+        ),
         ("tools".to_owned(), Shot::Tools),
         (
             "tools-asking".to_owned(),

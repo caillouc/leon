@@ -47,6 +47,7 @@ async fn calls_a_leon_tool(backend: BackendKind) {
     let tools = LocalTools::new(PathBuf::from(env!("CARGO_BIN_EXE_leon")), socket);
     let clis = Clis::default();
     let spec = SessionSpec {
+        conversation: leon_domain::ConversationId(1),
         settings: ConversationSettings {
             backend,
             agent: None,

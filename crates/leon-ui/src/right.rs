@@ -62,7 +62,7 @@ pub(crate) struct RightState {
     /// divider is being dragged (GIT-2).
     pub split_ratio: f32,
     pub split_drag: bool,
-    pub split_area: crate::diff_split::Area,
+    pub split_area: crate::widgets::Area,
     pub comment: Entity<TextareaState>,
     /// The answer to a review thread being written, and that thread's id
     /// (GH-8).
@@ -148,13 +148,8 @@ impl Workspace {
             RightTab::Branch => self.render_diff(id, DiffSource::Branch, cx),
             RightTab::Info => self.render_info(id, cx),
         };
-        let chips = match self.right_tab(id) {
-            RightTab::Changes | RightTab::Branch => self.folder_chips(id, cx),
-            RightTab::Info => None,
-        };
         frame
-            .child(self.right_tabs(id, cx))
-            .children(chips)
+            .children(self.right_header(id, cx))
             .child(div().flex_1().min_h_0().flex().flex_col().child(body))
             // While the drawer is open, the review is sent from there.
             .when(self.right.drawer.is_none(), |d| {
@@ -168,6 +163,50 @@ impl Workspace {
         self.right.tabs.get(&id).copied().unwrap_or(RightTab::Info)
     }
 
+    /// The pane's top: its tabs at the height of the flow's header, then on
+    /// Changes and Branch the repository and worktree they show (CTX-1).
+    fn right_header(&self, id: FlowId, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let row = |height: f32| {
+            div()
+                .flex_none()
+                .h(crate::theme::rem(height))
+                .px_2()
+                .flex()
+                .border_b_1()
+                .border_color(theme::border())
+        };
+        let tabs = self.right_tabs(id, cx);
+        // Closes the pane; the flow's header opens it again.
+        let close = div()
+            .id("right-close")
+            .flex_none()
+            .p(crate::theme::rem(4.))
+            .rounded_md()
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::surface_2()))
+            .child(icon(Icon::Panel, theme::fg_muted(), 15.))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.panes.right_open = false;
+                cx.notify();
+            }));
+        let tabs_row = row(HEADER_HEIGHT)
+            .items_end()
+            .child(tabs)
+            .child(div().flex_1())
+            .child(div().mb(crate::theme::rem(8.)).child(close))
+            .into_any_element();
+        // Changes and Branch show one worktree: which, under the tabs. Info
+        // is the whole flow's.
+        let bar = match self.right_tab(id) {
+            RightTab::Changes | RightTab::Branch => self.repo_bar(id, cx),
+            RightTab::Info => None,
+        };
+        std::iter::once(tabs_row)
+            .chain(bar.map(|bar| row(36.).items_center().px_3().child(bar).into_any_element()))
+            .collect()
+    }
+
+    /// The tabs: Info, Changes, Branch, the last two with their lines.
     fn right_tabs(&self, id: FlowId, cx: &mut Context<Self>) -> AnyElement {
         let git = self.folder_git(id);
         // Lines added and removed, as git counts them.
@@ -193,13 +232,8 @@ impl Workspace {
         ];
         div()
             .flex()
-            .flex_none()
-            .h(crate::theme::rem(HEADER_HEIGHT))
             .items_end()
             .gap(crate::theme::rem(2.))
-            .px_2()
-            .border_b_1()
-            .border_color(theme::border())
             .children(tabs.into_iter().map(|(tab, text, n)| {
                 let selected = self.right_tab(id) == tab;
                 div()
@@ -236,42 +270,16 @@ impl Workspace {
                         cx.notify();
                     }))
             }))
-            .child(div().flex_1())
-            // Closes the pane; the flow's header opens it again.
-            .child(
-                div()
-                    .id("right-close")
-                    .mb(crate::theme::rem(8.))
-                    .p(crate::theme::rem(4.))
-                    .rounded_md()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()))
-                    .child(icon(Icon::Panel, theme::fg_muted(), 15.))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.panes.right_open = false;
-                        cx.notify();
-                    })),
-            )
             .into_any_element()
     }
 
-    /// The Info tab (CTX-1): where the flow works, the issue it is
-    /// for, and one card per conversation.
+    /// The Info tab (CTX-1), for the whole flow, whatever the repository or
+    /// worktree picked for Changes and Branch: its pull requests, its
+    /// issues, then its to-dos.
     fn render_info(&self, id: FlowId, cx: &mut Context<Self>) -> AnyElement {
         let Some(view) = self.snapshot.flow(id) else {
             return empty("This flow no longer exists.");
         };
-        let project = self
-            .snapshot
-            .projects
-            .iter()
-            .find(|p| p.id == view.flow.project);
-        let conversations: Vec<_> = view
-            .conversations
-            .iter()
-            .filter_map(|s| self.snapshot.conversations.get(s))
-            .collect();
-        let place = self.folders_card(view, project, cx);
         div()
             .id("right-info")
             .flex_1()
@@ -279,13 +287,9 @@ impl Workspace {
             .py_3()
             .flex()
             .flex_col()
-            .gap_3()
-            // Its pull requests first, then its issues, then Now and Where
-            // (CTX-1).
-            .children(self.pr_cards(view, cx))
-            .children(self.issue_cards(view, cx))
-            .child(self.now_card(&conversations))
-            .child(place)
+            // Its pull requests and issues, then its to-dos (TODO-2).
+            .children(self.info_refs(view, cx))
+            .child(self.todo_section(id, cx))
             .into_any_element()
     }
 
@@ -301,10 +305,10 @@ impl Workspace {
         }
         let view = self.snapshot.flow(id)?;
         let target = self.review_target(id)?;
-        let choices = view
-            .conversations
-            .iter()
-            .filter_map(|s| self.snapshot.conversations.get(s))
+        let choices = self
+            .snapshot
+            .conversations_of(view)
+            .into_iter()
             .map(|s| (s.conversation.id.0.to_string(), s.name.clone()))
             .collect();
         let current = self

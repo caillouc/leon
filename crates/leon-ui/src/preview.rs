@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    App, AppContext as _, Bounds, Focusable as _, WindowBounds, WindowOptions, point, px, size,
+    AnyWindowHandle, App, AppContext as _, AsyncApp, Bounds, Focusable as _, Modifiers,
+    MouseButton, MouseDownEvent, MouseMoveEvent, PlatformInput, WindowBounds, WindowOptions, point,
+    px, size,
 };
 use gpui_component::{Root, Theme, ThemeMode};
 use leon_core::{CoreHandle, Intent};
@@ -53,8 +55,14 @@ pub enum Shot {
     MyIssues,
     /// The doctor's report.
     Doctor,
+    /// Every flow's to-dos (TODO-3).
+    Todos,
     /// A left-pane row's right-click menu.
     RowMenu(FlowId),
+    /// A flow's name being edited in its left-pane row.
+    Rename(FlowId),
+    /// A to-do's when being edited on the To do page.
+    EditTodo(leon_domain::TodoId),
     /// The Tools view.
     Tools,
     /// The Tools view while these CLIs are still being asked.
@@ -69,6 +77,10 @@ pub enum Shot {
     /// A pull request's view with its changes, as GitHub gave them, open
     /// over it.
     PrDiff(Box<leon_core::Detail>, Box<leon_core::PrDiff>),
+    /// A shot with the mouse pressed at the first point (in pixels) and
+    /// moved through the others, a frame apart, still held: a drag under
+    /// way. It ends without a drop.
+    Drag(Box<Shot>, Vec<(f32, f32)>),
 }
 
 impl Workspace {
@@ -205,6 +217,7 @@ impl Workspace {
                 });
             }
             Shot::Doctor => self.screen = Screen::Doctor,
+            Shot::Todos => self.screen = Screen::Todos,
             Shot::Tools => self.screen = Screen::Tools,
             Shot::ToolsAsking(pending) => {
                 self.screen = Screen::Tools;
@@ -214,6 +227,17 @@ impl Workspace {
                 });
             }
             Shot::Settings => self.open_screen(Screen::Settings, window, cx),
+            Shot::Drag(shot, _) => self.preview(shot, window, cx),
+            Shot::Rename(id) => {
+                self.select(*id, cx);
+                self.start_rename(*id, window, cx);
+            }
+            Shot::EditTodo(id) => {
+                self.screen = Screen::Todos;
+                if let Some(todo) = self.snapshot.todos.iter().find(|t| t.id == *id).cloned() {
+                    self.edit_todo_part(&todo, "page", crate::todos_view::Part::When, window, cx);
+                }
+            }
             Shot::RowMenu(id) => {
                 self.select(*id, cx);
                 self.row_menu = Some((
@@ -224,6 +248,39 @@ impl Workspace {
         }
         self.core.send(Intent::View(None));
         cx.notify();
+    }
+}
+
+/// Presses the mouse at `path`'s first point and moves it through the
+/// others, a frame apart, as a hand would, without letting go.
+async fn drag(window: AnyWindowHandle, path: &[(f32, f32)], cx: &mut AsyncApp) {
+    let at = |(x, y): (f32, f32)| point(px(x), px(y));
+    let Some((first, rest)) = path.split_first() else {
+        return;
+    };
+    let down = PlatformInput::MouseDown(MouseDownEvent {
+        button: MouseButton::Left,
+        position: at(*first),
+        modifiers: Modifiers::default(),
+        click_count: 1,
+        first_mouse: false,
+    });
+    let moves = rest.iter().map(|p| {
+        PlatformInput::MouseMove(MouseMoveEvent {
+            position: at(*p),
+            pressed_button: Some(MouseButton::Left),
+            modifiers: Modifiers::default(),
+        })
+    });
+    for event in std::iter::once(down).chain(moves) {
+        cx.update_window(window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            window.dispatch_event(event, cx);
+        })
+        .ok();
+        cx.background_executor()
+            .timer(Duration::from_millis(16))
+            .await;
     }
 }
 
@@ -258,12 +315,20 @@ pub fn capture(core: &CoreHandle, shots: Vec<(String, Shot)>, out: PathBuf, cx: 
         for (name, shot) in shots {
             cx.update_window(window.into(), |_, window, cx| {
                 view.update(cx, |view, cx| view.preview(&shot, window, cx));
+                // A first frame: what sizes itself from its laid-out text
+                // (a growing text box) settles by the shot's.
+                window.draw(cx).clear(cx);
             })
             .ok();
             cx.background_executor().timer(Duration::from_millis(500)).await;
+            if let Shot::Drag(_, path) = &shot {
+                drag(window.into(), path, cx).await;
+            }
             let image = cx.update_window(window.into(), |_, window, cx| {
                 window.draw(cx).clear(cx);
-                window.render_to_image()
+                let image = window.render_to_image();
+                cx.stop_active_drag(window);
+                image
             });
             match image {
                 Ok(Ok(image)) => {

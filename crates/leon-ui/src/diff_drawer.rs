@@ -17,6 +17,9 @@ use crate::workspace::{Screen, Workspace};
 const NO_FLOW: leon_domain::FlowId = leon_domain::FlowId(0);
 
 /// The open drawer.
+/// Width of the drawer's list of files.
+const FILES: f32 = 280.;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Drawer {
     pub source: DiffSource,
@@ -101,7 +104,22 @@ impl Workspace {
         };
         let open = self.right.drawer.as_mut()?;
         let scroll_to = open.scroll_to.take();
-        let summary = self.diff_files(id, source).ok().map(|diff| {
+        let diff = self.diff_files(id, source).ok();
+        // Its files down the side, as in the Changes and Branch tabs: a
+        // click goes to that file (GIT-2).
+        let files = diff.as_ref().map(|diff| {
+            div()
+                .id("drawer-files")
+                .w(crate::theme::rem(FILES))
+                .flex_none()
+                .h_full()
+                .overflow_y_scroll()
+                .border_r_1()
+                .border_color(theme::border())
+                .bg(theme::panel())
+                .children(self.file_rows(id, source, &diff.files, cx))
+        });
+        let summary = diff.map(|diff| {
             let n = diff.files.len();
             let added: u32 = diff.files.iter().map(|f| f.added).sum();
             let removed: u32 = diff.files.iter().map(|f| f.removed).sum();
@@ -132,7 +150,14 @@ impl Workspace {
             .children(summary)
             .child(div().flex_1())
             .child(self.diff_layout_toggle(cx));
-        let body = self.diff_rows(id, source, scroll_to.as_deref(), cx);
+        let body = div().flex_1().min_h_0().flex().children(files).child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .child(self.diff_rows(id, source, scroll_to.as_deref(), cx)),
+        );
         // Comments go to an agent from a flow's own diffs only.
         let review = (source != DiffSource::PullRequest)
             .then(|| self.render_review_bar(id, window, cx))

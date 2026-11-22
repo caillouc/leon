@@ -1,17 +1,24 @@
-//! A new flow (CONV-2), or another conversation in a flow (FLOW-7): pick a
-//! project (or one of the flow's folders), an agent, the CLI and its
-//! settings, and write the first message.
+//! A new flow (CONV-2), or another conversation in a flow (FLOW-7), as a
+//! clean start page: Leon's logo, the message box with the agent, CLI and
+//! settings in its row, and under it the project (or one of the flow's
+//! folders) and the issue it is for.
 
-use gpui::{AnyElement, Context, IntoElement, Window, div, prelude::*};
-use gpui_component::input::{IndentInline, Textarea};
+use gpui::{AnyElement, Context, IntoElement, Window, div, img, prelude::*};
+use gpui_component::input::IndentInline;
 use leon_core::Intent;
 use leon_domain::FlowId;
 
 use crate::icons::{Icon, icon};
 use crate::picker::{Choice, Look};
 use crate::theme;
-use crate::widgets::{button, empty, primary};
+use crate::widgets::{empty, primary};
 use crate::workspace::{Screen, Tab, Workspace};
+
+/// Leon's logo at the top of the page: the bicorne of its app icon, alone
+/// (assets/leon.svg), 1056 × 402.
+const LOGO: &str = "leon-hat.png";
+/// The page's column (design.md, Layout).
+const FORM: f32 = 680.;
 
 impl Workspace {
     /// The form: a new flow, or with `flow`, another conversation in it.
@@ -67,7 +74,7 @@ impl Workspace {
             .map(|p| (p.id.0.to_string(), p.name.clone()))
             .collect();
         let project_picker = self.picker_look(
-            Look::Field,
+            Look::Inline,
             "form-project",
             &project.name,
             projects,
@@ -117,7 +124,7 @@ impl Workspace {
             },
         );
         let agent_picker = self.picker_look(
-            Look::Field,
+            Look::Inline,
             "form-agent",
             &agent_label,
             agent_choices,
@@ -136,125 +143,114 @@ impl Workspace {
         );
         let settings = self.form.settings.clone();
         let [backend, model, effort, permission] =
-            self.setting_pickers(Look::Field, "form", &settings, cx, |this, next, _, _| {
+            self.setting_pickers(Look::Inline, "form", &settings, cx, |this, next, _, _| {
                 this.form.settings = next;
             });
         let _ = window;
-        let card = div()
-            .w_full()
-            .max_w(crate::theme::rem(560.))
-            .p_4()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .rounded_xl()
-            .border_1()
-            .border_color(theme::border_strong())
-            .bg(theme::panel())
-            .shadow_lg()
-            .child(
+        let start = primary(
+            "form-start",
+            "Start",
+            cx.listener(|this, _, window, cx| this.submit_form(window, cx)),
+        )
+        .into_any_element();
+        let message = crate::composer::message_box(
+            input_box,
+            &self.form_text,
+            ghost,
+            [agent_picker, backend, model, effort, permission],
+            start,
+        );
+        // Where it starts, and for which issue: under the box, quiet.
+        let place = match &in_flow {
+            Some(view) => self.form_folder_picker(view, cx),
+            None => project_picker,
+        };
+        let issue = self
+            .form
+            .issue
+            .as_ref()
+            .filter(|_| flow.is_none())
+            .map(|issue| {
                 div()
-                    .text_size(crate::theme::rem(15.))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child(match &in_flow {
-                        Some(view) => format!("New conversation in {}", view.flow.title),
-                        None => "New flow".to_owned(),
-                    }),
-            )
-            .child(pair(
-                match &in_flow {
-                    Some(view) => field("Folder", self.form_folder_picker(view, cx)),
-                    None => field("Project", project_picker),
-                },
-                field("Agent", agent_picker),
-            ))
-            // Two lines at most, always the same height: picking another
-            // agent does not move the form.
-            .child(
-                div()
-                    .h(crate::theme::rem(34.))
-                    .text_size(crate::theme::rem(11.5))
-                    .line_height(crate::theme::rem(17.))
-                    .text_color(theme::fg_faint())
-                    .line_clamp(2)
-                    .text_ellipsis()
-                    .child(description),
-            )
-            .child(pair(field("CLI", backend), field("Model", model)))
-            .child(pair(field("Effort", effort), field("Permission", permission)))
-            .child(
-                field(
-                    "First message",
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .children(self.form.issue.as_ref().filter(|_| flow.is_none()).map(|issue| {
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .text_size(crate::theme::rem(12.))
-                                .text_color(theme::fg_muted())
-                                .child(icon(Icon::Issue, theme::fg_muted(), 13.))
-                                .child(format!("For issue {}", issue.short()))
-                                .child(
-                                    div()
-                                        .id("form-unlink-issue")
-                                        .cursor_pointer()
-                                        .child(icon(Icon::Close, theme::fg_faint(), 12.))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.form.issue = None;
-                                            cx.notify();
-                                        })),
-                                )
-                        }))
-                        .children(slash)
-                        .child(
-                            input_box
-                                .p_2()
-                                .rounded_md()
-                                .border_1()
-                                .border_color(theme::border_strong())
-                                .bg(theme::surface())
-                                .flex()
-                                .flex_col()
-                                .gap_2()
-                                .child(Textarea::new(&self.form_text).appearance(false))
-                                .children(ghost),
-                        )
-                        .into_any_element(),
-                ),
-            )
-            .child(
-                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
                     .text_size(crate::theme::rem(12.))
-                    .text_color(theme::fg_faint())
-                    .child("Agents come from your agent files. No worktree is created here: the agent creates one when it needs it."),
-            )
+                    .text_color(theme::fg_muted())
+                    .child(icon(
+                        Icon::Issue,
+                        self.known_issue(issue)
+                            .map_or(theme::fg_muted(), |i| self.issue_color(i.status.as_ref())),
+                        13.,
+                    ))
+                    .child(format!("For issue {}", issue.short()))
+                    .child(
+                        div()
+                            .id("form-unlink-issue")
+                            .cursor_pointer()
+                            .child(icon(Icon::Close, theme::fg_faint(), 12.))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.form.issue = None;
+                                cx.notify();
+                            })),
+                    )
+            });
+        let under = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_3()
+            .px_1()
             .child(
                 div()
                     .flex()
-                    .justify_end()
+                    .items_center()
+                    .child(icon(Icon::Folder, theme::fg_muted(), 14.))
+                    .child(place),
+            )
+            .children(issue);
+        let column = div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_5()
+            .child(
+                img(LOGO)
+                    .w(crate::theme::rem(160.))
+                    .h(crate::theme::rem(61.))
+                    .flex_none()
+                    // Well above the box, not sitting on it.
+                    .mb(crate::theme::rem(64.)),
+            )
+            .children(in_flow.as_ref().map(|view| {
+                div()
+                    .text_size(crate::theme::rem(13.))
+                    .text_color(theme::fg_muted())
+                    .child(format!("New conversation in {}", view.flow.title))
+            }))
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_col()
                     .gap_2()
-                    .child(button(
-                        "form-cancel",
-                        "Cancel",
-                        cx.listener(move |this, _, _, cx| {
-                            match flow {
-                                Some(id) => {
-                                    this.tabs.insert(id, Tab::Flow);
-                                }
-                                None => this.screen = Screen::Nothing,
-                            }
-                            cx.notify();
-                        }),
-                    ))
-                    .child(primary(
-                        "form-start",
-                        "Start",
-                        cx.listener(|this, _, window, cx| this.submit_form(window, cx)),
-                    )),
+                    .children(slash)
+                    .child(message)
+                    .child(under)
+                    .child(
+                        // The agent's own words; two lines at most, always
+                        // the same height: picking another does not move
+                        // the box.
+                        div()
+                            .h(crate::theme::rem(34.))
+                            .px_1()
+                            .text_size(crate::theme::rem(11.5))
+                            .line_height(crate::theme::rem(17.))
+                            .text_color(theme::fg_faint())
+                            .line_clamp(2)
+                            .text_ellipsis()
+                            .child(description),
+                    ),
             );
         div()
             .id("new-conversation")
@@ -262,12 +258,10 @@ impl Workspace {
             .when(flow.is_some(), |d| d.flex_1().min_h_0().w_full())
             .overflow_y_scroll()
             .flex()
+            .flex_col()
             .justify_center()
-            .items_start()
-            .px_4()
-            .pt(crate::theme::rem(56.))
-            .pb_6()
-            .child(card)
+            .py_6()
+            .child(crate::widgets::centered(FORM, div().px_6().child(column)))
             .into_any_element()
     }
 
@@ -329,7 +323,7 @@ impl Workspace {
             .collect();
         let current = picked.as_deref().map_or_default(name);
         self.picker_look(
-            Look::Field,
+            Look::Inline,
             "form-folder",
             &current,
             choices,
@@ -419,32 +413,4 @@ impl Workspace {
         self.pending_open = true;
         cx.notify();
     }
-}
-
-/// A labelled form field.
-fn field(name: &str, control: AnyElement) -> AnyElement {
-    div()
-        .flex_1()
-        .min_w_0()
-        .flex()
-        .flex_col()
-        .gap(crate::theme::rem(5.))
-        .child(
-            div()
-                .text_size(crate::theme::rem(12.))
-                .text_color(theme::fg_muted())
-                .child(name.to_owned()),
-        )
-        .child(control)
-        .into_any_element()
-}
-
-/// Two fields side by side.
-fn pair(left: AnyElement, right: AnyElement) -> AnyElement {
-    div()
-        .flex()
-        .gap_3()
-        .child(left)
-        .child(right)
-        .into_any_element()
 }

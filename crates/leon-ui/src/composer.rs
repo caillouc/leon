@@ -1,8 +1,10 @@
 //! The message box under a transcript: question card, status line, text,
 //! pickers (CONV-3..6, CONV-9).
 
-use gpui::{AnyElement, Context, Focusable, IntoElement, SharedString, Window, div, prelude::*};
-use gpui_component::input::{IndentInline, Textarea};
+use gpui::{
+    AnyElement, Context, Div, Entity, Focusable, IntoElement, SharedString, Window, div, prelude::*,
+};
+use gpui_component::input::{IndentInline, Textarea, TextareaState};
 use leon_core::Intent;
 use leon_domain::{ConversationId, Status};
 
@@ -11,6 +13,39 @@ use crate::picker::Look;
 use crate::theme;
 use crate::widgets::{button, primary};
 use crate::workspace::Workspace;
+
+/// The message box, the same in a conversation and a new flow (design.md):
+/// the text, the `/` command's arguments in grey, then a row of `settings`
+/// and, kept right, `end` (Send, Stop, Start). The row wraps rather than
+/// overflows with large text (SETTINGS-2).
+pub(crate) fn message_box(
+    input_box: Div,
+    text: &Entity<TextareaState>,
+    ghost: Option<AnyElement>,
+    settings: impl IntoIterator<Item = AnyElement>,
+    end: AnyElement,
+) -> Div {
+    input_box
+        .p_2()
+        .rounded_lg()
+        .border_1()
+        .border_color(theme::border_strong())
+        .bg(theme::surface())
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(Textarea::new(text).appearance(false))
+        .children(ghost)
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap_1()
+                .children(settings)
+                .child(div().ml_auto().min_w_0().child(end)),
+        )
+}
 
 impl Workspace {
     pub(crate) fn render_composer(
@@ -127,9 +162,9 @@ impl Workspace {
         // While it works, what it is doing this moment, live, and the agents
         // it waits for; else those agents, or why it stopped.
         let live = if running {
-            self.live_lines("composer", &s)
+            self.live_lines(&s)
         } else {
-            self.waiting_lines("composer", &s)
+            self.waiting_lines(&s)
         };
         if !live.is_empty() {
             column = column.child(
@@ -197,54 +232,30 @@ impl Workspace {
                 }
             },
         ));
+        let agent = div()
+            .px_2()
+            .text_size(crate::theme::rem(12.))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .child(agent)
+            .into_any_element();
+        // Back to the user's last message, by the send button: it takes no
+        // room from the text.
+        let end = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .children(jump)
+            .child(action)
+            .into_any_element();
         column
             .children(slash)
-            .child(
-                input_box
-                    .p_2()
-                    .rounded_lg()
-                    .border_1()
-                    .border_color(theme::border_strong())
-                    .bg(theme::surface())
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(Textarea::new(&self.composer).appearance(false))
-                    .children(ghost)
-                    .child(
-                        // Wraps rather than overflow with large text
-                        // (SETTINGS-2).
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .px_2()
-                                    .text_size(crate::theme::rem(12.))
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .child(agent),
-                            )
-                            .child(backend)
-                            .child(model)
-                            .child(effort)
-                            .child(permission)
-                            // Back to the user's last message, by the send
-                            // button: it takes no room from the text. Kept
-                            // right, also on a line of its own.
-                            .child(
-                                div()
-                                    .ml_auto()
-                                    .min_w_0()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .children(jump)
-                                    .child(action),
-                            ),
-                    ),
-            )
+            .child(message_box(
+                input_box,
+                &self.composer,
+                ghost,
+                [agent, backend, model, effort, permission],
+                end,
+            ))
             .into_any_element()
     }
 

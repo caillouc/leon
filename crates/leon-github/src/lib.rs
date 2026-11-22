@@ -95,9 +95,8 @@ impl GitHub for GhCli {
         let mut checks = Vec::new();
         match gh(path, &args(&["--version"]), None) {
             Err(GhError::Missing) => checks.push(
-                DoctorCheck::new(Health::Problem, "Installed", "`gh` not found").fix(
-                    "Install the GitHub CLI (`gh`): Leon reads pull requests and issues with it",
-                ),
+                DoctorCheck::new(Health::Info, "Installed", "no (optional)")
+                    .fix("To see pull requests and issues, install the GitHub CLI (`gh`)"),
             ),
             Err(error) => checks.push(DoctorCheck::new(
                 Health::Problem,

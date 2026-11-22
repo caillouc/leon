@@ -34,14 +34,16 @@ fn check(context: &Value) -> Option<Check> {
     })
 }
 
-/// Pending until completed; then neutral and skipped pass, and a stale run
+/// Pending until completed; then neutral passes, skipped is its own, and a
+/// stale run
 /// (never finished, closed by GitHub) fails like a timed-out one.
 fn check_run_state(status: Option<&str>, conclusion: Option<&str>) -> CheckState {
     if status != Some("COMPLETED") {
         return CheckState::Pending;
     }
     match conclusion {
-        Some("SUCCESS" | "NEUTRAL" | "SKIPPED") => CheckState::Pass,
+        Some("SUCCESS" | "NEUTRAL") => CheckState::Pass,
+        Some("SKIPPED") => CheckState::Skipped,
         Some(
             "FAILURE" | "CANCELLED" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE" | "STALE",
         ) => CheckState::Fail,
@@ -68,7 +70,7 @@ mod tests {
     /// and `StatusState` enums (schema introspection, 2026-11-17).
     #[test]
     fn states() {
-        use CheckState::{Fail, Pass, Pending};
+        use CheckState::{Fail, Pass, Pending, Skipped};
         let run = |status: &str, conclusion: Option<&str>| json!({ "__typename": "CheckRun", "name": "c", "status": status, "conclusion": conclusion });
         let status =
             |state: &str| json!({ "__typename": "StatusContext", "context": "c", "state": state });
@@ -80,7 +82,7 @@ mod tests {
             (run("PENDING", None), Pending),
             (run("COMPLETED", Some("SUCCESS")), Pass),
             (run("COMPLETED", Some("NEUTRAL")), Pass),
-            (run("COMPLETED", Some("SKIPPED")), Pass),
+            (run("COMPLETED", Some("SKIPPED")), Skipped),
             (run("COMPLETED", Some("FAILURE")), Fail),
             (run("COMPLETED", Some("CANCELLED")), Fail),
             (run("COMPLETED", Some("TIMED_OUT")), Fail),

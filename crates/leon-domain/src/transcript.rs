@@ -110,6 +110,24 @@ impl Usage {
     }
 }
 
+/// Who a conversation's answers go to after `entry`, `before` the one
+/// they went to until then (FLOW-1): an agent's request sends them to that
+/// agent, until the user writes to the conversation or it is handed to the
+/// user (`None`, the user); an answer it receives from an agent of its own,
+/// or anything else, changes nothing. Leon routes answers and draws the
+/// flow's arrows by this one rule.
+pub fn answers_to(before: Option<ConversationId>, entry: &Entry) -> Option<ConversationId> {
+    match entry {
+        Entry::FromAgent {
+            from,
+            answer: false,
+            ..
+        } => Some(*from),
+        Entry::User { .. } | Entry::ForYou { .. } => None,
+        _ => before,
+    }
+}
+
 /// What a transcript holds, as the flow diagram counts it (FLOW-4): its
 /// messages (the user's, the agent's, other agents') and its tool calls.
 pub fn activity(entries: &[TimedEntry]) -> (usize, usize) {
@@ -169,6 +187,41 @@ pub fn running_tools(entries: &[TimedEntry]) -> Vec<RunningTool> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn answers_go_to_the_asker_until_the_user_writes() {
+        use super::{Entry, answers_to};
+        use crate::ConversationId;
+        let (planner, tester) = (ConversationId(1), ConversationId(3));
+        let request = |from| Entry::FromAgent {
+            from,
+            text: String::new(),
+            answer: false,
+        };
+        let answer = |from| Entry::FromAgent {
+            from,
+            text: String::new(),
+            answer: true,
+        };
+        let user = Entry::User {
+            text: String::new(),
+        };
+        let for_you = Entry::ForYou {
+            from: planner,
+            text: String::new(),
+        };
+        let cases = [
+            (None, request(planner), Some(planner)),
+            (Some(planner), answer(tester), Some(planner)),
+            (Some(planner), Entry::TurnEnd { usage: None }, Some(planner)),
+            (Some(planner), user, None),
+            (Some(planner), for_you, None),
+            (None, answer(tester), None),
+        ];
+        for (before, entry, expected) in cases {
+            assert_eq!(answers_to(before, &entry), expected, "{entry:?}");
+        }
+    }
+
     use super::{Entry, RunningTool, TimedEntry, Usage, running_tools};
 
     #[test]

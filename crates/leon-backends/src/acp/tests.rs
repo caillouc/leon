@@ -15,6 +15,7 @@ const SESSION: &str = "sess_abc123def456";
 
 fn spec(resume: Option<&str>) -> SessionSpec {
     SessionSpec {
+        conversation: leon_domain::ConversationId(1),
         settings: ConversationSettings {
             backend: BackendKind::CopilotCli,
             agent: None,

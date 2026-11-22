@@ -99,8 +99,11 @@ own program, as a tiny bridge) which forwards to `tools.sock`.
 5. The Flow tab draws boxes and arrows from the conversations' `started_by`
    and their transcripts; nothing is hardcoded.
 
-Agents can also call `rename_flow` and `set_working_directory` (when
-they move into a worktree, the Changes tab follows).
+Agents can also call `rename_flow`, `set_working_directory` (when they move
+into a worktree, the Changes tab follows), `link_github` (an issue or pull
+request joins the flow's Info) and `add_todo` (a step left for you: it shows
+in the flow's Info, behind the to-dos button at the top right, and as a count
+on the flow's row, until you tick it off; `list_todos` reads them).
 
 ## Git and GitHub
 
@@ -177,10 +180,8 @@ accepted by you on 2026-11-17 and recorded in
 
 - **Scheduled tasks (SCHED-1)**: what runs, when, and whether Leon must be
   open are still open questions in features.md.
-- **Plan limits in usage (USE-1)**: which numbers to show is open; tokens and
-  cost per conversation are shown in Info.
-- **The flow's issue in Info (CTX-1)**: nothing tells Leon which
-  issue a flow is about.
+- **Usage stats (USE-1)**: which numbers to show is open; tokens and cost
+  show under each answer, and the plan's limits in Doctor.
 - **Bind / unbind a PR (P10)**: the PR is found from the flow's
   branch; agents have no tool to set it by hand yet.
 - **Git buttons (GIT-6)**: listed under Later.

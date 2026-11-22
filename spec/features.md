@@ -37,7 +37,13 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   The right pane closes with its panel button, or by dragging its edge far
   enough; the same button in the flow's header opens it again.
 - **NAV-2** Flows grouped by project/folder. Click a project to fold or
-  unfold its flows; the choice is kept. A project is added with
+  unfold its flows; the choice is kept; its folder icon shows open or
+  closed. Drag a project among the others to move it: its line, folded,
+  follows the mouse up and down in the pane's column, tilting a little with
+  its speed like a card held where it was taken (`/` going down, `\` going
+  up), and rocking back level when the mouse stops, while the others make
+  room, and the order is kept across restarts; a new project comes last.
+  Projects sit well apart, so each flow's project is plain. A project is added with
   its own button in the Projects header, and removed from Leon with its
   right-click menu, after a confirmation: its flows go with it, the
   folder and the CLIs' own sessions stay.
@@ -54,35 +60,44 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   of them still works, or a report waits to reach it, its turns are not
   unread and do not notify.
 - **NAV-5** Each flow's row says what it asks of the user: working
-  (a turning loader, also on the agent's tab; on its Flow box, its colour
-  going round it; "Working…"), needs you — an answer or a decision — (amber
+  (a loader, a little square jumping over its shadow, also on the agent's
+  tab; on its Flow box, its colour going round it; "Working…"), needs you — an answer or a decision — (amber
   edge, "Needs you"), to review — done and not looked at yet — (green edge,
   "To review"), failed (red), or nothing. A folded project shows its most
-  pressing colour.
+  pressing colour. The line under its title says only that state, and its
+  pull requests (NAV-6): no agent count, no time; a quiet flow is one line,
+  its title, with its pull requests at the end of it.
 - **NAV-6** The flow's PRs at the end of the line under its title: the PR
   icon in the colour of the most active one (open, then draft, merged,
-  closed), how many, and the open ones' checks as a dot. On hover, the list
-  of them — title, state, repository and number, lines added and removed —
-  each opening Leon's view of it.
+  closed), how many, and a red mark only when an open one is blocked (a
+  failed check, a conflict with its base): passing or running checks show
+  nothing. On hover, the list of them, one line each (icon, title,
+  number), each opening Leon's view of it.
 - **NAV-7** Selecting a flow opens it in the main pane.
 - **NAV-8** Rename, pin, mark as unread, archive and delete a flow from its
-  right-click menu in the left pane; search flows.
+  right-click menu in the left pane; search flows. Rename edits the title in
+  place, its text selected: typing replaces it, a click places the caret or
+  selects text; Enter or a click elsewhere saves it.
 - **NAV-9** Titles are generated automatically, as in Claude Code.
 - **NAV-10** A + next to each project starts a flow in it.
 - **NAV-11** A flow's row shows no issue: its issues are in the right
   pane's Info (CTX-1). Its title stays readable next to "To review" or
   "Needs you".
 - **NAV-12** Back and forward through the places visited — a flow on its
-  Flow tab or on a conversation's tab — like a browser: ⌘[ and ⌘], or a
-  mouse's back and forward buttons. Away from the flows, back returns to
-  the last one.
+  Flow tab or on a conversation's tab, or a page: To do, a GitHub list,
+  Doctor, Connectors, Settings — like a browser: ⌘[ and ⌘], or a mouse's
+  back and forward buttons. A place gone since (a deleted flow) is
+  skipped.
 
 ### Main pane
 
 - **CONV-1** Send messages; see the agent's answer stream live.
-- **CONV-2** Start a flow directly with a chosen agent. The new-flow form is
-  a card like the mock's (labelled fields in two columns). A flow always
-  opens on its Flow tab (FLOW-4), also when clicked again in the left pane.
+- **CONV-2** Start a flow directly with a chosen agent. The new-flow page is
+  a clean start page, as in GitHub Copilot's app: Leon's logo, then the
+  message box with the agent, CLI, model, effort and permission in its row
+  and Start, and under it the project (or, for another conversation in a
+  flow, its folder) and the issue it is for. A flow always opens on its
+  Flow tab (FLOW-4), also when clicked again in the left pane.
 - **CONV-3** Choose the CLI per conversation: Claude Code, Codex, Copilot CLI.
 - **CONV-4** Choose the model, the effort and the permission mode (default:
   auto). Models show their version (e.g. "Opus 5.5"); a picker never shows
@@ -114,12 +129,19 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   read the answer from its start; a conversation with an answer not read
   yet opens there.
 - **CONV-16** While an agent works, the bottom of its conversation, just
-  above the message box, shows live what it does this moment, as Info's
-  "Now" does: each command or edit it runs and for how long, its running
+  above the message box, shows live what it does this moment: each command
+  or edit it runs and for how long, its running
   subagents, or "Thinking…"; under its plan when it keeps one. Below, and
   also while it does nothing itself, each agent it waits for — one it asked
   that has not answered yet — with that agent's state ("Waiting for coder 1 ·
-  Working"), here, in "Now" and on its Flow box.
+  Working"), here and on its Flow box.
+- **CONV-17** Agents keep working when Leon quits (I24): a conversation in a
+  turn goes on, its CLI held by a small process of Leon's. Reopening Leon
+  shows each one as it is — working, waiting for an answer, or done with
+  its answer to read — the turn it was in replayed from its start. Leon's
+  own agent tools (starting an agent, linking a PR) do not work while Leon
+  is closed. Conversations between turns stop with Leon and resume on the
+  next message.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the
@@ -134,7 +156,11 @@ conversations that come from the user's first message belong to the **same
 flow**: one item in the left pane (D5).
 
 - **FLOW-1** An agent starts another agent in a new conversation, with a
-  prompt, and gets its answer back. Or, when the user asks, it starts one
+  prompt, and gets its answer back — also from a turn that agent's CLI
+  starts by itself (a background command it waited for has finished), or
+  once it got an answer from an agent of its own — until the user writes
+  to that conversation. Only then, or when started for the user, do its
+  answers go to the user. The Flow tab's arrows follow the same rule. Or, when the user asks, it starts one
   for the user: that conversation's answers go to the user, who reviews and
   continues it, and nothing goes back to the agent that started it.
 - **FLOW-2** An agent can send a follow-up to a conversation it started (e.g.
@@ -142,7 +168,7 @@ flow**: one item in the left pane (D5).
   conversations as the user sees them (planner, coder 1, coder 2…), so
   when the user names one, the agent reaches it by that name.
 - **FLOW-3** Switch between the conversations of a flow and talk to any of
-  them directly.
+  them directly. A conversation's tab shows its name alone, not its CLI.
 - **FLOW-4** A flow diagram is the flow's main tab: one box per conversation
   (plus a "You" box), each box saying the repository and branch its agent
   works in (CTX-2), a green "You" at the bottom right of the boxes of the
@@ -151,7 +177,7 @@ flow**: one item in the left pane (D5).
   highlighted arrow for a question waiting for you, and live status on each
   box, with "To review" or "Needs you" on the agent whose answer or question
   waits for you; while an agent works, its colour goes round its box's
-  border, starting from the band at its top, in place of the turning
+  border, starting from the band at its top, in place of the
   loader. What needs you shows with the
   left pane's icon (a green check for "To review") and coloured line along
   the box's left side, exactly as the left pane shows them. Click a box to open its
@@ -191,24 +217,38 @@ flow**: one item in the left pane (D5).
 
 ### Right pane
 
-- **CTX-1** Information about the current flow: its pull requests at the
-  top (open, then draft, merged, closed), then its issues (each opening
-  Leon's view of it, GitHub from there; its icon in its board column's
-  colour, as in the issue list), then what each agent is doing now, in its
-  colour from the diagram: its
-  CLI and model, working on which commands and for how long, how many
-  subagents run, the answer it waits for, or idle. "Now" and "Where" fold
-  to their title with a click on it, for every flow, kept across restarts.
+- **CTX-1** The right pane's tabs are Info, Changes and Branch.
+  Info is the whole flow's, whatever its repositories and worktrees: under
+  "Pull requests", every pull request of the flow by state only (open,
+  then draft, merged, closed), so none is missed; under "Issues", every
+  issue it is linked to (each opening Leon's view of it, GitHub from
+  there); then its to-dos (TODO-2). They stay up to date: opening a pull request's details updates
+  it everywhere, and the flow looked at is read again every 30 s while one
+  of its checks runs. What an agent is doing
+  shows in its conversation (CONV-16), not here.
+  Changes and Branch show one of the flow's worktrees at a time (CTX-2),
+  named on one line under the tabs, as Zed's two pickers: the repository,
+  picked there when the flow works in several, then its worktree by its
+  branch name, picked there when that repository has several (a
+  repository's own checkout, not a worktree of it, reads "main ·
+  <branch>"); then a button copying that branch.
   The right pane's tabs
   are Info, Changes, Branch; a flow opens it on Info, and a tab picked by
   hand is kept per flow. The right pane stays narrow: a pull
-  request opens in the details drawer, not in a tab of its own. Each issue
-  and pull request shows its title and labels; a pull request also lists
-  its CI checks that failed or still run, each opening its job on GitHub.
-  A pull request stands apart from an issue: its state's colour along its
-  left side, its state (Open, Draft, Merged, Closed), its title in bold and
-  the lines it adds and removes. A merged or closed pull request folds into
-  one small line: its icon, reference, title and lines.
+  request opens in the details drawer, not in a tab of its own. A pull
+  request or an issue shows the same wherever it is listed (Info, GH-2,
+  GH-3, NAV-6): its icon in its state's colour (an issue's in its board
+  column's), its title, its number at the end of the line (no state word,
+  no age); under it its repository,
+  and for a pull request which branch it merges into which ("fix-retry →
+  dev", the destination brighter), the lines it adds and removes, its CI
+  as one indicator in its state's colour — passing; running, how many jobs
+  are done ("3/13 done"); failed, a red cross and the failing jobs by name,
+  each opening its run on GitHub; skipped — its conflicts, then the
+  labels. No coloured bar along its side. In
+  Info a merged or closed pull request folds into one small line: its
+  icon, title and number. Leon shows no time since anything happened (last
+  opened, done, checked…): only how long something running has run.
 - **CTX-2** One flow can edit several repositories, in several
   worktrees, with several PRs, linked to several issues, and Leon follows
   what the agents do: a folder joins the flow when an agent edits a
@@ -216,17 +256,11 @@ flow**: one item in the left pane (D5).
   PR; each PR brings the issues it closes, after the issue the flow
   was started for. An agent also links to the flow each issue or PR it
   creates or works on, and the flow keeps them all. Several agents can
-  work in several folders at once: Where shows, under each folder, the
-  agents working there, and on an agent's tab Changes and Branch show
+  work in several folders at once: on an agent's tab the right pane shows
   that agent's folder unless another is picked on that tab. The right pane
-  shows only the worktrees an agent works in now (a worktree its agents
-  left keeps its PR in Info); a checkout on its repository's default branch
-  (the main checkout worktrees start from) never shows there, nor in the
-  worktree chip above the tabs, which shows the branch of the folder
-  shown, to copy. Info lists them all, each folder with its repository,
-  branch and what it started from, its PR and its path. Changes and Branch
-  show one folder at a time, named by a row of chips (repository · branch ·
-  PR) above them, picked there when there are several.
+  offers only the worktrees an agent works in now; a checkout on its
+  repository's default branch (the main checkout worktrees start from)
+  never shows there.
 - **CTX-3** Leon tells every agent conversation, in every CLI, to keep it up to
   date with its tools each time it is needed (moving to another folder,
   naming the flow, linking an issue or PR it creates or works on), so the
@@ -236,8 +270,9 @@ flow**: one item in the left pane (D5).
   as in Zed (I21). Changes and Branch list the files
   (with lines added and removed on the tab); clicking one opens a large drawer
   over the middle of the window with every file's diff, at the one clicked,
-  unified or side by side; side by side, the divider between the sides is
-  dragged left or right.
+  and the same list of files down its side to go to another, unified or
+  side by side; side by side, the divider between the sides is dragged
+  left or right.
 - **GIT-3** Whole diff of the worktree against its starting branch/commit, as a
   PR shows it. That base is fetched from the remote in the background when
   the flow is opened, at most every five minutes.
@@ -249,6 +284,42 @@ flow**: one item in the left pane (D5).
   as one pending review; "Send" posts them all
   as a single message to the conversation (file, lines, quoted code, comment).
 - **GH-1** Status of each of the flow's PRs.
+
+### To-dos
+
+- **TODO-1** A flow keeps to-dos: later steps for the user, each waiting
+  for something — not an agent's own plan while it works (CONV-14). A to-do
+  has a when (what it waits for: a deploy, a review, someone's answer, a
+  date) and a what (the action), and reads "<when> → <what>": the when, after
+  an amber hourglass, as wide as it reads up to 40 % of the row, the what
+  beside it, each wrapping on several lines when long.
+  The user adds one in the flow's Info tab, the when optional; an agent
+  adds one with Leon's `add_todo` tool, which needs both, and refuses a
+  to-do that waits for nothing (a step the user can take now belongs in the
+  agent's answer); it is told a to-do is not for a ticket's routine
+  (merging, deploying, reviewing, checking it worked) either. The to-do
+  says which agent added it. An agent reads the
+  flow's to-dos with `list_todos`, open then done, each with who added it.
+  The user ticks one with its box: it fades for a few seconds, a second
+  click undoing the tick, then is done; a done one opens again with its
+  box. The small red bin its row shows on hover removes it for good, after
+  the same fade, "Undo" taking the bin's place meanwhile. A double click on
+  a to-do's when or what edits it in place, its text where it was: Enter or
+  leaving the box saves it, Esc gives up.
+- **TODO-2** Info (CTX-1) shows, under the flow's pull requests and issues,
+  its open to-dos under "To do", with a box to add one; the done ones fold
+  under "N done". A to-do's what shows as markdown, its line breaks kept.
+- **TODO-3** A button at the top right of the main pane, just left of the
+  right pane, says how many to-dos are open in every flow; it opens the To
+  do page in the main pane: one foldable group per flow with open to-dos
+  (the flow's title and project, marked in the project's colour, with
+  "Open flow" to go to it), its open to-dos, each marked done there, and its
+  done ones folded. The agent that added a to-do shows in its colour. The
+  user drags a group by its header to move it among the others, as a
+  project in the left pane (NAV-2); the order is kept across restarts, and
+  a flow given its first open to-do comes last.
+- **TODO-4** A flow's row in the left pane shows how many of its to-dos
+  are open.
 
 ### GitHub
 
@@ -268,8 +339,8 @@ flow**: one item in the left pane (D5).
   laid out like its GitHub page: title and state pill, who wants to merge
   which branch into which with its labels on the right of that line, while
   it is open and GitHub says its branch conflicts with its base the box
-  "This branch has conflicts that must be resolved" (also a "Conflicts with
-  <base>" line on its card in Info), the checks box (how they went, the failing ones
+  "This branch has conflicts that must be resolved" (also "Conflicts with
+  <base>" on its row wherever it is listed, CTX-1), the checks box (how they went, the failing ones
   named), its description (GitHub's folded sections stay folded) and each
   review thread still open with the code it is on, people as coloured
   avatars, a box to comment. "Files changed" opens its changes over it, in
@@ -284,6 +355,10 @@ flow**: one item in the left pane (D5).
   draft.
 - **GH-8** Answer a review thread and resolve it, from Leon's view of the PR,
   or both at once ("Reply and resolve"; a failed answer resolves nothing).
+  "Resolve as fixed" answers "Fixed" first, then resolves the thread.
+  An action's button (GH-5..8) shows it under way the moment it is clicked
+  ("Converting to draft…", "Posting…"), a second click does nothing, and its
+  notice says how it went once GitHub answers.
 - **GH-9** Every reference to an issue or a pull request — in the left pane,
   the right pane, the details drawer, or a GitHub link in a message — opens
   Leon's view of it first, GitHub from there.
@@ -321,15 +396,25 @@ flow**: one item in the left pane (D5).
   leaves goes to it.
 - **SETTINGS-3** What a flow opens on when picked in the left pane: its
   Flow diagram (default) or its main conversation, the one the user started
-  it with. The Flow tab stays either way.
+  it with. A flow of one conversation opens on it either way: a diagram of
+  one box says nothing. The Flow tab stays either way.
 
 ### Doctor
 
 - **DOCTOR-1** A doctor view, like `flutter doctor`: Leon's version and setup
   (config, data folder, notifications…), and for each CLI and tool it uses
   whether it is installed, which version, whether it is logged in, and what
-  to do when something is missing. Settings, Doctor and Connectors sit side by
+  to do when something is missing. What Leon can do without (one coding CLI
+  of several, the GitHub CLI) shows as not installed, neither a warning nor
+  a problem; no coding CLI at all is a problem. Its first check runs once
+  Leon's own tools listen, so it is right at launch. Settings, Doctor and Connectors sit side by
   side at the bottom of the left pane.
+- **DOCTOR-2** Usage limits, first in Doctor: for each CLI that said how
+  much of the user's plan is used, one bar per window (5h, week…), its
+  share — amber from 75 %, red from 90 % — and when it starts again. Each
+  CLI says it while one of its conversations runs, so it shows after its
+  first turn since Leon started; a window past its reset shows empty.
+  Claude Code and Codex say it; Copilot CLI does not.
 
 ### Usage
 
@@ -380,7 +465,8 @@ flow**: one item in the left pane (D5).
   `acme/api#12`).
 - **QUAL-4** The usual menus and shortcuts: Quit, Hide, Close, Minimize, an
   Edit menu (macOS dictation and emoji), ⌘N new flow, ⌘, Settings,
-  ⌘L message box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous flow, ⌘[ / ⌘]
+  ⌘L or Tab message box, ⌘K or / search (Tab and / only outside a text
+  box, where they type as usual), ⌃Tab / ⌃⇧Tab next / previous flow, ⌘[ / ⌘]
   back / forward (NAV-12), Esc
   closes what is open on top. The left and right panes resize by dragging.
 - **QUAL-5** Copying from the interface (a code block, the worktree's branch,

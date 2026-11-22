@@ -30,7 +30,7 @@ impl Core {
             Arc::clone(&self.ports.github),
         );
         let tx = self.internal_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::jobs::spawn(move || {
             let mut leon = about();
             leon.extend(tools.map(|t| t.doctor()));
             leon.extend(catalog.doctor());

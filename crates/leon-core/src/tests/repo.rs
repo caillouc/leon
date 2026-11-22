@@ -45,6 +45,10 @@ impl Git for FakeGit {
             .into(),
         )
     }
+    /// Every folder but a worktree under `.worktrees` is a repository's own.
+    fn is_main_checkout(&self, dir: &Path) -> bool {
+        !dir.components().any(|c| c.as_os_str() == ".worktrees")
+    }
     /// `/code/api` and `/code/web` are repositories, `/code/api/.worktrees/fix`
     /// a worktree of the first.
     fn working_tree(&self, path: &Path) -> Option<PathBuf> {
@@ -135,9 +139,19 @@ impl GitHub for FakeGitHub {
     fn my_pull_requests(&self) -> Result<Vec<PullRequest>, PortError> {
         Ok(vec![])
     }
+    /// Read by its number, the pull request is newer than by its branch:
+    /// its checks have run since.
     fn pull_request_by_number(&self, repo: &str, number: u64) -> Result<PullRequest, PortError> {
         let pr = self.pull_request(Path::new("/code/api"), "fix-retry")?;
         pr.filter(|pr| pr.repo == repo && pr.number == number)
+            .map(|pr| PullRequest {
+                checks: vec![leon_domain::Check {
+                    name: "test".into(),
+                    state: leon_domain::CheckState::Pass,
+                    url: None,
+                }],
+                ..pr
+            })
             .ok_or_else(|| PortError::new("reading a pull request", "not found"))
     }
     fn pull_request_diff(&self, _repo: &str, number: u64) -> Result<Vec<FileDiff>, PortError> {
@@ -172,7 +186,11 @@ impl GitHub for FakeGitHub {
     fn comment(&self, _repo: &str, _number: u64, _body: &str) -> Result<(), PortError> {
         Ok(())
     }
+    /// `#99` answers slowly, as GitHub may.
     fn set_draft(&self, _repo: &str, number: u64, _draft: bool) -> Result<(), PortError> {
+        if number == 99 {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
         self.reviews.lock().unwrap().push(number);
         Ok(())
     }
@@ -208,6 +226,30 @@ async fn a_flow_shows_its_branch_changes_and_pull_request() {
     assert_eq!(git.changes.len(), 1);
     assert_eq!(git.branch_diff.len(), 2);
     assert_eq!(s.prs[api].number, 7);
+}
+
+/// A pull request opened in its details replaces every copy Leon shows of
+/// it: the flow's Info no longer lags behind the details (CTX-1, GH-3).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_opened_pull_request_refreshes_every_copy_of_it() {
+    let h = harness();
+    new_flow(&h, BackendKind::Codex).await;
+    let id = until(&h.core, "conversation", |s| !s.flows.is_empty())
+        .await
+        .flows[0]
+        .flow
+        .id;
+    h.core.send(Intent::View(Some(id)));
+    let api = Path::new("/code/api");
+    let s = until(&h.core, "pull request", |s| s.prs.contains_key(api)).await;
+    assert_eq!(s.prs[api].checks, vec![]);
+    h.core
+        .send(Intent::ShowDetail(Some(GhRef::pull_request("acme/api", 7))));
+    let s = until(&h.core, "fresh checks", |s| {
+        s.prs.get(api).is_some_and(|pr| !pr.checks.is_empty())
+    })
+    .await;
+    assert_eq!(s.prs[api].checks[0].state, leon_domain::CheckState::Pass);
 }
 
 /// Looking at a flow fetches the base of its pull request once, not again
@@ -305,12 +347,21 @@ async fn requesting_a_copilot_review_says_so() {
             Intent::RequestCopilotReview(pr.clone()),
             "Copilot review requested on #7",
         ),
+        // Resolving answers "Fixed" first; an answer that fails resolves
+        // nothing.
         (
             Intent::ResolveThread {
                 pr: pr.clone(),
                 thread: "PRRT_1".into(),
             },
-            "Thread resolved",
+            "Resolved as fixed",
+        ),
+        (
+            Intent::ResolveThread {
+                pr: pr.clone(),
+                thread: "PRRT_2".into(),
+            },
+            "Could not resolve the thread: answering a review thread: PRRT_2 is gone",
         ),
         (
             Intent::ReplyToThread {
@@ -350,8 +401,11 @@ async fn requesting_a_copilot_review_says_so() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_doctor_runs_at_start_with_every_section() {
+async fn the_doctor_runs_when_asked_with_every_section() {
     let h = harness();
+    until(&h.core, "loaded", |s| s.loaded).await;
+    assert!(h.core.snapshot().doctor.is_none());
+    h.core.send(Intent::RunDoctor);
     let s = until(&h.core, "doctor", |s| s.doctor.is_some()).await;
     let (_, sections) = s.doctor.clone().unwrap();
     let titles: Vec<&str> = sections.iter().map(|x| x.title.as_str()).collect();
@@ -405,5 +459,24 @@ async fn a_pull_request_goes_ready_or_back_to_draft() {
     assert_eq!(
         s.flash.as_ref().map(|f| f.1.as_str()),
         Some("#7 is ready for review")
+    );
+}
+
+/// A GitHub action shows under way from its click until GitHub answers,
+/// then its notice says how it went (GH-7).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_action_shows_under_way_until_github_answers() {
+    let h = harness();
+    until(&h.core, "loaded", |s| s.loaded).await;
+    let pr = GhRef::pull_request("acme/api", 99);
+    h.core.send(Intent::SetDraft(pr.clone(), true));
+    until(&h.core, "under way", |s| {
+        s.acting.contains(&crate::Acting::Draft(pr.clone()))
+    })
+    .await;
+    let s = until(&h.core, "done", |s| s.acting.is_empty()).await;
+    assert_eq!(
+        s.flash.as_ref().map(|(_, text)| text.as_str()),
+        Some("#99 is a draft again")
     );
 }

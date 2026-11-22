@@ -122,7 +122,7 @@ impl Workspace {
                     style.border_color(theme::accent()).bg(theme::accent_soft())
                 })
                 .on_drop(cx.listener(move |this, dragged: &DraggedCli, _, _| {
-                    let next = moved(&order, dragged.0, ix);
+                    let next = crate::widgets::moved(&order, dragged.0, ix);
                     if next != order {
                         this.save(Settings {
                             cli_order: next,
@@ -217,13 +217,6 @@ fn cli_box(ix: usize, name: &str, lifted: bool) -> gpui::Div {
         .child(name.to_owned())
 }
 
-/// `order` with `backend` moved to place `to`.
-fn moved(order: &[BackendKind], backend: BackendKind, to: usize) -> Vec<BackendKind> {
-    let mut next: Vec<BackendKind> = order.iter().copied().filter(|b| *b != backend).collect();
-    next.insert(to.min(next.len()), backend);
-    next
-}
-
 /// One folder: where, what it holds, and its remove button when it has one.
 fn row(label: &str, holds: Option<&AgentFolder>, remove: Option<AnyElement>) -> AnyElement {
     let plural = |n: usize, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
@@ -264,25 +257,4 @@ fn row(label: &str, holds: Option<&AgentFolder>, remove: Option<AnyElement>) -> 
         )
         .children(remove)
         .into_any_element()
-}
-
-#[cfg(test)]
-mod tests {
-    use leon_domain::BackendKind::{ClaudeCode, Codex, CopilotCli};
-
-    use super::moved;
-
-    #[test]
-    fn a_dropped_cli_takes_the_place_it_is_dropped_on() {
-        let order = [ClaudeCode, Codex, CopilotCli];
-        let cases = [
-            (CopilotCli, 0, vec![CopilotCli, ClaudeCode, Codex]),
-            (ClaudeCode, 2, vec![Codex, CopilotCli, ClaudeCode]),
-            (Codex, 1, vec![ClaudeCode, Codex, CopilotCli]),
-            (ClaudeCode, 9, vec![Codex, CopilotCli, ClaudeCode]),
-        ];
-        for (backend, to, expected) in cases {
-            assert_eq!(moved(&order, backend, to), expected, "{backend:?} to {to}");
-        }
-    }
 }

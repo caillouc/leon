@@ -1,4 +1,4 @@
-//! The five tools: what `tools/list` shows agents, and how `tools/call`
+//! The seven tools: what `tools/list` shows agents, and how `tools/call`
 //! arguments become an [`AppToolCall`].
 
 use std::path::PathBuf;
@@ -11,6 +11,8 @@ const MESSAGE_AGENT: &str = "message_agent";
 const RENAME_FLOW: &str = "rename_flow";
 const SET_WORKING_DIRECTORY: &str = "set_working_directory";
 const LINK_GITHUB: &str = "link_github";
+const ADD_TODO: &str = "add_todo";
+const LIST_TODOS: &str = "list_todos";
 
 /// What every conversation is told (CTX-3): Leon shows the user the
 /// agents' work only as well as they keep it up to date.
@@ -24,6 +26,11 @@ there.
 with a short title.
 - Each time you create a GitHub issue or pull request, or start working on one, call \
 `link_github` with its link.
+- When a step is left for the user to do later, once something outside the work happens \
+(someone's answer, a date, an outside event), call `add_todo` with its `when` and `what`; \
+`list_todos` shows the flow's to-dos first, so none is added twice. A step the user can take \
+now is not a to-do: say it in your answer. Not for a ticket's routine: merging, deploying, \
+reviewing, checking it worked. Not for your own steps while you work.
 - When the user asks you to start an agent for them (they will review and continue it \
 themselves), call `start_agent` with `for_user: true`: its answers go to the user, not \
 back to you.
@@ -109,7 +116,52 @@ pub(crate) fn list() -> Value {
                 "required": ["url"],
             },
         },
+        add_todo_tool(),
+        list_todos_tool(),
     ] })
+}
+
+/// `add_todo` in `tools/list` (TODO-1).
+fn add_todo_tool() -> Value {
+    json!({
+        "name": ADD_TODO,
+        "description": "Add a to-do for the user to this flow: a step the user must take \
+            later, once something outside the work happens — someone answers, a date \
+            comes, an outside event. Both `when` and `what` are required. Not for a step \
+            the user can take now (open the PR, run a command): say that in your answer. \
+            Not for a ticket's routine: merging, deploying, reviewing, checking it \
+            worked. Not for your own steps while you work. Leon shows it as \"<when> → \
+            <what>\" in the flow's Info and among every flow's to-dos until the user \
+            marks it done.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "when": {
+                    "type": "string",
+                    "description": "What the user waits for before doing it, outside the \
+                        work: someone's answer, a date, an outside event. E.g. \"Once the \
+                        partner confirms their test account\", \"Monday, after the \
+                        weekly export\".",
+                },
+                "what": {
+                    "type": "string",
+                    "description": "What the user will do then: one short sentence, \
+                        markdown allowed.",
+                },
+            },
+            "required": ["when", "what"],
+        },
+    })
+}
+
+/// `list_todos` in `tools/list` (TODO-1).
+fn list_todos_tool() -> Value {
+    json!({
+        "name": LIST_TODOS,
+        "description": "List this flow's to-dos for the user, open then done, each \
+            with who added it.",
+        "inputSchema": { "type": "object", "properties": {}, "required": [] },
+    })
 }
 
 /// `start_agent` in `tools/list`.
@@ -185,6 +237,11 @@ pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolEr
         LINK_GITHUB => AppToolCall::LinkGithub {
             url: text(arguments, "url")?,
         },
+        ADD_TODO => AppToolCall::AddTodo {
+            when: text(arguments, "when")?,
+            what: text(arguments, "what")?,
+        },
+        LIST_TODOS => AppToolCall::ListTodos,
         _ => return Err(ToolError::Unknown),
     })
 }
@@ -223,9 +280,10 @@ mod tests {
         let samples = json!({
             "agent": "coder", "prompt": "do it", "conversation": 3, "text": "more",
             "title": "Title", "path": "/repo", "url": "https://github.com/acme/api/issues/1",
+            "when": "Once QA is green", "what": "Merge",
         });
         let tools = list()["tools"].as_array().cloned().unwrap_or_default();
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 7);
         for tool in tools {
             let name = tool["name"].as_str().unwrap_or_default();
             let mut arguments = json!({});

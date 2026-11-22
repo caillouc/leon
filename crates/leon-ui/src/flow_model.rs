@@ -136,13 +136,14 @@ pub(crate) fn build(
         let entries = transcripts
             .get(&s.conversation.id)
             .map_or_default(|t| t.entries.as_slice());
-        // Who the current turn answers: the user, or the agent that asked.
-        let mut asked_by_you = false;
+        // Who its answers go to: the user (`None`) or the agent whose
+        // request it works on, as Leon routes them.
+        let mut to: Option<ConversationId> = None;
         let mut answer: Option<(i64, &str)> = None;
         for e in entries {
+            to = leon_domain::answers_to(to, &e.entry);
             match &e.entry {
                 Entry::User { text } => {
-                    asked_by_you = true;
                     answer = None;
                     add(
                         Node::You,
@@ -156,7 +157,6 @@ pub(crate) fn build(
                     text,
                     answer: is_answer,
                 } => {
-                    asked_by_you = *is_answer;
                     answer = None;
                     let (kind, label) = if *is_answer {
                         (EdgeKind::Report, "Answer")
@@ -167,7 +167,6 @@ pub(crate) fn build(
                 }
                 // Started for you by an agent: its answers go to you.
                 Entry::ForYou { from, text } => {
-                    asked_by_you = true;
                     answer = None;
                     add(
                         Node::Conversation(*from),
@@ -178,7 +177,7 @@ pub(crate) fn build(
                 }
                 Entry::Agent { text } => answer = Some((e.at, text)),
                 Entry::TurnEnd { .. } => {
-                    if let Some((at, text)) = answer.take().filter(|_| asked_by_you) {
+                    if let Some((at, text)) = answer.take().filter(|_| to.is_none()) {
                         add(
                             me,
                             Node::You,

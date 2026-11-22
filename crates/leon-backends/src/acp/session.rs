@@ -80,6 +80,19 @@ impl Session {
         (session, vec![init])
     }
 
+    /// The session found again under its holder (I24): set up, in session
+    /// `spec.resume`, maybe in a turn.
+    pub(crate) fn attached(spec: &SessionSpec, label: &'static str) -> Self {
+        let (mut session, _) = Self::new(spec, label);
+        session.pending.clear();
+        session.id.clone_from(&spec.resume);
+        session.selectors.clear();
+        // Far from the ids the CLI may still answer from before.
+        session.next_id = 1_000_000;
+        session.prompts = 1;
+        session
+    }
+
     fn request(&mut self, kind: Pending, method: &str, params: &Value) -> Value {
         self.next_id += 1;
         self.pending.insert(self.next_id, kind);
@@ -151,6 +164,12 @@ impl Session {
 
     fn response(&mut self, id: &Value, msg: &Value) -> (Vec<BackendEvent>, Vec<Value>) {
         let Some(kind) = id.as_i64().and_then(|id| self.pending.remove(&id)) else {
+            // A prompt sent before Leon came back (I24): its end still ends
+            // the turn.
+            if msg["result"].get("stopReason").is_some() {
+                self.prompts = self.prompts.saturating_sub(1);
+                return (self.turn.end(&msg["result"]), Vec::new());
+            }
             return (Vec::new(), Vec::new());
         };
         if let Some(error) = msg.get("error") {

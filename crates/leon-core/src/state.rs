@@ -100,6 +100,8 @@ pub(crate) struct State {
     pub folders: Arc<Vec<crate::ports::AgentFolder>>,
     /// The GitHub lists' folded groups (GH-2, GH-3).
     pub folded_groups: Arc<std::collections::HashSet<String>>,
+    /// Every flow's to-dos (TODO-1).
+    pub todos: Arc<Vec<leon_domain::Todo>>,
     pub options: Arc<HashMap<BackendKind, BackendOptions>>,
     pub notifications: Arc<Vec<Notification>>,
     pub next_notification: u64,
@@ -131,6 +133,10 @@ pub(crate) struct State {
     pub tools: Option<(i64, Arc<Vec<leon_domain::CliConnectors>>)>,
     /// The CLIs still being asked for their connectors.
     pub tools_pending: Vec<leon_domain::BackendKind>,
+    /// GitHub actions under way (GH-5..8).
+    pub acting: Arc<std::collections::HashSet<crate::snapshot::Acting>>,
+    /// How much of each CLI's plan limits is used, as it last said (DOCTOR-2).
+    pub limits: Arc<Vec<(leon_domain::BackendKind, Vec<leon_domain::LimitWindow>)>>,
     /// The GitHub repository of each project, from its `origin`.
     pub project_repos: Arc<HashMap<ProjectId, String>>,
 }
@@ -368,6 +374,7 @@ impl State {
             commands: Arc::clone(&self.commands),
             folders: Arc::clone(&self.folders),
             folded_groups: Arc::clone(&self.folded_groups),
+            todos: Arc::clone(&self.todos),
             options: Arc::clone(&self.options),
             notifications: Arc::clone(&self.notifications),
             git: Arc::clone(&self.git),
@@ -389,6 +396,8 @@ impl State {
             shared_tools_error: self.shared_error.clone(),
             tools: self.tools.clone(),
             tools_pending: self.tools_pending.clone(),
+            acting: Arc::clone(&self.acting),
+            limits: Arc::clone(&self.limits),
             project_repos: Arc::clone(&self.project_repos),
         }
     }

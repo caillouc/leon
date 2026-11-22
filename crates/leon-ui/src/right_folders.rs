@@ -1,6 +1,6 @@
-//! The folders of a flow in the right pane (CTX-2): which one
-//! Changes, Branch and PR show, picked from a row of chips when there are
-//! several.
+//! The right pane's repository and worktree (CTX-1, CTX-2): one of the
+//! flow's folders, picked under the tabs when there are several; Changes and
+//! Branch show only it.
 
 use std::path::{Path, PathBuf};
 
@@ -8,8 +8,6 @@ use gpui::{AnyElement, Context, FontWeight, IntoElement, div, prelude::*};
 use leon_core::{GitView, Intent};
 use leon_domain::FlowId;
 
-use crate::icons::{Icon, icon};
-use crate::pr_view::pr_badge;
 use crate::theme;
 use crate::workspace::Workspace;
 
@@ -37,199 +35,109 @@ impl Workspace {
         self.snapshot.git.get(&self.folder(id)?)
     }
 
-    /// One chip per folder — repository, branch, its pull request — above
-    /// Changes and Branch, so which repository and branch they show is
-    /// never a guess; with several, a click shows that folder. The pull
-    /// request opens Leon's view of it.
-    pub(crate) fn folder_chips(&self, id: FlowId, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// The right pane's repository and worktree, under Changes and Branch (CTX-1,
+    /// CTX-2), as Zed's two pickers: the repository (one of the flow's), then
+    /// which of its worktrees, by branch; each a menu only when there is a
+    /// choice; then a button copying the branch. Picking redraws every tab.
+    pub(crate) fn repo_bar(&self, id: FlowId, cx: &mut Context<Self>) -> Option<AnyElement> {
         let view = self.snapshot.flow(id)?;
-        if view.folders.is_empty() {
-            return None;
+        let folder = self.folder(id)?;
+        let name = |f: &Path| folder_name(f, self.snapshot.git.get(f));
+        let label = |f: &Path| worktree_label(f, self.snapshot.git.get(f));
+        let current = name(&folder);
+        // The flow's repositories, each once, in the order first worked in;
+        // a pick shows the newest worktree of it.
+        let mut repos: Vec<(String, PathBuf)> = Vec::new();
+        for f in &view.folders {
+            match repos.iter_mut().find(|(n, _)| *n == name(f)) {
+                Some(repo) => repo.1.clone_from(f),
+                None => repos.push((name(f), f.clone())),
+            }
         }
-        let several = view.folders.len() > 1;
-        let picked = self.folder(id);
-        let chips = view.folders.iter().enumerate().map(|(ix, folder)| {
-            let git = self.snapshot.git.get(folder);
-            let selected = picked.as_ref() == Some(folder);
-            let pick = folder.clone();
+        let pick = move |this: &mut Self, value: String| {
+            let tab = this.current_conversation();
+            this.right.folder.insert((id, tab), PathBuf::from(value));
+            this.core.send(Intent::RefreshGit(id));
+        };
+        let repo: AnyElement = if repos.len() > 1 {
+            let choices = repos
+                .iter()
+                .map(|(n, f)| (f.display().to_string(), n.clone()))
+                .collect();
+            self.picker_look(
+                crate::picker::Look::Title,
+                "right-repo",
+                &current,
+                choices,
+                cx,
+                move |this, value, _, _| pick(this, value),
+            )
+        } else {
             div()
-                .id(("folder-chip", ix))
-                .flex()
-                .items_center()
-                .gap(crate::theme::rem(5.))
-                .px_2()
-                .py(crate::theme::rem(3.))
-                .rounded_md()
-                .border_1()
-                .border_color(if selected && several {
-                    theme::accent()
-                } else {
-                    theme::border()
-                })
-                .bg(if selected && several {
-                    theme::accent_soft()
-                } else {
-                    theme::window()
-                })
-                .text_size(crate::theme::rem(12.))
-                .when(several, |d| {
-                    d.cursor_pointer().hover(|s| s.bg(theme::surface_2()))
-                })
-                .child(icon(Icon::Branch, theme::fg_muted(), 12.))
-                .child(
-                    div()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(folder_name(folder, git)),
-                )
-                .children(git.and_then(|g| g.branch.clone()).map(|branch| {
-                    div()
-                        .font_family(theme::MONO)
-                        .text_size(crate::theme::rem(11.))
-                        .text_color(theme::fg_muted())
-                        .child(branch)
-                }))
-                .children(self.snapshot.prs.get(folder).map(|pr| pr_badge(pr, cx)))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    let tab = this.current_conversation();
-                    this.right.folder.insert((id, tab), pick.clone());
-                    this.core.send(Intent::RefreshGit(id));
-                    cx.notify();
-                }))
-        });
+                .min_w_0()
+                .px_1()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_size(crate::theme::rem(13.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(current.clone())
+                .into_any_element()
+        };
+        let worktrees: Vec<&PathBuf> = view.folders.iter().filter(|f| name(f) == current).collect();
+        let worktree: AnyElement = if worktrees.len() > 1 {
+            let choices = worktrees
+                .iter()
+                .map(|f| (f.display().to_string(), label(f)))
+                .collect();
+            self.picker_look(
+                crate::picker::Look::Branch,
+                "right-worktree",
+                &label(&folder),
+                choices,
+                cx,
+                move |this, value, _, _| pick(this, value),
+            )
+        } else {
+            div()
+                .min_w_0()
+                .px_1()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .font_family(theme::MONO)
+                .text_size(crate::theme::rem(11.5))
+                .text_color(theme::fg_muted())
+                .child(label(&folder))
+                .into_any_element()
+        };
+        let branch = self.folder_git(id).and_then(|g| g.branch.clone());
         Some(
             div()
                 .flex()
-                .flex_none()
-                .flex_wrap()
-                .gap(crate::theme::rem(6.))
-                .px_3()
-                .py_2()
-                .border_b_1()
-                .border_color(theme::border())
-                .children(chips)
+                .items_center()
+                .gap(crate::theme::rem(4.))
+                .child(crate::icons::folder(false, theme::fg_muted(), 13.))
+                .child(div().flex_none().max_w(gpui::relative(0.45)).child(repo))
+                .child(div().min_w_0().child(worktree))
+                .children(branch.map(|b| crate::clipboard::copy_button("right-copy-branch", b)))
                 .into_any_element(),
         )
     }
 }
 
-/// Key of "Where" folded, for every flow.
-const WHERE: &str = "info:where";
-
-impl Workspace {
-    /// Info's "Where" (CTX-2): the flow's project, then each folder its
-    /// agents work in — repository, branch and what it started from, its
-    /// pull request (opening Leon's view of it), the agents working there
-    /// in their colours, its path. Folds to its title.
-    pub(crate) fn folders_card(
-        &self,
-        view: &leon_core::FlowView,
-        project: Option<&leon_domain::Project>,
-        cx: &mut Context<Self>,
-    ) -> gpui::Div {
-        let collapsed = self.snapshot.folded_groups.contains(WHERE);
-        let mono = |text: String, color| {
-            div()
-                .font_family(theme::MONO)
-                .text_size(crate::theme::rem(11.))
-                .text_color(color)
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(text)
-        };
-        let conversations: Vec<&leon_core::ConversationView> = view
-            .conversations
-            .iter()
-            .filter_map(|c| self.snapshot.conversations.get(c))
-            .collect();
-        let folder = |path: &PathBuf| {
-            let git = self.snapshot.git.get(path);
-            let here: Vec<&&leon_core::ConversationView> = conversations
-                .iter()
-                .filter(|s| s.folder.as_ref() == Some(path))
-                .collect();
-            div()
-                .flex()
-                .flex_col()
-                .gap(crate::theme::rem(3.))
-                .pl_2()
-                .border_l_2()
-                .border_color(theme::accent())
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(crate::theme::rem(6.))
-                        .text_size(crate::theme::rem(12.5))
-                        .child(icon(Icon::Branch, theme::accent(), 13.))
-                        .child(
-                            div()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(folder_name(path, git)),
-                        )
-                        .children(
-                            git.and_then(|g| g.branch.clone())
-                                .map(|b| mono(b, theme::fg_muted())),
-                        )
-                        .children(self.snapshot.prs.get(path).map(|pr| pr_badge(pr, cx))),
-                )
-                .when(!here.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .gap(crate::theme::rem(8.))
-                            .text_size(crate::theme::rem(11.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .children(here.iter().map(|s| {
-                                div()
-                                    .text_color(crate::agent_color::agent_color(&conversations, s))
-                                    .child(s.name.clone())
-                            })),
-                    )
-                })
-                .children(
-                    git.and_then(|g| g.base.as_deref())
-                        .map(|b| mono(format!("from {b}"), theme::fg_faint())),
-                )
-                .child(mono(path.display().to_string(), theme::fg_faint()))
-        };
-        div()
-            .mx_3()
-            .px_3()
-            .py(crate::theme::rem(10.))
-            .flex()
-            .flex_col()
-            .gap_3()
-            .rounded_lg()
-            .border_1()
-            .border_color(theme::border())
-            .bg(theme::window())
-            .child(
-                crate::widgets::fold_toggle(WHERE.to_owned(), collapsed)
-                    .child(
-                        div()
-                            .text_size(crate::theme::rem(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Where"),
-                    )
-                    .children(project.map(|p| {
-                        div()
-                            .text_size(crate::theme::rem(12.))
-                            .text_color(theme::fg_muted())
-                            .child(format!("project {}", p.name))
-                    })),
-            )
-            .when(!collapsed && view.folders.is_empty(), |d| {
-                d.child(
-                    div()
-                        .text_size(crate::theme::rem(12.))
-                        .text_color(theme::fg_faint())
-                        .child("No worktree yet: one shows once an agent works in it."),
-                )
-            })
-            .when(!collapsed, |d| d.children(view.folders.iter().map(folder)))
+/// How the right pane names a worktree: its branch; the repository's own
+/// checkout, "main · <branch>" (CTX-2).
+fn worktree_label(folder: &Path, git: Option<&GitView>) -> String {
+    let branch = git.and_then(|g| g.branch.clone());
+    match (git.is_some_and(|g| g.main), branch) {
+        (true, Some(branch)) => format!("main · {branch}"),
+        (true, None) => "main · detached".to_owned(),
+        (false, Some(branch)) => branch,
+        (false, None) => folder.file_name().map_or_else(
+            || folder.display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        ),
     }
 }
 
@@ -245,4 +153,39 @@ pub(crate) fn folder_name(folder: &Path, git: Option<&GitView>) -> String {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .unwrap_or_else(|| folder.display().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use leon_core::GitView;
+
+    use super::worktree_label;
+
+    #[test]
+    fn the_main_checkout_is_named_apart_from_its_worktrees() {
+        let view = |branch: Option<&str>, main| GitView {
+            repo: None,
+            branch: branch.map(str::to_owned),
+            main,
+            base: None,
+            changes: std::sync::Arc::default(),
+            branch_diff: std::sync::Arc::default(),
+            error: None,
+        };
+        let cases = [
+            ("/code/api", Some(view(Some("fix"), true)), "main · fix"),
+            ("/code/api", Some(view(None, true)), "main · detached"),
+            ("/code/api/.wt/fix", Some(view(Some("fix"), false)), "fix"),
+            ("/code/api/.wt/fix", None, "fix"),
+        ];
+        for (folder, git, expected) in cases {
+            assert_eq!(
+                worktree_label(Path::new(folder), git.as_ref()),
+                expected,
+                "{folder}"
+            );
+        }
+    }
 }

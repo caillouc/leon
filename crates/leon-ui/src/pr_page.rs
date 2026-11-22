@@ -5,7 +5,7 @@
 
 use gpui::{AnyElement, Context, Div, Entity, FontWeight, IntoElement, Rgba, div, prelude::*};
 use gpui_component::input::{Textarea, TextareaState};
-use leon_core::Intent;
+use leon_core::{Acting, Intent};
 use leon_domain::{Check, CheckState, Comment, GhRef, PrState, PullRequest};
 
 use crate::github::pr_glyph;
@@ -23,7 +23,7 @@ pub(crate) fn tint(color: Rgba, alpha: f32) -> Rgba {
 
 /// A person as a coloured disc with their initial; one colour per login.
 pub(crate) fn avatar(login: &str, size: f32) -> Div {
-    let color = theme::agent_color(login.bytes().map(usize::from).sum());
+    let color = theme::name_color(login);
     let initial = login
         .chars()
         .find(char::is_ascii_alphanumeric)
@@ -172,10 +172,11 @@ pub(crate) fn pr_header(pr: &PullRequest) -> Div {
 /// says how they went, then the failing and running ones by name.
 pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
     let count = |state| pr.checks.iter().filter(|c| c.state == state).count();
-    let (failing, running, passing) = (
+    let (failing, running, passing, skipped) = (
         count(CheckState::Fail),
         count(CheckState::Pending),
         count(CheckState::Pass),
+        count(CheckState::Skipped),
     );
     let Some(state) = pr.checks_state() else {
         return div()
@@ -186,6 +187,7 @@ pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
     };
     let title = match state {
         CheckState::Pass => "All checks have passed",
+        CheckState::Skipped => "All checks were skipped",
         CheckState::Fail => "Some checks were not successful",
         CheckState::Pending => "Some checks haven't completed yet",
     };
@@ -193,6 +195,7 @@ pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
         (failing, "failing"),
         (running, "in progress"),
         (passing, "successful"),
+        (skipped, "skipped"),
     ]
     .into_iter()
     .filter(|(n, _)| *n > 0)
@@ -215,7 +218,7 @@ pub(crate) fn checks_card(pr: &PullRequest) -> AnyElement {
     let shown: Vec<&Check> = pr
         .checks
         .iter()
-        .filter(|c| c.state != CheckState::Pass)
+        .filter(|c| matches!(c.state, CheckState::Fail | CheckState::Pending))
         .collect();
     merge_box(color)
         .child(merge_header(check_glyph(state), color, title, detail))
@@ -300,15 +303,39 @@ fn merge_header(
         )
 }
 
-/// A check that did not pass: its state, its name and, when GitHub links
-/// its run, a click opening it (an Actions job's log).
-pub(crate) fn check_row(ix: usize, check: &Check) -> gpui::Stateful<Div> {
-    let url = check.url.clone();
-    div()
+/// A check that did not pass: its mark, its name and its state; when GitHub
+/// links its run, a click on the state opens it (an Actions job's log).
+pub(crate) fn check_row(ix: usize, check: &Check) -> Div {
+    let state = if check.state == CheckState::Fail {
+        "Failing"
+    } else {
+        "In progress"
+    };
+    // Only "Failing ↗" opens the job: the rest of the row belongs to the
+    // card around it.
+    let link = div()
         .id(gpui::SharedString::from(format!(
             "check-{ix}-{}",
             check.name
         )))
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap_1()
+        .text_size(crate::theme::rem(11.5))
+        .text_color(theme::fg_faint())
+        .child(state)
+        .when_some(check.url.clone(), |d, url| {
+            d.cursor_pointer()
+                .hover(|s| s.text_color(theme::fg()))
+                .child(icon(Icon::External, theme::fg_muted(), 12.))
+                .on_click(move |_, _, cx| {
+                    // Not the card around it, which opens the drawer.
+                    cx.stop_propagation();
+                    cx.open_url(&url);
+                })
+        });
+    div()
         .py(crate::theme::rem(7.))
         .flex()
         .items_center()
@@ -328,32 +355,13 @@ pub(crate) fn check_row(ix: usize, check: &Check) -> gpui::Stateful<Div> {
                 .text_ellipsis()
                 .child(check.name.clone()),
         )
-        .child(
-            div()
-                .flex_none()
-                .text_size(crate::theme::rem(11.5))
-                .text_color(theme::fg_faint())
-                .child(if check.state == CheckState::Fail {
-                    "Failing"
-                } else {
-                    "In progress"
-                }),
-        )
-        .when_some(url, |d, url| {
-            d.cursor_pointer()
-                .hover(|s| s.bg(theme::surface_2()))
-                .child(icon(Icon::External, theme::fg_muted(), 12.))
-                .on_click(move |_, _, cx| {
-                    // Not the card around it, which opens the drawer.
-                    cx.stop_propagation();
-                    cx.open_url(&url);
-                })
-        })
+        .child(link)
 }
 
-fn check_glyph(state: CheckState) -> Icon {
+pub(crate) fn check_glyph(state: CheckState) -> Icon {
     match state {
         CheckState::Pass => Icon::Passed,
+        CheckState::Skipped => Icon::Skipped,
         CheckState::Fail => Icon::Failed,
         CheckState::Pending => Icon::Pending,
     }
@@ -361,49 +369,78 @@ fn check_glyph(state: CheckState) -> Icon {
 
 impl Workspace {
     /// What can be done with a pull request from Leon: a Copilot review,
-    /// ready or draft. Shown next to "Open on GitHub".
-    pub(crate) fn pr_actions(pr: &PullRequest, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// ready or draft. Shown next to "Open on GitHub"; a click shows the
+    /// action under way at once, its notice says how it went.
+    pub(crate) fn pr_actions(&self, pr: &PullRequest, cx: &mut Context<Self>) -> Vec<AnyElement> {
         if !matches!(pr.state, PrState::Open | PrState::Draft) {
             return Vec::new();
         }
         let item = GhRef::pull_request(&pr.repo, pr.number);
+        let acting = &self.snapshot.acting;
         let toggle = item.clone();
+        let drafting = acting.contains(&Acting::Draft(item.clone()));
         let draft = if pr.state == PrState::Draft {
             primary(
                 "pr-ready",
-                "Ready for review",
+                if drafting {
+                    "Marking ready…"
+                } else {
+                    "Ready for review"
+                },
                 cx.listener(move |this, _, _, _| {
-                    this.core.send(Intent::SetDraft(toggle.clone(), false));
+                    this.act(Intent::SetDraft(toggle.clone(), false));
                 }),
             )
         } else {
             button(
                 "pr-draft",
-                "Convert to draft",
+                if drafting {
+                    "Converting to draft…"
+                } else {
+                    "Convert to draft"
+                },
                 cx.listener(move |this, _, _, _| {
-                    this.core.send(Intent::SetDraft(toggle.clone(), true));
+                    this.act(Intent::SetDraft(toggle.clone(), true));
                 }),
             )
-        };
+        }
+        .when(drafting, |b| b.opacity(0.6));
         let asked = pr
             .reviewers
             .iter()
             .any(|r| r.to_lowercase().contains("copilot"));
+        let asking = acting.contains(&Acting::CopilotReview(item.clone()));
         let copilot = button(
             "copilot-review",
-            if asked {
-                "Copilot review requested"
-            } else {
-                "Request Copilot review"
+            match (asking, asked) {
+                (true, _) => "Requesting a review…",
+                (false, true) => "Copilot review requested",
+                (false, false) => "Request Copilot review",
             },
             cx.listener(move |this, _, _, _| {
                 if !asked {
-                    this.core.send(Intent::RequestCopilotReview(item.clone()));
+                    this.act(Intent::RequestCopilotReview(item.clone()));
                 }
             }),
         )
-        .when(asked, |b| b.opacity(0.6));
+        .when(asked || asking, |b| b.opacity(0.6));
         vec![copilot.into_any_element(), draft.into_any_element()]
+    }
+
+    /// Sends a GitHub action, unless the same one is under way: a second
+    /// click does nothing (GH-5..8).
+    pub(crate) fn act(&self, intent: Intent) {
+        let under_way = match &intent {
+            Intent::SetDraft(item, _) => Some(Acting::Draft(item.clone())),
+            Intent::RequestCopilotReview(item) => Some(Acting::CopilotReview(item.clone())),
+            Intent::Comment(item, _) => Some(Acting::Comment(item.clone())),
+            Intent::ReplyToThread { thread, .. } => Some(Acting::Reply(thread.clone())),
+            Intent::ResolveThread { thread, .. } => Some(Acting::Resolve(thread.clone())),
+            _ => None,
+        };
+        if under_way.is_none_or(|a| !self.snapshot.acting.contains(&a)) {
+            self.core.send(intent);
+        }
     }
 
     /// A comment as on GitHub's timeline: the author's avatar beside a card
@@ -495,16 +532,21 @@ impl Workspace {
                 )
             })
             .children(list)
-            .child(Self::comment_box(item, input, cx))
+            .child(self.comment_box(item, input, cx))
     }
 
     /// A card to post a comment on `item` (GH-6), its button at the right.
     pub(crate) fn comment_box(
+        &self,
         item: GhRef,
         input: &Entity<TextareaState>,
         cx: &mut Context<Self>,
     ) -> Div {
         let input = input.clone();
+        let posting = self
+            .snapshot
+            .acting
+            .contains(&Acting::Comment(item.clone()));
         div()
             .rounded_lg()
             .border_1()
@@ -523,19 +565,23 @@ impl Workspace {
                     .child("Add a comment"),
             )
             .child(div().p_2().child(Textarea::new(&input).appearance(false)))
-            .child(div().px_3().pb_3().flex().justify_end().child(primary(
-                "post-comment",
-                "Comment",
-                cx.listener(move |this, _, window, cx| {
-                    let text = text_of(&input, cx);
-                    if text.trim().is_empty() {
-                        return;
-                    }
-                    this.core
-                        .send(Intent::Comment(item.clone(), text.trim().to_owned()));
-                    input.update(cx, |state, cx| state.set_value("", window, cx));
-                }),
-            )))
+            .child(
+                div().px_3().pb_3().flex().justify_end().child(
+                    primary(
+                        "post-comment",
+                        if posting { "Posting…" } else { "Comment" },
+                        cx.listener(move |this, _, window, cx| {
+                            let text = text_of(&input, cx);
+                            if text.trim().is_empty() {
+                                return;
+                            }
+                            this.act(Intent::Comment(item.clone(), text.trim().to_owned()));
+                            input.update(cx, |state, cx| state.set_value("", window, cx));
+                        }),
+                    )
+                    .when(posting, |b| b.opacity(0.6)),
+                ),
+            )
     }
 
     /// A pull request, as on GitHub: header, checks, description, the
@@ -580,6 +626,6 @@ impl Workspace {
                     self.thread_card(&format!("{id}-thread-{t}"), pr, thread, cx)
                 }),
             )
-            .child(Self::comment_box(item, input, cx))
+            .child(self.comment_box(item, input, cx))
     }
 }

@@ -30,6 +30,16 @@ pub(crate) fn claude_tool(name: &str, input: &Value) -> (String, String) {
         "WebSearch" => ("Searched the web", field("query")),
         "Task" | "Agent" => ("Started a subagent", field("description")),
         "TodoWrite" => ("Updated the task list", String::new()),
+        // Its questions, not its JSON: the answer follows (CONV-9).
+        "AskUserQuestion" => (
+            "Asked",
+            input["questions"].as_array().map_or_default(|qs| {
+                qs.iter()
+                    .filter_map(|q| q["question"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" · ")
+            }),
+        ),
         other => return (other.to_owned(), compact(input)),
     };
     (verb.to_owned(), clip(&detail, 200))
@@ -138,6 +148,12 @@ mod tests {
                 "/a.rs",
             ),
             ("Grep", json!({"pattern": "foo"}), "Searched", "foo"),
+            (
+                "AskUserQuestion",
+                json!({"questions": [{"question": "Base?", "options": []}, {"question": "Commit?"}]}),
+                "Asked",
+                "Base? · Commit?",
+            ),
         ];
         for (name, input, verb, detail) in cases {
             assert_eq!(

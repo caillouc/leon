@@ -86,6 +86,34 @@ pub enum Intent {
     },
     /// Fold or unfold a project's flows in the left pane (NAV-2).
     CollapseProject(ProjectId, bool),
+    /// Put the projects in this order, the user's, kept across restarts
+    /// (NAV-2).
+    OrderProjects(Vec<ProjectId>),
+    /// Put the To do page's flow groups in this order, the user's, kept
+    /// across restarts (TODO-3).
+    OrderTodoFlows(Vec<FlowId>),
+    /// Add a to-do to a flow, the user's (TODO-1).
+    AddTodo {
+        /// Its flow.
+        flow: FlowId,
+        /// What it waits for; may be empty.
+        when: String,
+        /// What to do then.
+        what: String,
+    },
+    /// Mark a to-do done, or open again (TODO-1).
+    SetTodoDone(leon_domain::TodoId, bool),
+    /// Remove a to-do for good (TODO-1).
+    RemoveTodo(leon_domain::TodoId),
+    /// Change a to-do's when and what (TODO-1).
+    EditTodo {
+        /// The to-do.
+        id: leon_domain::TodoId,
+        /// What it waits for; may be empty.
+        when: String,
+        /// What to do then; not empty.
+        what: String,
+    },
     /// Rename a flow (NAV-8).
     Rename(FlowId, String),
     /// Pin or unpin (NAV-3).
@@ -131,7 +159,8 @@ pub enum Intent {
         /// Resolve the thread once answered.
         resolve: bool,
     },
-    /// Resolve a review thread of a pull request (GH-8).
+    /// Resolve a review thread of a pull request as fixed: answer "Fixed",
+    /// then resolve it (GH-8).
     ResolveThread {
         /// The pull request.
         pr: leon_domain::GhRef,

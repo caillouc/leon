@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use leon_core::ports::{NewConversation, PortError, Storage};
 use leon_domain::{
     BackendKind, Conversation, ConversationId, ConversationSettings, Flow, FlowId, GhKind, GhRef,
-    Project, ProjectId, TimedEntry,
+    Project, ProjectId, TimedEntry, Todo, TodoId,
 };
 use rusqlite::{Row, params};
 
@@ -55,6 +55,26 @@ fn link_row(row: &Row<'_>) -> rusqlite::Result<(i64, Option<GhRef>)> {
     Ok((row.get(0)?, link))
 }
 
+impl Store {
+    /// Gives each row of `ids` its index as its place, in one transaction:
+    /// `update` sets row `?1`'s place to `?2`.
+    fn set_positions(
+        &self,
+        update: &str,
+        ids: impl IntoIterator<Item = i64>,
+        context: &'static str,
+    ) -> Result<(), PortError> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(err(context))?;
+        for (position, id) in ids.into_iter().enumerate() {
+            let position = i64::try_from(position).unwrap_or(i64::MAX);
+            tx.execute(update, params![id, position])
+                .map_err(err(context))?;
+        }
+        tx.commit().map_err(err(context))
+    }
+}
+
 fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
     Ok(Flow {
         id: FlowId(row.get(0)?),
@@ -66,6 +86,7 @@ fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
         updated_at: row.get(6)?,
         folders: folders(&row.get::<_, String>(7)?),
         links: Vec::new(),
+        todo_position: row.get(8)?,
     })
 }
 
@@ -96,9 +117,7 @@ impl Storage for Store {
         const C: &str = "listing projects";
         let conn = self.lock();
         let mut stmt = conn
-            .prepare_cached(
-                "SELECT id, name, path, collapsed FROM projects ORDER BY name COLLATE NOCASE, id",
-            )
+            .prepare_cached("SELECT id, name, path, collapsed FROM projects ORDER BY position, id")
             .map_err(err(C))?;
         let rows = stmt.query_map([], project_row).map_err(err(C))?;
         rows.collect::<Result<_, _>>().map_err(err(C))
@@ -108,7 +127,10 @@ impl Storage for Store {
         const C: &str = "adding a project";
         let conn = self.lock();
         conn.execute(
-            "INSERT INTO projects (name, path, added_at) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO NOTHING",
+            // A new project comes last.
+            "INSERT INTO projects (name, path, added_at, position)
+             VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position) + 1, 0) FROM projects))
+             ON CONFLICT(path) DO NOTHING",
             params![name, path_text(path), now],
         )
         .map_err(err(C))?;
@@ -118,6 +140,48 @@ impl Storage for Store {
             project_row,
         )
         .map_err(err(C))
+    }
+
+    fn set_project_order(&self, order: &[ProjectId]) -> Result<(), PortError> {
+        self.set_positions(
+            "UPDATE projects SET position = ?2 WHERE id = ?1",
+            order.iter().map(|p| p.0),
+            "ordering projects",
+        )
+    }
+
+    fn set_todo_order(&self, order: &[FlowId]) -> Result<(), PortError> {
+        self.set_positions(
+            "UPDATE flows SET todo_position = ?2 WHERE id = ?1",
+            order.iter().map(|f| f.0),
+            "ordering the To do page's flows",
+        )
+    }
+
+    fn todos(&self) -> Result<Vec<Todo>, PortError> {
+        crate::todos::todos(&self.lock())
+    }
+
+    fn add_todo(
+        &self,
+        flow: FlowId,
+        when_what: (&str, &str),
+        by: Option<ConversationId>,
+        now: i64,
+    ) -> Result<Todo, PortError> {
+        crate::todos::add(&self.lock(), flow, when_what, by, now)
+    }
+
+    fn set_todo_done(&self, id: TodoId, done: bool) -> Result<(), PortError> {
+        crate::todos::set_done(&self.lock(), id, done)
+    }
+
+    fn remove_todo(&self, id: TodoId) -> Result<(), PortError> {
+        crate::todos::remove(&self.lock(), id)
+    }
+
+    fn edit_todo(&self, id: TodoId, when_what: (&str, &str)) -> Result<(), PortError> {
+        crate::todos::edit(&self.lock(), id, when_what)
     }
 
     fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError> {
@@ -135,7 +199,8 @@ impl Storage for Store {
         let conn = self.lock();
         let mut stmt = conn
             .prepare_cached(
-                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders FROM flows
+                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders, todo_position
+                 FROM flows
                  ORDER BY updated_at DESC, id DESC",
             )
             .map_err(err(C))?;
@@ -186,6 +251,7 @@ impl Storage for Store {
             updated_at: now,
             folders: Vec::new(),
             links: Vec::new(),
+            todo_position: 0,
         })
     }
 
@@ -424,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_are_sorted_and_unique_by_path() {
+    fn projects_are_unique_by_path() {
         let store = Store::open_in_memory().unwrap();
         store.add_project("web", Path::new("/code/web"), 1).unwrap();
         store.add_project("Api", Path::new("/code/api"), 2).unwrap();
@@ -438,7 +504,8 @@ mod tests {
             .into_iter()
             .map(|p| p.name)
             .collect();
-        assert_eq!(names, ["Api", "web"]);
+        // In the order added; the user orders them by dragging (NAV-2).
+        assert_eq!(names, ["web", "Api"]);
         store.set_project_collapsed(again.id, true).unwrap();
         let folded: Vec<_> = store
             .list_projects()
@@ -446,7 +513,7 @@ mod tests {
             .into_iter()
             .map(|p| p.collapsed)
             .collect();
-        assert_eq!(folded, [false, true]);
+        assert_eq!(folded, [true, false]);
     }
 
     #[test]
@@ -604,5 +671,51 @@ mod tests {
             Store::open(&path).unwrap().list_projects().unwrap().len(),
             1
         );
+    }
+
+    /// Projects come in the order the user put them, kept across restarts;
+    /// a new one comes last (NAV-2).
+    #[test]
+    fn projects_keep_the_order_given() {
+        let store = Store::open_in_memory().unwrap();
+        let web = store.add_project("web", Path::new("/code/web"), 0).unwrap();
+        let api = store.add_project("api", Path::new("/code/api"), 0).unwrap();
+        let names = |store: &Store| -> Vec<String> {
+            store
+                .list_projects()
+                .unwrap()
+                .into_iter()
+                .map(|p| p.name)
+                .collect()
+        };
+        assert_eq!(names(&store), ["web", "api"]);
+        store.set_project_order(&[api.id, web.id]).unwrap();
+        assert_eq!(names(&store), ["api", "web"]);
+        store
+            .add_project("docs", Path::new("/code/docs"), 0)
+            .unwrap();
+        assert_eq!(names(&store), ["api", "web", "docs"]);
+    }
+
+    /// The To do page's flows keep the order the user gave them across
+    /// restarts; saving a flow leaves it (TODO-3).
+    #[test]
+    fn the_to_do_page_order_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let store = Store::open(&path).unwrap();
+        let project = store.add_project("api", Path::new("/code/api"), 1).unwrap();
+        let mut first = store.create_flow(project.id, "First", 1).unwrap();
+        let second = store.create_flow(project.id, "Second", 2).unwrap();
+        for flow in [&first, &second] {
+            store.add_todo(flow.id, ("", "Merge"), None, 3).unwrap();
+        }
+        store.set_todo_order(&[second.id, first.id]).unwrap();
+        first.title = "First, renamed".into();
+        store.update_flow(&first).unwrap();
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let shown = leon_domain::todo_flows(&store.list_flows().unwrap(), &store.todos().unwrap());
+        assert_eq!(shown, [second.id, first.id]);
     }
 }

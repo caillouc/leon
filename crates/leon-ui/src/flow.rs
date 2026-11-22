@@ -81,11 +81,7 @@ impl Workspace {
         let Some(flow) = self.snapshot.flow(id) else {
             return div().into_any_element();
         };
-        let conversations: Vec<&ConversationView> = flow
-            .conversations
-            .iter()
-            .filter_map(|s| self.snapshot.conversations.get(s))
-            .collect();
+        let conversations = self.snapshot.conversations_of(flow);
         let model = flow_model::build(&conversations, &self.snapshot.transcripts);
         // The forces keep acting: a box let go bounces back, or finds a new
         // place when dragged far enough (FLOW-6). A frame is asked for as
@@ -472,7 +468,7 @@ impl Workspace {
                     .font_weight(FontWeight::SEMIBOLD)
                     // The left pane's icon, the green check for an answer
                     // to read; none while its colour goes round the box,
-                    // the turning loader when motion is reduced.
+                    // the loader when motion is reduced.
                     .children(match attention {
                         leon_domain::Attention::Working if circles => None,
                         leon_domain::Attention::Working => Some(status_mark(
@@ -525,7 +521,7 @@ impl Workspace {
                     .text_size(px(11. * s))
                     .text_color(theme::fg_muted())
                     .child(
-                        crate::icons::icon(crate::icons::Icon::Branch, theme::fg_muted(), 11.)
+                        crate::icons::folder(false, theme::fg_muted(), 11.)
                             .size(px(11. * s))
                             .flex_none(),
                     )
@@ -847,11 +843,7 @@ impl Workspace {
                     div()
                         .text_size(px(11.))
                         .text_color(theme::fg_faint())
-                        .child(format!(
-                            "{sent}{} · {} ago",
-                            item.label,
-                            crate::left::ago(item.at)
-                        )),
+                        .child(format!("{sent}{}", item.label)),
                 )
                 .child(crate::markdown::markdown(
                     SharedString::from(format!("flow-item-{ix}")),

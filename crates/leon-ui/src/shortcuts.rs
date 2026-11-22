@@ -2,17 +2,18 @@
 //! Linux, the same shortcuts), so Quit, Hide, Close, Copy, Paste… work, and
 //! a standard Edit menu, where macOS adds Start Dictation and Emoji.
 //!
-//! Shortcuts of Leon's own: ⌘N new flow, ⌘, Settings, ⌘L the message
-//! box, ⌘K search, ⌃Tab / ⌃⇧Tab next / previous flow, Esc closes
-//! what is open on top (a menu, a picker, a drawer).
+//! Shortcuts of Leon's own: ⌘N new flow, ⌘, Settings, ⌘L or Tab the
+//! message box, ⌘K or / search, ⌃Tab / ⌃⇧Tab next / previous flow, Esc
+//! closes what is open on top (a menu, a picker, a drawer). Tab and / only
+//! while no text box has the focus: in one, they type as usual.
 
 use gpui::{
     App, Context, Div, KeyBinding, Menu, MenuItem, MouseButton, NavigationDirection, OsAction,
-    actions,
+    Window, actions,
 };
 use gpui_component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
-use leon_domain::{ConversationId, FlowId};
 
+use crate::history::Place;
 use crate::workspace::{Screen, Tab, Workspace};
 
 actions!(
@@ -110,6 +111,10 @@ fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new(primary!(","), OpenSettings, None),
         KeyBinding::new(primary!("l"), FocusMessage, None),
         KeyBinding::new(primary!("k"), FocusSearch, None),
+        // "Input" is the text boxes' key context (gpui-base 0.10, read
+        // 2026-11-20); a key typed in one never reaches these.
+        KeyBinding::new("tab", FocusMessage, Some("!Input")),
+        KeyBinding::new("/", FocusSearch, Some("!Input")),
         KeyBinding::new("ctrl-tab", NextFlow, None),
         KeyBinding::new("ctrl-shift-tab", PreviousFlow, None),
         KeyBinding::new(primary!("["), GoBack, None),
@@ -134,30 +139,46 @@ impl Workspace {
                 this.open_screen(Screen::Settings, window, cx);
             }))
             .on_action(cx.listener(|this, _: &FocusMessage, window, cx| {
-                let input = match this.screen {
-                    Screen::NewFlow => this.form_text.clone(),
-                    _ => this.composer.clone(),
-                };
-                gpui::Focusable::focus_handle(input.read(cx), cx).focus(window, cx);
+                if let Some(input) = this.message_box_shown() {
+                    gpui::Focusable::focus_handle(input.read(cx), cx).focus(window, cx);
+                }
             }))
             .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
                 gpui::Focusable::focus_handle(this.search.read(cx), cx).focus(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &GoBack, _, cx| this.go(false, cx)))
-            .on_action(cx.listener(|this, _: &GoForward, _, cx| this.go(true, cx)))
+            .on_action(cx.listener(|this, _: &GoBack, window, cx| this.go(false, window, cx)))
+            .on_action(cx.listener(|this, _: &GoForward, window, cx| this.go(true, window, cx)))
             // A mouse's back and forward buttons (NAV-12).
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Back),
-                cx.listener(|this, _, _, cx| this.go(false, cx)),
+                cx.listener(|this, _, window, cx| this.go(false, window, cx)),
             )
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Forward),
-                cx.listener(|this, _, _, cx| this.go(true, cx)),
+                cx.listener(|this, _, window, cx| this.go(true, window, cx)),
             )
             .on_action(cx.listener(|this, _: &NextFlow, _, cx| this.step_flow(1, cx)))
             .on_action(cx.listener(|this, _: &PreviousFlow, _, cx| {
                 this.step_flow(-1, cx);
             }))
+    }
+
+    /// The message box on screen: a conversation's, or a new flow's or
+    /// conversation's form; `None` elsewhere (the diagram, Settings…).
+    fn message_box_shown(&self) -> Option<gpui::Entity<gpui_component::input::TextareaState>> {
+        match self.screen {
+            Screen::NewFlow => Some(self.form_text.clone()),
+            Screen::Flow(id) if self.tabs.get(&id) == Some(&Tab::New) => {
+                Some(self.form_text.clone())
+            }
+            Screen::Flow(_) => self.current_conversation().map(|_| self.composer.clone()),
+            Screen::Nothing
+            | Screen::GitHub(_)
+            | Screen::Doctor
+            | Screen::Tools
+            | Screen::Settings
+            | Screen::Todos => None,
+        }
     }
 
     /// Esc closes what is open on top, wherever the focus is: also when it
@@ -174,7 +195,10 @@ impl Workspace {
     /// Closes what is open on top, the most recent kind first; `false` when
     /// nothing was.
     fn close_top(&mut self, cx: &mut Context<Self>) -> bool {
-        let closed = if self.open_picker.take().is_some() || self.row_menu.take().is_some() {
+        let closed = if self.open_picker.take().is_some()
+            || self.row_menu.take().is_some()
+            || self.todos.editing.take().is_some()
+        {
             true
         } else if self.right.drawer.is_some() {
             self.close_drawer(cx);
@@ -191,32 +215,26 @@ impl Workspace {
         closed
     }
 
-    /// Back to the place visited before, or forward again (NAV-12): a flow,
-    /// on the tab it was on.
-    fn go(&mut self, forward: bool, cx: &mut Context<Self>) {
+    /// Back to the place visited before, or forward again (NAV-12): a flow
+    /// on the tab it was on, or a page.
+    fn go(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
         let snapshot = std::sync::Arc::clone(&self.snapshot);
-        let there = |(flow, tab): &(FlowId, Option<ConversationId>)| {
-            snapshot
-                .flow(*flow)
-                .is_some_and(|f| tab.is_none_or(|c| f.conversations.contains(&c)))
-        };
-        // Away from the flows (Settings, a GitHub list), back returns to the
-        // last place visited first.
-        let away = !matches!(self.screen, Screen::Flow(_));
+        let there = |place: &Place| place.exists(&snapshot);
         let place = if forward {
             self.history.forward(there)
-        } else if away {
-            self.history.current(there)
         } else {
             self.history.back(there)
         };
-        let Some((flow, tab)) = place else {
-            return;
-        };
-        self.select(flow, cx);
-        let tab = tab.map_or(Tab::Flow, Tab::Conversation);
-        self.tabs.insert(flow, tab);
-        cx.notify();
+        match place {
+            Some(Place::Flow(flow, tab)) => {
+                self.select(flow, cx);
+                let tab = tab.map_or(Tab::Flow, Tab::Conversation);
+                self.tabs.insert(flow, tab);
+                cx.notify();
+            }
+            Some(Place::Page(screen)) => self.open_screen(screen, window, cx),
+            None => {}
+        }
     }
 
     /// Opens the flow `step` places after (or before) the open one,
@@ -244,6 +262,32 @@ impl Workspace {
 mod tests {
     #[test]
     fn every_shortcut_parses() {
-        assert_eq!(super::bindings().len(), 14);
+        assert_eq!(super::bindings().len(), 16);
+    }
+
+    #[test]
+    fn tab_and_slash_move_the_focus_only_outside_a_text_box() {
+        use gpui::{KeyContext, Keymap, Keystroke, Modifiers};
+        let keymap = Keymap::new(super::bindings());
+        let root = KeyContext::parse("Root").expect("context");
+        let input = KeyContext::parse("Input").expect("context");
+        // "/" on a French keyboard is Shift and the ":" key.
+        let azerty_slash = Keystroke {
+            modifiers: Modifiers::shift(),
+            key: ":".into(),
+            key_char: Some("/".into()),
+        };
+        let cases = [
+            Keystroke::parse("tab").expect("key"),
+            Keystroke::parse("/").expect("key"),
+            azerty_slash,
+        ];
+        for typed in cases {
+            let typed = [typed];
+            let (outside, _) = keymap.bindings_for_input(&typed, std::slice::from_ref(&root));
+            assert_eq!(outside.len(), 1, "{:?} outside a text box", typed[0]);
+            let (inside, _) = keymap.bindings_for_input(&typed, &[root.clone(), input.clone()]);
+            assert!(inside.is_empty(), "{:?} in a text box", typed[0]);
+        }
     }
 }

@@ -458,3 +458,49 @@ fn a_conversation_started_for_you_answers_you() {
     // Started for the user, who has not written to it yet.
     assert!(!model.talked_to(other));
 }
+
+/// A conversation asked by an agent answers that agent, also once it got an
+/// answer from an agent of its own: no arrow to you (FLOW-1).
+#[test]
+fn an_agent_working_for_another_never_answers_you() {
+    let reviewer = Node::Conversation(ConversationId(2));
+    let conversations = [
+        conversation(1, None),
+        conversation(2, Some(1)),
+        conversation(3, Some(2)),
+    ];
+    let transcripts = HashMap::from([(
+        ConversationId(2),
+        transcript(vec![
+            Entry::FromAgent {
+                from: ConversationId(1),
+                text: "Review the change".into(),
+                answer: false,
+            },
+            Entry::Agent {
+                text: "Asking a tester.".into(),
+            },
+            Entry::TurnEnd { usage: None },
+            Entry::FromAgent {
+                from: ConversationId(3),
+                text: "Tests pass".into(),
+                answer: true,
+            },
+            Entry::Agent {
+                text: "Verdict: ready".into(),
+            },
+            Entry::TurnEnd { usage: None },
+            // A turn its CLI starts by itself answers the planner too.
+            Entry::Agent {
+                text: "One more note".into(),
+            },
+            Entry::TurnEnd { usage: None },
+        ]),
+    )]);
+    let refs: Vec<&ConversationView> = conversations.iter().collect();
+    let model = build(&refs, &transcripts);
+    assert_eq!(
+        texts(&model, reviewer, Node::You, EdgeKind::Report),
+        Vec::<String>::new()
+    );
+}

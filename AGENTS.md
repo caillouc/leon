@@ -15,6 +15,7 @@ coding-agent conversations across many repositories, on top of the coding CLIs
 | [spec/features.md](spec/features.md) — what the app does | Maintainer | Read it; add or update a feature only when the maintainer explicitly asks for it |
 | [spec/decisions.md](spec/decisions.md) — technical and product choices | Maintainer | Read it; record a decision only when the maintainer states it, in their words, never one of your own |
 | [spec/architecture.md](spec/architecture.md) — how the code is organised | Agents | Keep it true to the code, within decisions.md |
+| [spec/design.md](spec/design.md) — how the app looks | Agents | Follow it for every UI change; keep it true to the code; a new colour, size, shape or component is asked first |
 | Code, tests, CI | Agents | |
 
 ## Hard rules
@@ -99,6 +100,7 @@ A bug fix starts with a test that fails.
 - Tests added; a bug fix has a test that failed before.
 - `cargo xtask ci` passes (fmt, clippy, tests, layer check, cargo-deny).
 - architecture.md updated if the structure changed.
+- design.md followed, and updated if the look changed.
 - The report lists questions for the maintainer and anything not verified.
 
 ## Glossary
@@ -120,3 +122,4 @@ One word per concept, in code, UI and docs. A new concept: ask to add it here.
 | Working directory | Where a conversation's CLI runs: the main checkout or a worktree. |
 | Base | Branch and commit a flow's branch started from. |
 | Status | `idle`, `running`, `needs_input`, `error`. |
+| To-do | A later step for the user, kept per flow, often waiting for something (a deploy, a review, an answer); added by the user or an agent. Not an agent's plan. In code: `Todo`. |

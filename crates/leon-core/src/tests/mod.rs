@@ -2,8 +2,10 @@
 
 mod agents;
 mod folders;
+mod held;
 mod repo;
 mod rewind;
+mod todos;
 mod tools;
 mod turns;
 
@@ -31,6 +33,7 @@ struct FakeStorage {
     conversations: Mutex<Vec<Conversation>>,
     entries: Mutex<HashMap<ConversationId, Vec<TimedEntry>>>,
     folded: Mutex<std::collections::BTreeSet<String>>,
+    todos: Mutex<Vec<leon_domain::Todo>>,
 }
 
 impl Storage for FakeStorage {
@@ -49,6 +52,21 @@ impl Storage for FakeStorage {
         projects.push(project.clone());
         Ok(project)
     }
+    fn set_project_order(&self, order: &[ProjectId]) -> Result<(), PortError> {
+        self.projects
+            .lock()
+            .unwrap()
+            .sort_by_key(|p| order.iter().position(|id| *id == p.id));
+        Ok(())
+    }
+    fn set_todo_order(&self, order: &[FlowId]) -> Result<(), PortError> {
+        for f in self.flows.lock().unwrap().iter_mut() {
+            if let Some(at) = order.iter().position(|id| *id == f.id) {
+                f.todo_position = i64::try_from(at).unwrap();
+            }
+        }
+        Ok(())
+    }
     fn set_project_collapsed(&self, id: ProjectId, collapsed: bool) -> Result<(), PortError> {
         for p in self
             .projects
@@ -58,6 +76,49 @@ impl Storage for FakeStorage {
             .filter(|p| p.id == id)
         {
             p.collapsed = collapsed;
+        }
+        Ok(())
+    }
+    fn todos(&self) -> Result<Vec<leon_domain::Todo>, PortError> {
+        Ok(self.todos.lock().unwrap().clone())
+    }
+    fn add_todo(
+        &self,
+        flow: FlowId,
+        (when, what): (&str, &str),
+        by: Option<ConversationId>,
+        now: i64,
+    ) -> Result<leon_domain::Todo, PortError> {
+        let mut todos = self.todos.lock().unwrap();
+        let todo = leon_domain::Todo {
+            id: leon_domain::TodoId(i64::try_from(todos.len()).unwrap() + 1),
+            flow,
+            when: when.into(),
+            what: what.into(),
+            done: false,
+            by,
+            added_at: now,
+        };
+        todos.push(todo.clone());
+        Ok(todo)
+    }
+    fn edit_todo(
+        &self,
+        id: leon_domain::TodoId,
+        (when, what): (&str, &str),
+    ) -> Result<(), PortError> {
+        for todo in self.todos.lock().unwrap().iter_mut().filter(|t| t.id == id) {
+            (todo.when, todo.what) = (when.into(), what.into());
+        }
+        Ok(())
+    }
+    fn remove_todo(&self, id: leon_domain::TodoId) -> Result<(), PortError> {
+        self.todos.lock().unwrap().retain(|t| t.id != id);
+        Ok(())
+    }
+    fn set_todo_done(&self, id: leon_domain::TodoId, done: bool) -> Result<(), PortError> {
+        for todo in self.todos.lock().unwrap().iter_mut().filter(|t| t.id == id) {
+            todo.done = done;
         }
         Ok(())
     }
@@ -96,6 +157,7 @@ impl Storage for FakeStorage {
             updated_at: now,
             folders: Vec::new(),
             links: Vec::new(),
+            todo_position: 0,
         };
         list.push(c.clone());
         Ok(c)
@@ -179,6 +241,9 @@ struct Started {
 #[derive(Default)]
 struct FakeBackends {
     started: Mutex<Vec<Started>>,
+    /// CLIs still running from before Leon started (I24), and whether each
+    /// was in a turn.
+    held: Mutex<Vec<(ConversationId, bool)>>,
     /// What `title` answers; `None`: it fails.
     title: Mutex<Option<String>>,
     /// Copilot CLI's connectors wait for this, to test a slow CLI.
@@ -195,6 +260,25 @@ impl Backends for FakeBackends {
             events: event_tx,
         });
         Ok(BackendChannel { commands, events })
+    }
+    fn held(&self) -> Vec<ConversationId> {
+        self.held
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect()
+    }
+    fn attach(&self, spec: SessionSpec) -> Option<crate::ports::Attached> {
+        let busy = self
+            .held
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, _)| *id == spec.conversation)?
+            .1;
+        let channel = self.start(spec).ok()?;
+        Some(crate::ports::Attached { channel, busy })
     }
     fn options(&self, _backend: BackendKind) -> BackendOptions {
         BackendOptions::default()

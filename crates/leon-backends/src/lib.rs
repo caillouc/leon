@@ -11,9 +11,13 @@
 mod acp;
 mod bridge;
 mod claude;
+mod claude_ask;
 mod codex;
+mod conn;
 mod connectors;
 mod doctor;
+mod holder;
+mod limits;
 mod mcp;
 mod options;
 mod process;
@@ -22,8 +26,10 @@ mod summary;
 mod title;
 mod told;
 
+pub use holder::hold;
 use leon_core::ports::{
-    BackendChannel, BackendOptions, Backends, PortError, SearchPath, SessionSpec, inherited_path,
+    Attached, BackendChannel, BackendOptions, Backends, PortError, SearchPath, SessionSpec,
+    inherited_path,
 };
 use leon_domain::{BackendKind, CliConnectors, DoctorCheck, DoctorSection, Health};
 
@@ -34,12 +40,19 @@ pub struct Clis {
     /// Where Leon copies its generic skills for the CLIs (EXT-5); none in
     /// tests.
     skills: Option<std::path::PathBuf>,
+    /// The holders the CLIs run under, so they outlive Leon (I24); none in
+    /// tests: the CLIs are Leon's own children there.
+    holders: Option<conn::Holders>,
 }
 
 impl Clis {
     /// Runs the CLIs with the `PATH` that `path` gives.
     pub fn new(path: SearchPath) -> Self {
-        Self { path, skills: None }
+        Self {
+            path,
+            skills: None,
+            holders: None,
+        }
     }
 
     /// Hands Leon's generic skills to the CLIs through copies in `folder`,
@@ -49,6 +62,58 @@ impl Clis {
         self.skills = Some(folder);
         self
     }
+
+    /// Runs each CLI under a holder, `exe hold …`, with its files in a
+    /// folder of `runs` (I24): the CLIs keep working when Leon quits.
+    #[must_use]
+    pub fn with_holders(mut self, exe: std::path::PathBuf, runs: std::path::PathBuf) -> Self {
+        self.holders = Some(conn::Holders { exe, runs });
+        self
+    }
+
+    /// Leon's skills folder for `spec`'s CLI, prepared.
+    fn skills_for(&self, spec: &SessionSpec) -> Option<std::path::PathBuf> {
+        self.skills
+            .as_deref()
+            .and_then(|root| bridge::prepare(root, spec.settings.backend, &spec.skills))
+    }
+}
+
+/// `channel` with Leon's marks kept in its holder's folder `dir`: a turn
+/// starts with a message, ends with its end (I24).
+fn marked(channel: BackendChannel, dir: std::path::PathBuf) -> BackendChannel {
+    use leon_core::ports::{BackendCommand, BackendEvent};
+    let (commands, mut asked) = tokio::sync::mpsc::unbounded_channel();
+    let (told, events) = tokio::sync::mpsc::unbounded_channel();
+    let BackendChannel {
+        commands: inner,
+        events: mut heard,
+    } = channel;
+    let started = dir.clone();
+    tokio::spawn(async move {
+        while let Some(command) = asked.recv().await {
+            if matches!(command, BackendCommand::Send(_)) {
+                conn::turn_started(&started);
+            }
+            if inner.send(command).is_err() {
+                return;
+            }
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(event) = heard.recv().await {
+            if matches!(
+                event,
+                BackendEvent::TurnEnded { .. } | BackendEvent::Failed(_)
+            ) {
+                conn::turn_ended(&dir);
+            }
+            if told.send(event).is_err() {
+                return;
+            }
+        }
+    });
+    BackendChannel { commands, events }
 }
 
 impl Default for Clis {
@@ -60,19 +125,48 @@ impl Default for Clis {
 
 impl Backends for Clis {
     fn start(&self, spec: SessionSpec) -> Result<BackendChannel, PortError> {
-        let backend = spec.settings.backend;
-        let skills = self
-            .skills
-            .as_deref()
-            .and_then(|root| bridge::prepare(root, backend, &spec.skills));
+        let skills = self.skills_for(&spec);
         let skills = skills.as_deref();
-        match backend {
-            BackendKind::ClaudeCode => claude::start(&spec, (self.path)(), skills),
-            BackendKind::Codex => codex::start(&spec, (self.path)(), skills),
+        let holders = self.holders.as_ref();
+        let channel = match spec.settings.backend {
+            BackendKind::ClaudeCode => claude::start(&spec, (self.path)(), skills, holders),
+            BackendKind::Codex => codex::start(&spec, (self.path)(), skills, holders),
             BackendKind::CopilotCli => {
-                acp::start(&spec, &acp::copilot(&spec, skills), (self.path)())
+                acp::start(&spec, &acp::copilot(&spec, skills), (self.path)(), holders)
             }
-        }
+        }?;
+        Ok(match holders {
+            Some(holders) => marked(channel, holders.dir(&spec.conversation.0.to_string())),
+            None => channel,
+        })
+    }
+
+    fn held(&self) -> Vec<leon_domain::ConversationId> {
+        let Some(holders) = self.holders.as_ref() else {
+            return Vec::new();
+        };
+        std::fs::read_dir(&holders.runs).map_or_default(|dir| {
+            dir.filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok())
+                .map(leon_domain::ConversationId)
+                .collect()
+        })
+    }
+
+    fn attach(&self, spec: SessionSpec) -> Option<Attached> {
+        let holders = self.holders.as_ref()?;
+        let key = spec.conversation.0.to_string();
+        let (opening, busy) = conn::find(holders, &key)?;
+        let skills = self.skills_for(&spec);
+        let skills = skills.as_deref();
+        let channel = match spec.settings.backend {
+            BackendKind::ClaudeCode => claude::session(opening),
+            BackendKind::Codex => codex::attach(opening, &spec, skills),
+            BackendKind::CopilotCli => acp::attach(opening, &spec, &acp::copilot(&spec, skills)),
+        };
+        Some(Attached {
+            channel: marked(channel, holders.dir(&key)),
+            busy,
+        })
     }
 
     fn options(&self, backend: BackendKind) -> BackendOptions {
@@ -89,7 +183,7 @@ impl Backends for Clis {
 
     /// The CLIs are checked at the same time.
     fn doctor(&self) -> Vec<DoctorSection> {
-        std::thread::scope(|scope| {
+        let mut sections = std::thread::scope(|scope| {
             let checking: Vec<_> = BackendKind::ALL
                 .into_iter()
                 .map(|b| (b, scope.spawn(move || doctor::section((self.path)(), b))))
@@ -106,7 +200,9 @@ impl Backends for Clis {
                         )],
                     })
                 })
-                .collect()
-        })
+                .collect::<Vec<_>>()
+        });
+        doctor::require_one(&mut sections);
+        sections
     }
 }

@@ -95,7 +95,44 @@ fn highlight(language: &str, lines: &[&str]) -> Vec<LineStyles> {
 
 fn theme() -> &'static Arc<HighlightTheme> {
     static THEME: OnceLock<Arc<HighlightTheme>> = OnceLock::new();
-    THEME.get_or_init(HighlightTheme::default_dark)
+    THEME.get_or_init(|| github().unwrap_or_else(HighlightTheme::default_dark))
+}
+
+/// GitHub's code colours (its "prettylights", dark), by highlight name.
+const GITHUB: [(&str, &str); 22] = [
+    ("attribute", "#79c0ff"),
+    ("boolean", "#79c0ff"),
+    ("comment", "#9198a1"),
+    ("comment.doc", "#9198a1"),
+    ("constant", "#79c0ff"),
+    ("constructor", "#d2a8ff"),
+    ("enum", "#ffa657"),
+    ("function", "#d2a8ff"),
+    ("keyword", "#ff7b72"),
+    ("label", "#ffa657"),
+    ("number", "#79c0ff"),
+    ("operator", "#ff7b72"),
+    ("property", "#79c0ff"),
+    ("string", "#a5d6ff"),
+    ("string.escape", "#79c0ff"),
+    ("string.regex", "#7ee787"),
+    ("string.special", "#a5d6ff"),
+    ("tag", "#7ee787"),
+    ("title", "#d2a8ff"),
+    ("type", "#ffa657"),
+    ("variable", "#f0f6fc"),
+    ("variable.special", "#79c0ff"),
+];
+
+/// gpui-component's dark theme with GitHub's code colours (design.md,
+/// Colour); `None` if its shape ever changes.
+fn github() -> Option<Arc<HighlightTheme>> {
+    let mut theme = serde_json::to_value(&*HighlightTheme::default_dark()).ok()?;
+    let syntax = theme.pointer_mut("/style/syntax")?.as_object_mut()?;
+    for (name, color) in GITHUB {
+        syntax.insert(name.to_owned(), serde_json::json!({ "color": color }));
+    }
+    serde_json::from_value(theme).ok().map(Arc::new)
 }
 
 #[cfg(test)]
@@ -164,5 +201,19 @@ mod tests {
             "{:?}",
             styles[2]
         );
+    }
+
+    #[test]
+    fn code_takes_githubs_colours() {
+        let theme = super::github().expect("GitHub's colours apply");
+        let keyword = gpui_base_style(&theme, "keyword");
+        assert_eq!(keyword, Some(gpui::Hsla::from(gpui::rgb(0x00ff_7b72))));
+    }
+
+    fn gpui_base_style(
+        theme: &gpui_component::highlighter::HighlightTheme,
+        name: &str,
+    ) -> Option<gpui::Hsla> {
+        theme.style(name).and_then(|s| s.color)
     }
 }
