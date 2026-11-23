@@ -68,6 +68,8 @@ pub struct Snapshot {
     pub doctor: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
     /// The doctor's checks are running.
     pub doctor_running: bool,
+    /// Leon itself: its version and its update (DOCTOR-3).
+    pub leon: Leon,
     /// Leon's shared MCP list (TOOLS-1).
     pub shared_tools: Arc<Vec<leon_domain::McpServer>>,
     /// Where that list is saved.
@@ -372,4 +374,16 @@ mod tests {
             ]
         );
     }
+}
+
+/// Leon itself: the version running and where its update stands (DOCTOR-3).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Leon {
+    /// The version running.
+    pub version: String,
+    /// It can put a newer release in its own place: on macOS, from its
+    /// app bundle.
+    pub can_update: bool,
+    /// Where its update stands; `Restarting`: the UI quits.
+    pub update: leon_domain::Update,
 }

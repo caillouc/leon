@@ -438,6 +438,15 @@ flow**: one item in the left pane (D5).
   CLI says it while one of its conversations runs, so it shows after its
   first turn since Leon started; a window past its reset shows empty.
   Claude Code and Codex say it; Copilot CLI does not.
+- **DOCTOR-3** Updates: Leon checks for a newer release at launch and once a
+  day. Doctor then shows that it is available (which version, which one runs,
+  a link to its release notes), and its icon in the left pane carries a blue
+  dot (a warning or a problem keeps its own colour). On macOS, "Update"
+  downloads it, checks it is Leon's own (same checksum as GitHub gives, signed
+  and notarized by the same developer), puts it in place of the Leon that
+  runs, then offers "Restart Leon"; agents keep working through the restart.
+  Elsewhere, only the link. Without the GitHub CLI logged in, Doctor says it
+  cannot check.
 
 ### Usage
 

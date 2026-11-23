@@ -145,6 +145,13 @@ folders; then each CLI (installed, version against the one Leon was tested
 with, logged in), `git`, and `gh` (installed, logged in). Each problem says
 what to do, e.g. "Run `claude auth login` in a terminal".
 
+It also asks GitHub (through `gh`) for Leon's latest release, at start, on
+"Run again" and once a day. A newer one shows first, with a blue dot on
+Doctor's icon. On macOS, "Update" downloads it, checks its checksum, its
+signature, its developer and its notarization, puts it in place of the
+running Leon, then offers "Restart Leon"; agents keep working through the
+restart.
+
 ## Choices to review
 
 What Leon does where the first decisions did not say, or said otherwise. All

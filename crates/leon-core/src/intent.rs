@@ -131,8 +131,12 @@ pub enum Intent {
     RefreshGit(FlowId),
     /// Re-read my issues and pull requests (GH-2, GH-3).
     RefreshGitHub,
-    /// Run the doctor's checks again.
+    /// Run the doctor's checks again, and look for a newer Leon (DOCTOR-3).
     RunDoctor,
+    /// Download, check and put in place the newer Leon found (DOCTOR-3).
+    InstallUpdate,
+    /// Quit and start the Leon just installed (DOCTOR-3).
+    RestartLeon,
     /// Ask each CLI for its own MCP servers and plugins (TOOLS-1).
     RefreshTools,
     /// Add a server to Leon's shared MCP list, or replace one (TOOLS-1).

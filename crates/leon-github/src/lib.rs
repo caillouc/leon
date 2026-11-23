@@ -1,7 +1,8 @@
 //! Talks to GitHub with the user's own `gh` login (P7): the pull request of
 //! a branch, the user's open issues and pull requests, one pull request or
 //! issue by number, a Copilot review request, a comment, a pull request
-//! marked draft or ready for review.
+//! marked draft or ready for review; Leon's own latest release and its
+//! download (DOCTOR-3).
 //!
 //! Every call runs the GitHub CLI (`gh`, checked on 2.101.0, 2026-11-17;
 //! by-number reads, board fields and review threads on 2026-11-18) with an
@@ -17,6 +18,7 @@ mod board;
 mod checks;
 mod parse;
 mod query;
+mod release;
 mod run;
 mod threads;
 mod time;
@@ -87,6 +89,36 @@ impl Default for GhCli {
 }
 
 impl GitHub for GhCli {
+    fn latest_release(&self, repo: &str) -> Result<leon_domain::Release, PortError> {
+        const CONTEXT: &str = "reading Leon's latest release";
+        query::owner_and_name(repo).ok_or_else(|| PortError::new(CONTEXT, NOT_OWNER_NAME))?;
+        let out = gh((self.path)(), &release::latest(repo), None)
+            .map_err(|e| PortError::new(CONTEXT, e))?;
+        release::parse(&out).map_err(|e| PortError::new(CONTEXT, e))
+    }
+
+    fn download_release(
+        &self,
+        repo: &str,
+        version: &str,
+        name: &str,
+        dir: &Path,
+    ) -> Result<std::path::PathBuf, PortError> {
+        const CONTEXT: &str = "downloading Leon";
+        gh(
+            (self.path)(),
+            &release::download(repo, version, name, dir),
+            None,
+        )
+        .map_err(|e| PortError::new(CONTEXT, format!("{name}: {e}")))?;
+        let file = dir.join(name);
+        if file.is_file() {
+            Ok(file)
+        } else {
+            Err(PortError::new(CONTEXT, format!("{name}: gh saved no file")))
+        }
+    }
+
     fn doctor(&self) -> leon_domain::DoctorSection {
         use leon_domain::{DoctorCheck, Health, version_check};
         let path = (self.path)();

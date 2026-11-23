@@ -62,6 +62,10 @@ pub(crate) enum Internal {
     Doctor(Vec<leon_domain::DoctorSection>),
     /// What each CLI is connected to (TOOLS-1).
     Tools(leon_domain::CliConnectors),
+    /// Leon's latest release, or why it could not be read (DOCTOR-3).
+    Release(Result<leon_domain::Release, String>),
+    /// The newer Leon is in place, or why not (DOCTOR-3).
+    Installed(Result<(), String>),
 }
 
 impl Core {
@@ -424,6 +428,8 @@ impl Core {
             }
             Internal::Doctor(sections) => self.doctor_done(sections),
             Internal::Tools(cli) => self.tools_done(cli),
+            Internal::Release(release) => self.release_read(release),
+            Internal::Installed(result) => self.update_installed(result),
             Internal::PrDiff(item, files) => {
                 // Only the pull request still shown, not one closed since.
                 if let Some(diff) = self.state.pr_diff.as_mut().filter(|d| d.pr == item) {
@@ -441,6 +447,7 @@ impl Core {
             Internal::Tick => {
                 self.stop_idle_clis();
                 self.purge_archive();
+                self.check_update(false);
                 for dir in self.open_folders() {
                     self.refresh_folder_pr(dir);
                 }

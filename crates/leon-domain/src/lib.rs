@@ -21,6 +21,7 @@ mod sprint;
 mod todo;
 mod transcript;
 mod unified_diff;
+mod update;
 
 pub use agent_file::{Capability, capabilities, cli_for_model, full_cli_order};
 pub use backend::BackendKind;
@@ -54,3 +55,4 @@ pub use transcript::{
     running_tools,
 };
 pub use unified_diff::parse_diff;
+pub use update::{Release, Update, is_newer};

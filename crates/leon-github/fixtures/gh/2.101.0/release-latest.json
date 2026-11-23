@@ -1,0 +1,73 @@
+{
+  "url": "https://api.github.com/repos/acme/leon/releases/455797110",
+  "assets_url": "https://api.github.com/repos/acme/leon/releases/455797110/assets",
+  "upload_url": "https://uploads.github.com/repos/acme/leon/releases/455797110/assets{?name,label}",
+  "html_url": "https://github.com/acme/leon/releases/tag/v0.4.2",
+  "id": 455797110,
+  "author": {
+    "login": "octocat",
+    "id": 1,
+    "node_id": "MDQ6VXNlcjE=",
+    "type": "User",
+    "site_admin": false
+  },
+  "node_id": "RE_kwDOVySiM84bKul2",
+  "tag_name": "v0.4.2",
+  "target_commitish": "main",
+  "name": "Leon v0.4.2",
+  "draft": false,
+  "immutable": false,
+  "prerelease": false,
+  "created_at": "2026-11-23T17:53:28Z",
+  "updated_at": "2026-11-23T18:10:43Z",
+  "published_at": "2026-11-23T18:02:59Z",
+  "assets": [
+    {
+      "url": "https://api.github.com/repos/acme/leon/releases/assets/783991330",
+      "id": 783991330,
+      "node_id": "RA_kwDOVySiM84uusIi",
+      "name": "Leon-0.4.2.dmg",
+      "label": "",
+      "uploader": {
+        "login": "octocat",
+        "id": 1,
+        "node_id": "MDQ6VXNlcjE=",
+        "type": "User",
+        "site_admin": false
+      },
+      "content_type": "application/x-apple-diskimage",
+      "state": "uploaded",
+      "size": 15948689,
+      "digest": "sha256:92f5c404e90cec85c6d79519f6c3f689b4a3fd7efea17a02232e631cd457833d",
+      "download_count": 0,
+      "created_at": "2026-11-23T18:02:57Z",
+      "updated_at": "2026-11-23T18:02:59Z",
+      "browser_download_url": "https://github.com/acme/leon/releases/download/v0.4.2/Leon-0.4.2.dmg"
+    },
+    {
+      "url": "https://api.github.com/repos/acme/leon/releases/assets/784017313",
+      "id": 784017313,
+      "node_id": "RA_kwDOVySiM84uuyeh",
+      "name": "leon-v0.4.2-linux-x86_64.tar.gz",
+      "label": "",
+      "uploader": {
+        "login": "octocat",
+        "id": 1,
+        "node_id": "MDQ6VXNlcjE=",
+        "type": "User",
+        "site_admin": false
+      },
+      "content_type": "application/x-gtar",
+      "state": "uploaded",
+      "size": 20854095,
+      "digest": "sha256:d7406422df0be834dc8cdcb6ebfbf404c8571617dc85543ada9e6055f1db6199",
+      "download_count": 0,
+      "created_at": "2026-11-23T18:10:42Z",
+      "updated_at": "2026-11-23T18:10:43Z",
+      "browser_download_url": "https://github.com/acme/leon/releases/download/v0.4.2/leon-v0.4.2-linux-x86_64.tar.gz"
+    }
+  ],
+  "tarball_url": "https://api.github.com/repos/acme/leon/tarball/v0.4.2",
+  "zipball_url": "https://api.github.com/repos/acme/leon/zipball/v0.4.2",
+  "body": "Release notes."
+}

@@ -125,6 +125,8 @@ pub(crate) struct State {
     /// The last doctor report and when it was made.
     pub doctor: Option<(i64, Arc<Vec<leon_domain::DoctorSection>>)>,
     pub doctor_running: bool,
+    /// Leon's version and its update (DOCTOR-3).
+    pub leon: crate::snapshot::Leon,
     /// Leon's shared MCP list (I14), and why it could not be read.
     pub shared: Arc<Vec<leon_domain::McpServer>>,
     pub shared_path: std::path::PathBuf,
@@ -392,6 +394,7 @@ impl State {
             flash: self.flash.clone(),
             doctor: self.doctor.clone(),
             doctor_running: self.doctor_running,
+            leon: self.leon.clone(),
             shared_tools: Arc::clone(&self.shared),
             shared_tools_path: self.shared_path.clone(),
             settings_path: self.settings_path.clone(),

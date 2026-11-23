@@ -313,3 +313,20 @@ exactly. I trust you suggestion".
 rewrites the places, a new project comes last. Asked by the maintainer on
 2026-11-20: "allow me to reorder the project, via a nice drag and drop
 feature. The project position should be remembered".
+
+**I26 — Leon updates itself from its GitHub releases (DOCTOR-3).** The latest
+release is read with `gh api repos/<owner/name>/releases/latest` (P7: no HTTP
+library in the app), at launch, once a day and when Doctor runs again. On
+macOS, "Update" downloads the `.dmg` with `gh release download`, checks its
+SHA-256 against the digest GitHub gives for the asset, mounts it read-only
+(`hdiutil`), checks the app's signature (`codesign --verify --deep
+--strict`), that its Team ID is the running Leon's, and that Gatekeeper
+accepts it as notarized (`spctl --assess`), then puts it in place of the
+running app bundle and offers "Restart Leon" (agents keep running, I24).
+Linux: the release link only. Not Sparkle (native code Rust cannot call
+without `unsafe`, a separate feed, no Linux) nor the `self_update` crate (an
+HTTP library, against P7). Each step checked by hand on the v0.4.2 release,
+2026-11-23. Proposed in answer to "It would be nice to have a way to see in
+doctor that an update is available and event better if the update could be
+downloaded and installed directly from Leon"; chosen by the maintainer on
+2026-11-23: "Yes, build it".

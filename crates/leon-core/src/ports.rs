@@ -529,8 +529,38 @@ pub trait GitHub: Send + Sync + 'static {
     fn reply_to_thread(&self, thread: &str, body: &str) -> Result<(), PortError>;
     /// Resolves a review thread, by its node id (GH-8).
     fn resolve_thread(&self, thread: &str) -> Result<(), PortError>;
+    /// The latest release of `repo` (`owner/name`), drafts and
+    /// pre-releases left out (DOCTOR-3).
+    fn latest_release(&self, repo: &str) -> Result<leon_domain::Release, PortError>;
+    /// Downloads file `name` of release `version` of `repo` into `dir` and
+    /// returns its path (DOCTOR-3). Blocks.
+    fn download_release(
+        &self,
+        repo: &str,
+        version: &str,
+        name: &str,
+        dir: &Path,
+    ) -> Result<PathBuf, PortError>;
     /// Doctor: `gh` installed, its version, logged in. Blocks.
     fn doctor(&self) -> DoctorSection;
+}
+
+/// Leon putting a newer release of itself in its own place (DOCTOR-3, I26).
+pub trait Updater: Send + Sync + 'static {
+    /// The GitHub repository Leon's releases come from, `owner/name`.
+    fn repo(&self) -> &str;
+    /// The version running.
+    fn version(&self) -> &str;
+    /// Whether this Leon can put a release in its own place: on macOS, run
+    /// from its app bundle.
+    fn can_install(&self) -> bool;
+    /// An empty folder to download a release into.
+    fn downloads(&self) -> Result<PathBuf, PortError>;
+    /// Checks `file`, the release's download, is Leon's own, and puts it in
+    /// place of the Leon running. Blocks.
+    fn install(&self, file: &Path, release: &leon_domain::Release) -> Result<(), PortError>;
+    /// Starts Leon again once this process has ended.
+    fn relaunch(&self) -> Result<(), PortError>;
 }
 
 /// A call to one of the tools the app gives every conversation (P10, P15),

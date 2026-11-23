@@ -50,7 +50,7 @@ Ports and adapters: dependencies point inward, to the core and the domain.
 | 2 | `leon-core` | Owns state, publishes snapshots, defines the ports (traits); later starts/resumes conversations and routes events | domain |
 | 3 | adapters: `leon-config` (TOML → settings; writes the user's file for Settings: `ConfigFile`), `leon-store` (SQLite: `Storage`), `leon-backends` (Claude Code stream-json; Codex app-server and ACP for Copilot CLI through one JSON-RPC runner: `Backends`), `leon-catalog` (agent files: `Catalog`), `leon-git` (`git` command: `Git`), `leon-github` (`gh` command: `GitHub`), `leon-app-tools` (MCP server for agents: `AppTools`, tool calls sent to the core as `AppToolRequest`s) | Implement one port each against the outside world | domain, core; never another adapter |
 | 3 | `leon-ui` | Views, input → intents. The only crate that uses GPUI | domain, core |
-| 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI | any |
+| 4 | `leon` (bin) | Builds the adapters, starts the core, starts the UI; Leon's own facts for Doctor (`about.rs`) and updating itself (`update.rs`: `Updater`) | any |
 | — | `xtask` | `cargo xtask ci`, `cargo xtask layers` | no Leon crate |
 
 A new crate goes into both this table and `xtask/src/layers.rs`, or CI fails.
@@ -320,6 +320,16 @@ thread at start and on `Intent::RunDoctor` (`crates/leon-core/src/doctor.rs`)
 and publishes the report in the snapshot; the coding CLIs are checked at the
 same time. Versions are compared with the ones each adapter was checked with;
 older ones are warnings.
+
+Leon's own update (DOCTOR-3, I26): the core asks `GitHub::latest_release`
+when Doctor runs and on the 2-minute tick once a day
+(`crates/leon-core/src/update.rs`); the `Updater` port, in the binary
+(`crates/leon/src/update.rs`), gives the repository (the workspace's
+`repository`), the version running, whether it runs from an app bundle, and
+on "Update" checks the `.dmg` that `GitHub::download_release` saved in the
+data folder's `updates/` and swaps the bundle; "Restart Leon" starts a
+detached wait that opens the bundle once this process ended, then the UI
+quits (`Update::Restarting`).
 
 ## Speed targets (QUAL-1, QUAL-2)
 

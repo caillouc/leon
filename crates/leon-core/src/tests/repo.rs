@@ -207,6 +207,20 @@ impl GitHub for FakeGitHub {
     fn resolve_thread(&self, _thread: &str) -> Result<(), PortError> {
         Ok(())
     }
+    fn latest_release(&self, repo: &str) -> Result<leon_domain::Release, PortError> {
+        assert_eq!(repo, "acme/leon");
+        Ok(super::update::release())
+    }
+    fn download_release(
+        &self,
+        repo: &str,
+        version: &str,
+        name: &str,
+        dir: &Path,
+    ) -> Result<PathBuf, PortError> {
+        assert_eq!((repo, version), ("acme/leon", "0.5.0"));
+        Ok(dir.join(name))
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

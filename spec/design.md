@@ -143,8 +143,8 @@ One vocabulary for an agent, a flow and a check:
   size)`: a check's result 6, a board column 7–10, "connected" 8), the square
   icons (12–15) and the loader.
 - **Round is never a state**: notification dots (unread green, Doctor's
-  worst finding — amber for a warning, red for a problem, none when all
-  works — a folded project with something for the user), avatars, number
+  worst finding — amber for a warning, red for a problem, else `accent` blue
+  while a newer Leon is out (DOCTOR-3), none when all works — a folded project with something for the user), avatars, number
   badges.
 - GitHub's own shapes stay: the issue and pull request icons, in GitHub's
   state colours (open green, draft grey, merged purple, closed red).
@@ -184,6 +184,7 @@ Use these; do not restyle them in place.
 | File row | `file_rows` (diff_view) | status letter, mono path, folded / comments tags, lines |
 | Link in a row | e.g. a check's "Failing ↗" in the PR view, a failed job's name in a row | only the text is clickable, brighter on hover |
 | Notice in a conversation | `transcript` (`Entry::Notice`) | "You answered: …", "Stopped by you", a setting changed: 12 faint, left, where a tool row's name starts (20 in, past its chevron and gap), so an answer reads under the tool it allowed; never centred |
+| Update card | `update_view::update_card` | Doctor's first card while there is something to say about Leon's own update (none when up to date): a Doctor card, `info` icon 16 in `accent`, the title says the state ("Leon 0.5.0 is available", "Updating to…", "…is installed", "…could not be installed"); one row: what it means, muted (the error in `err` red), then its buttons on the right — Update (primary, macOS app only) and Release notes; "Updating…" at 60 %; Restart Leon (primary); Try again and Release notes |
 | Question card | composer | amber edge, "QUESTION" label, title, detail (mono 12.5 on `surface_2`, wrapping, one line each: `$ <command>`, then each path), one button per option (first primary) |
 | Hover list | e.g. a flow's PRs (`flow_prs`) | `overlay`, `border_strong`, shadow, 340 wide, body text 13 set on it (it is drawn outside the window's root); PR rows folded to one line |
 | A flow's PRs in its row | `flow_prs::flow_prs` | the leading state's PR icon 13 and how many, in that state's colour; in `warn` amber (the running CI indicator's) while an open one's checks run; in `err` red when an open one is blocked (a failed check, a conflict), red first; no separate mark |

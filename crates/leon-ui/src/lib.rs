@@ -63,6 +63,7 @@ mod theme;
 mod todos_view;
 mod tools_view;
 mod transcript;
+mod update_view;
 mod widgets;
 mod workspace;
 

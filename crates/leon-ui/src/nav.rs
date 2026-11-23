@@ -5,14 +5,15 @@
 use gpui::{AnyElement, Context, Rgba, SharedString, Window, div, prelude::*};
 use leon_core::Intent;
 
-use crate::doctor::worst;
+use crate::doctor::dot;
 use crate::icons::{Icon, icon};
 use crate::theme;
 use crate::workspace::{Screen, Workspace};
 
 impl Workspace {
     pub(crate) fn render_bottom_nav(&self, cx: &mut Context<Self>) -> AnyElement {
-        let doctor_dot = self.snapshot.doctor.as_ref().and_then(|(_, s)| worst(s));
+        let report = self.snapshot.doctor.as_ref().map(|(_, s)| s.as_slice());
+        let doctor_dot = dot(report, &self.snapshot.leon.update);
         div()
             .flex_none()
             .flex()

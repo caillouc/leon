@@ -2,6 +2,7 @@
 //! hands the UI a handle on it. No logic lives here.
 
 mod about;
+mod update;
 
 use std::ffi::OsString;
 use std::sync::{Arc, OnceLock};
@@ -64,7 +65,7 @@ fn main() -> anyhow::Result<()> {
         git: Arc::new(leon_git::GitCli::new(login_path)),
         github: Arc::new(leon_github::GhCli::new(login_path)),
         app_tools: Some(Arc::new(leon_app_tools::LocalTools::new(
-            exe,
+            exe.clone(),
             socket.clone(),
         ))),
         shared_tools: Arc::new(leon_catalog::SharedFile::new(
@@ -73,6 +74,7 @@ fn main() -> anyhow::Result<()> {
         config: Arc::new(user_config),
         clock: now_ms,
         about,
+        updater: Arc::new(update::SelfUpdate::new(&exe, &data)),
     };
     let core = leon_core::start(runtime.handle(), ports, settings);
     match leon_app_tools::serve(runtime.handle(), &socket, core.app_tools()) {

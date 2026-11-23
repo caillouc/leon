@@ -10,6 +10,7 @@ mod rewind;
 mod todos;
 mod tools;
 mod turns;
+mod update;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -393,6 +394,7 @@ fn ports(storage: Arc<dyn Storage>, backends: Arc<dyn Backends>) -> Ports {
                 "Leon 0.1.0",
             )]
         }),
+        updater: Arc::new(update::FakeUpdater::default()),
     }
 }
 

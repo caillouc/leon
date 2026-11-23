@@ -263,6 +263,13 @@ impl Workspace {
             .map(|c| c.flow.id)
             .find(|id| self.snapshot.flow(*id).is_none());
         self.snapshot = next;
+        // The updated Leon starts once this one has ended (DOCTOR-3).
+        if matches!(
+            self.snapshot.leon.update,
+            leon_domain::Update::Restarting(_)
+        ) {
+            cx.quit();
+        }
         if let Some(id) = new_flow.filter(|_| self.pending_open) {
             self.pending_open = false;
             self.select(id, cx);

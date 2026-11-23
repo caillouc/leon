@@ -26,14 +26,15 @@ mod snapshot;
 mod state;
 mod todos;
 mod tools;
+mod update;
 
 pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use doctor::About;
 pub use intent::Intent;
 pub use model_pick::settings_for_agent;
 pub use snapshot::{
-    Acting, ConversationView, Detail, FlowView, GitView, Notification, PrDiff, Question, Snapshot,
-    TranscriptView,
+    Acting, ConversationView, Detail, FlowView, GitView, Leon, Notification, PrDiff, Question,
+    Snapshot, TranscriptView,
 };
 
 #[cfg(test)]

@@ -44,6 +44,8 @@ pub struct Ports {
     pub clock: fn() -> i64,
     /// Leon's own facts for the doctor.
     pub about: crate::doctor::About,
+    /// Leon updating itself (DOCTOR-3).
+    pub updater: Arc<dyn crate::ports::Updater>,
 }
 
 /// The UI's handle on the core.
@@ -82,6 +84,11 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
     let state = State {
         settings,
         settings_path: ports.config.path().map(Path::to_path_buf),
+        leon: crate::snapshot::Leon {
+            version: ports.updater.version().to_owned(),
+            can_update: ports.updater.can_install(),
+            update: leon_domain::Update::Unchecked,
+        },
         ..State::default()
     };
     let (publish, snapshots) = watch::channel(Arc::new(state.snapshot()));
@@ -117,6 +124,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         reading: None,
         window_active: true,
         archive_checked: None,
+        update_checked: None,
         event_tx,
         internal_tx,
         git_in_flight: HashSet::new(),
@@ -180,6 +188,8 @@ pub(crate) struct Core {
     window_active: bool,
     /// When the archive was last looked through for flows to delete.
     archive_checked: Option<i64>,
+    /// When GitHub was last asked for Leon's latest release (DOCTOR-3).
+    pub(crate) update_checked: Option<i64>,
     event_tx: UnboundedSender<ConversationEvent>,
     pub(crate) internal_tx: UnboundedSender<Internal>,
     pub(crate) git_in_flight: HashSet<std::path::PathBuf>,
@@ -422,7 +432,12 @@ impl Core {
                 self.fetch_bases(id);
             }
             Intent::RefreshGitHub => self.refresh_lists(),
-            Intent::RunDoctor => self.run_doctor(),
+            Intent::RunDoctor => {
+                self.run_doctor();
+                self.check_update(true);
+            }
+            Intent::InstallUpdate => self.install_update(),
+            Intent::RestartLeon => self.restart(),
             Intent::RefreshTools => self.refresh_tools(),
             Intent::AddTool(server) => self.add_tool(server),
             Intent::RemoveTool(name) => self.remove_tool(&name),

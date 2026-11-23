@@ -41,6 +41,14 @@ pub(crate) fn worst(sections: &[DoctorSection]) -> Option<Rgba> {
     }
 }
 
+/// Doctor's dot in the left pane: a warning or a problem in its colour
+/// first; else a newer Leon in blue (DOCTOR-3); else none.
+pub(crate) fn dot(report: Option<&[DoctorSection]>, update: &leon_domain::Update) -> Option<Rgba> {
+    report
+        .and_then(worst)
+        .or_else(|| update.release().map(|_| theme::accent()))
+}
+
 fn summary(problems: usize, warnings: usize) -> String {
     let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
     match (problems, warnings) {
@@ -96,6 +104,7 @@ impl Workspace {
                             .flex()
                             .flex_col()
                             .gap_4()
+                            .children(self.update_card(cx))
                             .child(self.limits_card())
                             .children(body),
                     )),
@@ -192,7 +201,7 @@ pub(crate) fn report(sections: &[DoctorSection]) -> Vec<AnyElement> {
 mod tests {
     use leon_domain::{DoctorCheck, DoctorSection, Health};
 
-    use super::{counts, summary, worst};
+    use super::{counts, dot, summary, worst};
     use crate::theme;
 
     #[test]
@@ -221,6 +230,31 @@ mod tests {
         };
         assert_eq!(worst(&sections), Some(theme::err()));
         assert_eq!(worst(std::slice::from_ref(&warned)), Some(theme::warn()));
-        assert_eq!(worst(&[ok]), None);
+        assert_eq!(worst(std::slice::from_ref(&ok)), None);
+        // A newer Leon: blue, unless something is wrong (DOCTOR-3).
+        let newer = leon_domain::Update::Available(leon_domain::Release {
+            version: "0.5.0".into(),
+            page: String::new(),
+            dmg: None,
+            sha256: None,
+        });
+        let fine = leon_domain::Update::UpToDate;
+        let cases = [
+            (
+                Some(std::slice::from_ref(&ok)),
+                &newer,
+                Some(theme::accent()),
+            ),
+            (
+                Some(std::slice::from_ref(&warned)),
+                &newer,
+                Some(theme::warn()),
+            ),
+            (None, &newer, Some(theme::accent())),
+            (Some(std::slice::from_ref(&ok)), &fine, None),
+        ];
+        for (report, update, expected) in cases {
+            assert_eq!(dot(report, update), expected, "{update:?}");
+        }
     }
 }
