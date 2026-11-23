@@ -113,7 +113,16 @@ fn a_cli_not_installed_is_a_problem_only_when_none_is() {
     };
     let mut some = vec![installed, missing(BackendKind::Codex)];
     require_one(&mut some);
-    assert_eq!(healths(&some), [Health::Ok, Health::Ok]);
+    // Not installed: neutral, never green, and said so.
+    assert_eq!(healths(&some), [Health::Ok, Health::Info]);
+    assert_eq!(
+        some[1]
+            .checks
+            .iter()
+            .map(|c| (c.name.as_str(), c.detail.as_str()))
+            .collect::<Vec<_>>(),
+        [("Not installed", "optional: Leon needs one coding CLI, any")]
+    );
     let mut none = vec![
         missing(BackendKind::ClaudeCode),
         missing(BackendKind::Codex),

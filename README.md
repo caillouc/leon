@@ -31,10 +31,10 @@ Copilot CLI is wired up but not yet tested with the real CLI.
 
 ## Install
 
-Leon needs macOS or Linux, [rustup](https://rustup.rs), and the CLIs you want
-to use, installed and logged in (`claude`, `codex`, `copilot`), plus `gh` for
-GitHub. The Doctor (bottom left in the app) checks all of this and says what
-to fix.
+Leon needs macOS or Linux, [rustup](https://rustup.rs), `git`, the GitHub CLI
+`gh` (logged in), and at least one of the coding CLIs, installed and logged in
+(`claude`, `codex`, `copilot`). The Doctor (bottom left in the app) checks all
+of this and says what to fix.
 
 ## Build and run
 

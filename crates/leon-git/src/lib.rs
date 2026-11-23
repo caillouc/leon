@@ -42,6 +42,9 @@ impl Default for GitCli {
     }
 }
 
+/// What to do without git.
+const INSTALL_GIT: &str = "Install git so that `git` is on your PATH: Leon reads changes with it";
+
 /// Bases tried, in order, when the remote has no default branch recorded.
 const FALLBACK_BASES: [&str; 4] = ["origin/main", "origin/master", "main", "master"];
 
@@ -64,8 +67,11 @@ impl Git for GitCli {
         use leon_domain::{DoctorCheck, Health};
         let check = match git_line((self.path)(), &std::env::temp_dir(), &["--version"]) {
             Ok(version) => DoctorCheck::new(Health::Ok, "Installed", version),
-            Err(error) => DoctorCheck::new(Health::Problem, "Installed", error)
-                .fix("Install git so that `git` is on your PATH: Leon reads changes with it"),
+            Err(error) if error.starts_with(run::NOT_STARTED) => {
+                DoctorCheck::new(Health::Problem, "Not installed", "Leon needs git")
+                    .fix(INSTALL_GIT)
+            }
+            Err(error) => DoctorCheck::new(Health::Problem, "Installed", error).fix(INSTALL_GIT),
         };
         leon_domain::DoctorSection {
             title: "git".to_owned(),
@@ -226,5 +232,35 @@ mod remote_tests {
         for (url, expected) in cases {
             assert_eq!(github_repo_of(url).as_deref(), expected, "{url}");
         }
+    }
+}
+
+#[cfg(test)]
+mod doctor_tests {
+    use std::ffi::OsString;
+    use std::sync::OnceLock;
+
+    use leon_core::ports::Git;
+    use leon_domain::Health;
+
+    use super::GitCli;
+
+    /// Leon needs git: missing, it is a problem, said so.
+    #[test]
+    fn without_git_doctor_says_leon_needs_it() {
+        #[allow(clippy::unnecessary_wraps, reason = "a `SearchPath`")]
+        fn nowhere() -> Option<&'static OsString> {
+            static EMPTY: OnceLock<OsString> = OnceLock::new();
+            Some(EMPTY.get_or_init(|| OsString::from("/nonexistent-leon-test")))
+        }
+        let section = GitCli::new(nowhere).doctor();
+        assert_eq!(section.health(), Health::Problem);
+        assert_eq!(
+            (
+                section.checks[0].name.as_str(),
+                section.checks[0].detail.as_str()
+            ),
+            ("Not installed", "Leon needs git")
+        );
     }
 }

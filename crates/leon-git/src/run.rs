@@ -18,6 +18,9 @@ const REPO_ENV: [&str; 5] = [
     "GIT_OBJECT_DIRECTORY",
 ];
 
+/// How a failure to start git (not on `PATH`) begins.
+pub(crate) const NOT_STARTED: &str = "could not start git";
+
 /// Runs `git <args>` in `dir`, with `path` as `PATH` if given: its standard output on success, git's own
 /// message on failure.
 pub(crate) fn git(path: Option<&OsString>, dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
@@ -37,7 +40,7 @@ pub(crate) fn git(path: Option<&OsString>, dir: &Path, args: &[&str]) -> Result<
     }
     let output = command
         .output()
-        .map_err(|e| format!("could not start git: {e}"))?;
+        .map_err(|e| format!("{NOT_STARTED}: {e}"))?;
     if output.status.success() {
         return Ok(output.stdout);
     }

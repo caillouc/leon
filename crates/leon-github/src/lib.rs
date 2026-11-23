@@ -127,8 +127,9 @@ impl GitHub for GhCli {
         let mut checks = Vec::new();
         match gh(path, &args(&["--version"]), None) {
             Err(GhError::Missing) => checks.push(
-                DoctorCheck::new(Health::Info, "Installed", "no (optional)")
-                    .fix("To see pull requests and issues, install the GitHub CLI (`gh`)"),
+                DoctorCheck::new(Health::Problem, "Not installed", "Leon needs the GitHub CLI").fix(
+                    "Install the GitHub CLI (`gh`, https://cli.github.com), then run `gh auth login`",
+                ),
             ),
             Err(error) => checks.push(DoctorCheck::new(
                 Health::Problem,
@@ -243,5 +244,35 @@ impl GitHub for GhCli {
         };
         let args = query::set_draft(repo, number, draft);
         self.change(context, repo, number, &args)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::sync::OnceLock;
+
+    use leon_core::ports::GitHub;
+    use leon_domain::Health;
+
+    use super::GhCli;
+
+    /// Leon needs the GitHub CLI: missing, it is a problem, said so.
+    #[test]
+    fn without_gh_doctor_says_leon_needs_it() {
+        #[allow(clippy::unnecessary_wraps, reason = "a `SearchPath`")]
+        fn nowhere() -> Option<&'static OsString> {
+            static EMPTY: OnceLock<OsString> = OnceLock::new();
+            Some(EMPTY.get_or_init(|| OsString::from("/nonexistent-leon-test")))
+        }
+        let section = GhCli::new(nowhere).doctor();
+        assert_eq!(section.health(), Health::Problem);
+        assert_eq!(
+            (
+                section.checks[0].name.as_str(),
+                section.checks[0].detail.as_str()
+            ),
+            ("Not installed", "Leon needs the GitHub CLI")
+        );
     }
 }

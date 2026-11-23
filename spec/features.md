@@ -354,7 +354,9 @@ flow**: one item in the left pane (D5).
   (`owner/repo#12` and a blank line, the caret on it); the flow remembers the
   issue, and the issue then also offers "Open flow". "Start flow" is always
   offered, on a row's hover and in its drawer, even when a flow was already
-  started for the issue: each new flow is linked to it too.
+  started for the issue: each new flow is linked to it too. When the lists
+  cannot be read (no GitHub CLI, not logged in), the left pane says nothing:
+  the list's page says why, and Doctor shows the problem.
 - **GH-3** My open PRs, grouped by repository (each group foldable), with
   their state icon and checks. Clicking one opens its details in a drawer,
   laid out like its GitHub page: title and state pill, who wants to merge
@@ -425,9 +427,10 @@ flow**: one item in the left pane (D5).
 - **DOCTOR-1** A doctor view, like `flutter doctor`: Leon's version and setup
   (config, data folder, notifications…), and for each CLI and tool it uses
   whether it is installed, which version, whether it is logged in, and what
-  to do when something is missing. What Leon can do without (one coding CLI
-  of several, the GitHub CLI) shows as not installed, neither a warning nor
-  a problem; no coding CLI at all is a problem. Doctor's icon in the left
+  to do when something is missing. A coding CLI not installed, when another
+  is, says "Not installed" and that it is optional, neither green nor a
+  warning nor a problem; no coding CLI at all is a problem, and so is a
+  missing git or GitHub CLI (both needed, for now). Doctor's icon in the left
   pane carries a dot only for a warning (amber) or a problem (red), none
   when all works. Its first check runs once
   Leon's own tools listen, so it is right at launch. Settings, Doctor and Connectors sit side by

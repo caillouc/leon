@@ -56,15 +56,19 @@ pub struct DoctorSection {
 }
 
 impl DoctorSection {
-    /// The worst health of its checks (`Info` counts as `Ok`).
+    /// The worst health of its checks: `Info` beside an `Ok` counts as one;
+    /// a section of facts only is `Info`.
     pub fn health(&self) -> Health {
         let has = |h| self.checks.iter().any(|c| c.health == h);
         if has(Health::Problem) {
             Health::Problem
         } else if has(Health::Warning) {
             Health::Warning
-        } else {
+        } else if has(Health::Ok) || self.checks.is_empty() {
             Health::Ok
+        } else {
+            // Only facts, e.g. an optional CLI not installed: not green.
+            Health::Info
         }
     }
 }
@@ -149,6 +153,8 @@ mod tests {
                 .collect(),
         };
         assert_eq!(section(&[Health::Info, Health::Ok]).health(), Health::Ok);
+        // Only facts (a CLI not installed, say): neither green nor wrong.
+        assert_eq!(section(&[Health::Info]).health(), Health::Info);
         assert_eq!(
             section(&[Health::Ok, Health::Warning]).health(),
             Health::Warning

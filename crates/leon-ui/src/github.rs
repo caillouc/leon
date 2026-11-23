@@ -108,12 +108,9 @@ impl Workspace {
                 self.snapshot.my_prs.len(),
                 cx,
             ))
-            .children(
-                self.snapshot
-                    .github_error
-                    .as_ref()
-                    .map(|e| crate::widgets::problem(e.clone())),
-            )
+            // Why the lists could not be read shows on their page, and
+            // Doctor's red dot says what is missing (`gh`, its login): the
+            // left pane stays quiet (DOCTOR-1).
             .into_any_element()
     }
 

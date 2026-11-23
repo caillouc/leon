@@ -254,7 +254,7 @@ fn output<'a>(
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{bundle_of, releases_repo, replace, team_in};
+    use super::{bundle_of, releases_repo, team_in};
 
     #[test]
     fn releases_come_from_leons_repository() {
@@ -360,6 +360,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn the_new_app_takes_the_running_ones_place() {
+        use super::replace;
         let dir = tempfile::tempdir().unwrap();
         let app = |root: &Path, version: &str| {
             let contents = root.join("Contents");

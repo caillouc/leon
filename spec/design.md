@@ -171,7 +171,7 @@ Use these; do not restyle them in place.
 | State mark | `widgets::mark`, `widgets::status_dot` | see Status |
 | Fold header | `widgets::fold_toggle` | chevron 15 + title; folded state saved |
 | Empty state | `widgets::empty` | 12.5 faint |
-| Error in place of a list | `widgets::problem` | like an empty state, in `err` red: what failed is never taken for "nothing here" (e.g. GitHub could not be read) |
+| Error in place of a list | `widgets::problem` | like an empty state, in `err` red: what failed is never taken for "nothing here" (e.g. GitHub could not be read, on the list's page; never in the left pane, where Doctor's dot says it) |
 | Pane header | `widgets::pane_header` | see Layout |
 | Page column | `widgets::centered` | see Layout |
 | Drawer | `drawer::drawer` | see Layout; each drawer has its own id |

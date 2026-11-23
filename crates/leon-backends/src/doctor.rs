@@ -27,17 +27,17 @@ fn checked_with(backend: BackendKind) -> &'static str {
 }
 
 const INSTALLED: &str = "Installed";
-const NOT_INSTALLED: &str = "no (optional)";
+const NOT_INSTALLED: &str = "Not installed";
 
-/// Leon needs one coding CLI: when none is installed, each "not installed"
+/// Leon needs one coding CLI: when none is installed, each "Not installed"
 /// is a problem.
 pub(crate) fn require_one(sections: &mut [DoctorSection]) {
-    let missing = |c: &DoctorCheck| c.name == INSTALLED && c.detail == NOT_INSTALLED;
+    let missing = |c: &DoctorCheck| c.name == NOT_INSTALLED;
     if sections.iter().all(|s| s.checks.iter().any(missing)) {
         for check in sections.iter_mut().flat_map(|s| &mut s.checks) {
             if missing(check) {
                 check.health = Health::Problem;
-                "no: Leon needs at least one coding CLI".clone_into(&mut check.detail);
+                "Leon needs at least one coding CLI".clone_into(&mut check.detail);
             }
         }
     }
@@ -59,7 +59,12 @@ fn section_with(
     match run(&["--version"]) {
         Err(RunError::NotFound) => {
             checks.push(
-                DoctorCheck::new(Health::Info, INSTALLED, NOT_INSTALLED).fix(format!(
+                DoctorCheck::new(
+                    Health::Info,
+                    NOT_INSTALLED,
+                    "optional: Leon needs one coding CLI, any",
+                )
+                .fix(format!(
                     "To use it, install {name} so that `{program}` is on your PATH"
                 )),
             );
