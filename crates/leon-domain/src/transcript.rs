@@ -163,9 +163,37 @@ pub struct RunningTool {
     pub since: i64,
 }
 
+/// What a tool call says when its turn ended before its result: the user
+/// stopped the turn, or the CLI never gave one.
+pub const NO_RESULT: &str = "No result: its turn ended first";
+
+impl Entry {
+    /// A tool call still without a result gets [`NO_RESULT`]: its turn is
+    /// over, so it no longer runs.
+    pub fn end_tool(&mut self) {
+        if let Self::Tool {
+            output: output @ None,
+            ..
+        } = self
+        {
+            *output = Some(NO_RESULT.to_owned());
+        }
+    }
+}
+
+/// Ends the tool calls left without a result before the transcript's last
+/// turn end, as saved before a turn's end ended them.
+pub fn end_unfinished(entries: &mut [TimedEntry]) {
+    let turn_end = |e: &TimedEntry| matches!(e.entry, Entry::TurnEnd { .. });
+    let Some(last) = entries.iter().rposition(turn_end) else {
+        return;
+    };
+    for e in &mut entries[..last] {
+        e.entry.end_tool();
+    }
+}
+
 /// The tool calls of a transcript that have no result yet, oldest first.
-/// Only meaningful while its conversation runs: a stopped turn leaves calls
-/// without a result.
 pub fn running_tools(entries: &[TimedEntry]) -> Vec<RunningTool> {
     entries
         .iter()
@@ -187,6 +215,38 @@ pub fn running_tools(entries: &[TimedEntry]) -> Vec<RunningTool> {
 
 #[cfg(test)]
 mod tests {
+    /// Tools without a result before the last turn end are ended; one in
+    /// the turn still going on, or with a result, is left as it is.
+    #[test]
+    fn tools_left_without_a_result_end_with_their_turn() {
+        use super::{Entry, NO_RESULT, TimedEntry, end_unfinished};
+        let tool = |output: Option<&str>| Entry::Tool {
+            id: String::new(),
+            name: "Read".into(),
+            detail: String::new(),
+            output: output.map(str::to_owned),
+            failed: false,
+        };
+        let end = || Entry::TurnEnd { usage: None };
+        let cases = [
+            (
+                vec![tool(None), end(), tool(None)],
+                vec![tool(Some(NO_RESULT)), end(), tool(None)],
+            ),
+            (vec![tool(Some("ok")), end()], vec![tool(Some("ok")), end()]),
+            (vec![tool(None)], vec![tool(None)]),
+        ];
+        for (before, expected) in cases {
+            let mut entries: Vec<TimedEntry> = before
+                .into_iter()
+                .map(|entry| TimedEntry { at: 0, entry })
+                .collect();
+            end_unfinished(&mut entries);
+            let after: Vec<Entry> = entries.into_iter().map(|e| e.entry).collect();
+            assert_eq!(after, expected);
+        }
+    }
+
     #[test]
     fn answers_go_to_the_asker_until_the_user_writes() {
         use super::{Entry, answers_to};

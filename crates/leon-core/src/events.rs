@@ -123,7 +123,11 @@ fn asked(core: &mut Core, id: ConversationId, question: Question) {
         return;
     };
     s.status = Status::NeedsInput;
-    s.question = Some(question);
+    // Asked again (a CLI resending it): it keeps its place.
+    match s.questions.iter_mut().find(|q| q.id == question.id) {
+        Some(asked) => *asked = question,
+        None => s.questions.push(question),
+    }
     let flow = s.conversation.flow;
     core.answered(id, flow, false);
 }

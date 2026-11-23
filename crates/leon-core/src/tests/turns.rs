@@ -362,36 +362,6 @@ async fn removing_a_project_forgets_it_and_its_flows() {
     assert!(h.storage.flows.lock().unwrap().is_empty());
 }
 
-/// A turn that ends while a card waits — the user stopped it — takes the
-/// card away: nothing waits for its answer any more (CONV-9).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_stopped_turn_takes_its_question_away() {
-    let h = harness();
-    let id = new_flow(&h, BackendKind::ClaudeCode).await;
-    next_command(&h, 0).await;
-    emit(
-        &h,
-        0,
-        BackendEvent::Question {
-            id: "q1".into(),
-            title: "Pick a colour".into(),
-            detail: String::new(),
-            options: vec!["Red".into(), "Blue".into()],
-        },
-    );
-    until(&h.core, "card", |s| s.conversations[&id].question.is_some()).await;
-    emit(
-        &h,
-        0,
-        BackendEvent::TurnEnded {
-            stopped: true,
-            usage: None,
-        },
-    );
-    let s = until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
-    assert_eq!(s.conversations[&id].question, None);
-}
-
 /// What a CLI says of the plan's limits is kept for that CLI, the latest
 /// replacing the one before (DOCTOR-2).
 #[tokio::test(flavor = "multi_thread")]

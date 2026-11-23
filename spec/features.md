@@ -115,7 +115,9 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   "default" but the value actually used.
 - **CONV-5** Change CLI, model, effort or permission mid-conversation. When the
   CLI can't switch live, a new CLI session starts with the previous context.
-- **CONV-6** Stop a running answer.
+- **CONV-6** Stop a running answer. A tool call left without a result when
+  its turn ends (stopped, or the CLI never said) no longer shows as running:
+  it reads "No result: its turn ended first".
 - **CONV-7** Go back to an earlier message: everything after it is dropped from
   the conversation.
 - **CONV-8** Edit the last message (= go back to before it, send the new text).
@@ -123,7 +125,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   with a click, as in Copilot and Claude Code. A permission request shows
   what it would allow, whole, to judge it: the command, and the paths it
   reaches (e.g. Copilot CLI asking to access paths outside its trusted
-  folders for a command it is about to run).
+  folders for a command it is about to run). Several asked at once (tools
+  run side by side) are each asked, one card after the other, none lost.
 - **CONV-10** The agent's suggested next message shows greyed in the empty
   message box; Tab writes it in.
 - **CONV-11** Slash commands and skills from the message box: typing `/`

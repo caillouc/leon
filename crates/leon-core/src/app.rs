@@ -543,7 +543,9 @@ impl Core {
             return;
         }
         let storage = Arc::clone(&self.ports.storage);
-        let entries = Self::report(blocking(|| storage.entries(id))).unwrap_or_default();
+        let mut entries = Self::report(blocking(|| storage.entries(id))).unwrap_or_default();
+        // Saved by an earlier Leon, which left them running.
+        leon_domain::end_unfinished(&mut entries);
         if let Some(s) = self.state.conversations.get_mut(&id) {
             s.transcript = Some(crate::snapshot::TranscriptView {
                 entries: Arc::new(entries),
@@ -711,7 +713,7 @@ impl Core {
         if let Some(s) = self.state.conversations.get_mut(&id) {
             s.carry_context = false;
             s.status = Status::Running;
-            s.question = None;
+            s.questions.clear();
             s.suggestions.clear();
         }
         if let Some(commands) = self.live.get(&id) {
@@ -849,6 +851,13 @@ impl Core {
     }
 
     fn answer(&mut self, id: ConversationId, question: String, answer: &str) {
+        if let Some(s) = self.state.conversations.get_mut(&id) {
+            s.questions.retain(|q| q.id != question);
+            // The next question shows; with none left, the turn goes on.
+            if s.questions.is_empty() {
+                s.status = Status::Running;
+            }
+        }
         if let Some(commands) = self.live.get(&id) {
             let _ = commands.send(BackendCommand::Answer {
                 id: question,
@@ -861,10 +870,6 @@ impl Core {
                 text: format!("You answered: {answer}"),
             },
         );
-        if let Some(s) = self.state.conversations.get_mut(&id) {
-            s.question = None;
-            s.status = Status::Running;
-        }
     }
 
     /// Settings with the backend's default model and effort filled in.
@@ -1017,12 +1022,19 @@ impl Core {
         let failed = error.is_some() || s.status == Status::Error;
         s.status = if failed { Status::Error } else { Status::Idle };
         // Nothing waits for a card's answer once the turn is over (CONV-9).
-        s.question = None;
+        s.questions.clear();
         let storage = Arc::clone(&self.ports.storage);
-        let entries: Vec<TimedEntry> = s.transcript.as_ref().map_or_default(|t| {
+        // A tool still without a result no longer runs (stopped, or the
+        // CLI never said): saved ended.
+        let entries: Vec<TimedEntry> = s.transcript.as_mut().map_or_default(|t| {
+            let all = Arc::make_mut(&mut t.entries);
             pending
                 .iter()
-                .filter_map(|&i| t.entries.get(i).cloned())
+                .filter_map(|&i| {
+                    let timed = all.get_mut(i)?;
+                    timed.entry.end_tool();
+                    Some(timed.clone())
+                })
                 .collect()
         });
         for entry in &entries {

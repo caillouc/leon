@@ -49,5 +49,8 @@ pub use review::{ReviewComment, review_message};
 pub use settings::{ConversationDefaults, OpenOn, Settings, Zoom};
 pub use sprint::{Iteration, current_sprint};
 pub use todo::{Todo, TodoId, open_todos, todo_flows};
-pub use transcript::{Entry, RunningTool, TimedEntry, Usage, activity, answers_to, running_tools};
+pub use transcript::{
+    Entry, NO_RESULT, RunningTool, TimedEntry, Usage, activity, answers_to, end_unfinished,
+    running_tools,
+};
 pub use unified_diff::parse_diff;

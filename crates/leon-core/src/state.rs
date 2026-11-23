@@ -22,7 +22,9 @@ pub(crate) struct ConversationState {
     pub subagents: (u32, u32),
     /// The agent's plan (CONV-14); kept while Leon runs.
     pub plan: Vec<leon_domain::PlanStep>,
-    pub question: Option<Question>,
+    /// Questions waiting for the user, oldest first: a CLI can ask several
+    /// at once (tools run side by side); the first is shown (CONV-9).
+    pub questions: Vec<Question>,
     /// Replies the CLI suggests after its answer (CONV-10).
     pub suggestions: Vec<String>,
     /// `None` until the transcript is loaded from the store.
@@ -66,7 +68,7 @@ impl ConversationState {
             status: Status::Idle,
             subagents: (0, 0),
             plan: Vec::new(),
-            question: None,
+            questions: Vec::new(),
             suggestions: Vec::new(),
             transcript: None,
             pending_tools: HashMap::new(),
@@ -345,7 +347,7 @@ impl State {
                     status: s.status,
                     subagents: s.subagents,
                     plan: s.plan.clone(),
-                    question: s.question.clone(),
+                    question: s.questions.first().cloned(),
                     suggestions: s.suggestions.clone(),
                     waiting_for: self.waiting_for(s.conversation.id),
                     name: self.conversation_name(s.conversation.id),
