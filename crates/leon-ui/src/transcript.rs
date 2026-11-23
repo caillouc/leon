@@ -318,10 +318,11 @@ fn entry_view(
             }
             tool.into_any_element()
         }
+        // In the turn's flow, where a tool's name starts (after its chevron
+        // 12 and the gap 8): an answer sits under the tool it allowed.
         Entry::Notice { text } => div()
             .my_1()
-            .flex()
-            .justify_center()
+            .pl(crate::theme::rem(20.))
             .text_size(crate::theme::rem(12.))
             .text_color(theme::fg_faint())
             .child(text.clone())
