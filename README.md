@@ -78,7 +78,10 @@ Linux also needs the windowing and font libraries listed in
 
 Pushing a version tag publishes a GitHub release
 (`.github/workflows/release.yml`): a `.dmg` for macOS (Apple Silicon), signed
-with a Developer ID and notarized by Apple, and the Linux binary.
+with a Developer ID and notarized by Apple, and the Linux binary, built side
+by side and published together. Each push to `main` keeps their built
+dependencies (`.github/workflows/release-cache.yml`), so a release compiles
+only Leon's own crates.
 
 ```bash
 git tag v0.1.0

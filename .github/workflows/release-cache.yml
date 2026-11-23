@@ -1,0 +1,42 @@
+name: Release cache
+
+# Builds Leon as a release does, on main, and keeps its built dependencies so
+# a version tag finds them (release.yml): it then compiles only Leon's own
+# crates. Skipped when main already has them for this Cargo.lock and these
+# Cargo.toml files.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: release cache (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # As in ci.yml.
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libfontconfig-dev libfreetype-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev \
+            libxcb1-dev libvulkan-dev libssl-dev libzstd-dev
+
+      - name: Rust toolchain from rust-toolchain.toml
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        id: cache
+        with:
+          shared-key: release
+
+      # The command `cargo xtask release` runs, so the cache fits it.
+      - name: Build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo build -p leon --release --locked

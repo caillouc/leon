@@ -1,7 +1,10 @@
 name: Release
 
 # Pushing a version tag (v0.1.0) publishes a GitHub release: Leon's
-# notarized .dmg for macOS (Apple Silicon) and the Linux binary.
+# notarized .dmg for macOS (Apple Silicon) and the Linux binary. Both are
+# built side by side, then published together, so a release always has both.
+# Their dependencies come already built from main (release-cache.yml): a tag
+# can read main's caches but not another tag's, so it saves none.
 on:
   push:
     tags: ["v*"]
@@ -19,6 +22,9 @@ jobs:
         run: rustup show
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release
+          save-if: false
 
       # The Developer ID certificate and its key, in a keychain of this run
       # only.
@@ -53,15 +59,13 @@ jobs:
           LEON_NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
         run: cargo xtask release
 
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" target/release/Leon-*.dmg \
-            --title "Leon $GITHUB_REF_NAME" --generate-notes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: target/release/Leon-*.dmg
+          if-no-files-found: error
 
   linux:
-    needs: macos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,13 +82,34 @@ jobs:
         run: rustup show
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release
+          save-if: false
 
       - name: Build
         run: cargo build -p leon --release --locked
 
-      - name: Add to the release
+      - name: Package
+        run: tar czf "leon-$GITHUB_REF_NAME-linux-x86_64.tar.gz" -C target/release leon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: leon-*-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tar czf "leon-$GITHUB_REF_NAME-linux-x86_64.tar.gz" -C target/release leon
-          gh release upload "$GITHUB_REF_NAME" "leon-$GITHUB_REF_NAME-linux-x86_64.tar.gz"
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "Leon $GITHUB_REF_NAME" --generate-notes
