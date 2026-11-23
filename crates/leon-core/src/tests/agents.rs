@@ -474,9 +474,11 @@ async fn an_agent_links_issues_and_pull_requests() {
 async fn coming_back_to_the_tab_reads_its_answer() {
     let h = harness();
     h.core.send(Intent::Read(Some(ConversationId(1))));
+    // Sent before the flow is waited for: intents reach the core in order,
+    // the CLI's events on their own, so it is in before the answer.
+    h.core.send(Intent::WindowActive(false));
     let planner = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
-    h.core.send(Intent::WindowActive(false));
     end_turn(&h, 0, "Done.");
     let s = until(&h.core, "unread while away", |s| {
         s.conversations[&planner].conversation.unread
