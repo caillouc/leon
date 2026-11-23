@@ -30,9 +30,11 @@ impl Workspace {
             Detail::Issue(issue) => self.issue_body(issue, cx).into_any_element(),
             Detail::PullRequest(pr) => self.pr_body(pr, &input, cx).into_any_element(),
         };
-        // What Leon can do with it sits in the header, left of GitHub.
+        // What Leon can do with it sits in the header, left of the buttons
+        // always there: read from GitHub, they come later and must not
+        // push those under the mouse.
         let actions = match &detail {
-            Detail::Issue(issue) => vec![self.issue_action(issue, cx)],
+            Detail::Issue(issue) => self.issue_actions(issue, cx),
             Detail::PullRequest(pr) => self.pr_actions(pr, cx),
             Detail::Loading(_) | Detail::Failed(..) => Vec::new(),
         };
@@ -69,8 +71,8 @@ impl Workspace {
                     .child(item.short()),
             )
             .child(div().flex_1())
-            .children(changes)
             .children(actions)
+            .children(changes)
             .when(item.kind == GhKind::PullRequest, |d| {
                 d.child(copy_link(url.clone()))
             })

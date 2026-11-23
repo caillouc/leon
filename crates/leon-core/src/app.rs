@@ -116,6 +116,7 @@ pub fn start(runtime: &Handle, ports: Ports, settings: Settings) -> CoreHandle {
         viewing: None,
         reading: None,
         window_active: true,
+        archive_checked: None,
         event_tx,
         internal_tx,
         git_in_flight: HashSet::new(),
@@ -177,6 +178,8 @@ pub(crate) struct Core {
     reading: Option<ConversationId>,
     /// Leon's window is the active one.
     window_active: bool,
+    /// When the archive was last looked through for flows to delete.
+    archive_checked: Option<i64>,
     event_tx: UnboundedSender<ConversationEvent>,
     pub(crate) internal_tx: UnboundedSender<Internal>,
     pub(crate) git_in_flight: HashSet<std::path::PathBuf>,
@@ -282,7 +285,33 @@ impl Core {
         self.state.options = Arc::new(options);
         self.refresh_agents();
         self.apply_fold();
+        self.purge_archive();
         self.state.loaded = true;
+    }
+
+    /// Deletes the flows in the archive for more than a month (NAV-8): at
+    /// launch, then at most once a day, enough for a month's rule.
+    pub(crate) fn purge_archive(&mut self) {
+        const EVERY_MS: i64 = 24 * 60 * 60 * 1000;
+        let now = self.now();
+        if self
+            .archive_checked
+            .is_some_and(|at| now.saturating_sub(at) < EVERY_MS)
+        {
+            return;
+        }
+        self.archive_checked = Some(now);
+        let expired: Vec<FlowId> = self
+            .state
+            .flows
+            .iter()
+            .filter(|f| f.archive_expired(now))
+            .map(|f| f.id)
+            .collect();
+        for id in expired {
+            tracing::info!(flow = id.0, "deleting a flow archived over a month ago");
+            self.delete(id);
+        }
     }
 
     fn refresh_agents(&mut self) {
@@ -372,7 +401,10 @@ impl Core {
             Intent::FoldGroup(key, folded) => self.fold_group(key, folded),
             Intent::Rename(id, title) => self.edit(id, |c| title.trim().clone_into(&mut c.title)),
             Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
-            Intent::Archive(id, archived) => self.edit(id, |c| c.archived = archived),
+            Intent::Archive(id, archived) => {
+                let now = self.now();
+                self.edit(id, |c| c.archived = archived.then_some(now));
+            }
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
             Intent::MarkConversationUnread(id) => self.mark_unread(id),
             Intent::WindowActive(active) => {
@@ -869,19 +901,52 @@ impl Core {
         );
     }
 
+    /// Deletes a flow for good (NAV-8): from Leon, then, in the background,
+    /// what its conversations leave (their CLIs, Leon's logs of them, their
+    /// sessions where a CLI keeps them in files alone).
     fn delete(&mut self, id: FlowId) {
+        let gone: Vec<(ConversationId, Option<crate::ports::CliSession>)> = self
+            .state
+            .conversations_of(id)
+            .into_iter()
+            .filter_map(|c| self.state.conversations.get(&c))
+            .map(|s| {
+                let c = &s.conversation;
+                let session = c.cli_session.clone().map(|cs| (c.settings.backend, cs));
+                (c.id, session)
+            })
+            .collect();
         self.forget(id);
         let storage = Arc::clone(&self.ports.storage);
-        Self::report(blocking(|| storage.delete_flow(id)));
+        if Self::report(blocking(|| storage.delete_flow(id))).is_some() {
+            self.discard(gone);
+        }
     }
 
-    /// Drops a flow and its conversations from memory, stopping their CLIs.
+    /// Removes, in the background, what these conversations leave.
+    pub(crate) fn discard(&self, gone: Vec<(ConversationId, Option<crate::ports::CliSession>)>) {
+        if gone.is_empty() {
+            return;
+        }
+        let backends = Arc::clone(&self.ports.backends);
+        crate::jobs::spawn(move || {
+            for (id, session) in gone {
+                backends.discard(id, session);
+            }
+        });
+    }
+
+    /// Drops a flow, its conversations and its to-dos from memory, stopping
+    /// their CLIs.
     fn forget(&mut self, id: FlowId) {
         for conversation in self.state.conversations_of(id) {
             self.live.remove(&conversation);
             self.state.conversations.remove(&conversation);
         }
         self.state.flows.retain(|c| c.id != id);
+        if self.state.todos.iter().any(|t| t.flow == id) {
+            Arc::make_mut(&mut self.state.todos).retain(|t| t.flow != id);
+        }
     }
 
     fn fold_group(&mut self, key: String, folded: bool) {

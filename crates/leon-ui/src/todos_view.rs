@@ -29,6 +29,10 @@ pub(crate) const BUTTON_ROOM: f32 = 72.;
 /// misclick.
 const FADE: Duration = Duration::from_secs(3);
 
+/// The key of Info's To do section's fold: the same in every flow, kept
+/// across restarts.
+const INFO_FOLD: &str = "info:todos";
+
 /// The most of a to-do's width its when takes, beside its what.
 const WHEN_SHARE: f32 = 0.4;
 
@@ -156,14 +160,30 @@ impl Workspace {
     }
 
     /// The flow's to-dos in Info (TODO-2): the open ones, the box to add
-    /// one, then the done ones, folded under how many.
+    /// one, then the done ones, folded under how many. Its heading folds
+    /// all of it, in every flow, until unfolded.
     pub(crate) fn todo_section(&self, flow: FlowId, cx: &mut Context<Self>) -> AnyElement {
         let (done, open) = self.todos_of(flow);
-        div()
-            .px_1()
-            .flex()
-            .flex_col()
-            .child(label("To do"))
+        let folded = self.snapshot.folded_groups.contains(INFO_FOLD);
+        // Its heading folds it; folded, how many are open still shows.
+        let heading = crate::widgets::fold_toggle(INFO_FOLD.to_owned(), folded)
+            .px_3()
+            .pt_3()
+            .pb_1()
+            .child(label("To do").p_0())
+            .when(folded && !open.is_empty(), |d| {
+                d.child(
+                    div()
+                        .text_size(rem(10.5))
+                        .text_color(theme::fg_faint())
+                        .child(open.len().to_string()),
+                )
+            });
+        let section = div().px_1().flex().flex_col().child(heading);
+        if folded {
+            return section.into_any_element();
+        }
+        section
             .children(open.into_iter().map(|t| self.todo_row(t, "info", cx)))
             // Like a to-do: its empty box, then when → what.
             .child(

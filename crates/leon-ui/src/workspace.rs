@@ -88,6 +88,8 @@ pub struct Workspace {
     pub(crate) expanded: HashSet<(ConversationId, usize)>,
     /// Long pastes waiting in the message box (CONV-12).
     pub(crate) pasted: Vec<String>,
+    /// What was being written in the conversations not shown (CONV-1).
+    pub(crate) drafts: crate::drafts::Drafts,
     /// The user's message being edited: sending goes back to before it
     /// (CONV-7, CONV-8).
     pub(crate) rewind: Option<(ConversationId, usize)>,
@@ -228,6 +230,7 @@ impl Workspace {
             show_archived: false,
             expanded: HashSet::new(),
             pasted: Vec::new(),
+            drafts: crate::drafts::Drafts::default(),
             rewind: None,
             lists: HashMap::new(),
             right,
@@ -453,6 +456,8 @@ impl Render for Workspace {
             self.history.visit(place);
         }
         if reading != self.reading {
+            // What was being written stays with its conversation.
+            self.switch_draft(self.reading, reading, window, cx);
             self.reading = reading;
             self.core.send(Intent::Read(reading));
             // An answer not read yet is read from its start: the tab opens

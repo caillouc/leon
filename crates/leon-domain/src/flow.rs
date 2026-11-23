@@ -87,8 +87,9 @@ pub struct Flow {
     pub title: String,
     /// Pinned to the top of the left pane (NAV-3).
     pub pinned: bool,
-    /// Moved to the archive (NAV-8).
-    pub archived: bool,
+    /// When it was moved to the archive (NAV-8), Unix milliseconds; `None`
+    /// while it is not there.
+    pub archived: Option<i64>,
     /// Has something the user has not seen (NAV-4).
     pub unread: bool,
     /// Last activity, Unix milliseconds.
@@ -104,6 +105,19 @@ pub struct Flow {
     /// Its group's place on the To do page, which the user changes by
     /// dragging (TODO-3).
     pub todo_position: i64,
+}
+
+/// How long a flow stays in the archive before Leon deletes it: a month
+/// (NAV-8).
+pub const ARCHIVE_KEPT_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+impl Flow {
+    /// Whether it has been in the archive longer than [`ARCHIVE_KEPT_MS`] at
+    /// `now`: time to delete it.
+    pub fn archive_expired(&self, now: i64) -> bool {
+        self.archived
+            .is_some_and(|at| now.saturating_sub(at) > ARCHIVE_KEPT_MS)
+    }
 }
 
 /// Choices that shape an conversation (CONV-2..4).
@@ -147,6 +161,36 @@ pub struct Conversation {
 mod tests {
     use super::Status;
     use super::Status::{Error, Idle, NeedsInput, Running};
+
+    #[test]
+    fn a_flow_leaves_the_archive_after_a_month() {
+        use super::{ARCHIVE_KEPT_MS, Flow, FlowId};
+        use crate::ProjectId;
+        let flow = |archived| Flow {
+            id: FlowId(1),
+            project: ProjectId(1),
+            title: String::new(),
+            pinned: false,
+            archived,
+            unread: false,
+            updated_at: 0,
+            folders: Vec::new(),
+            links: Vec::new(),
+            todo_position: 0,
+        };
+        let now = 100 * ARCHIVE_KEPT_MS;
+        let cases = [
+            (None, false),
+            (Some(now), false),
+            (Some(now - ARCHIVE_KEPT_MS), false),
+            (Some(now - ARCHIVE_KEPT_MS - 1), true),
+            // A time ahead of the clock (a clock set back): kept.
+            (Some(now + 1_000), false),
+        ];
+        for (archived, expired) in cases {
+            assert_eq!(flow(archived).archive_expired(now), expired, "{archived:?}");
+        }
+    }
 
     #[test]
     fn what_a_flow_asks_of_the_user() {

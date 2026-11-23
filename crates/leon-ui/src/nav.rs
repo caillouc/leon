@@ -1,6 +1,6 @@
 //! The row at the bottom of the left pane: Settings, Doctor, Connectors,
 //! side by side, each an icon over its name. The Doctor's icon carries a dot
-//! in the colour of its worst finding.
+//! only for a warning (amber) or a problem (red).
 
 use gpui::{AnyElement, Context, Rgba, SharedString, Window, div, prelude::*};
 use leon_core::Intent;
@@ -12,7 +12,7 @@ use crate::workspace::{Screen, Workspace};
 
 impl Workspace {
     pub(crate) fn render_bottom_nav(&self, cx: &mut Context<Self>) -> AnyElement {
-        let doctor_dot = self.snapshot.doctor.as_ref().map(|(_, s)| worst(s));
+        let doctor_dot = self.snapshot.doctor.as_ref().and_then(|(_, s)| worst(s));
         div()
             .flex_none()
             .flex()

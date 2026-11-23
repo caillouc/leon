@@ -10,10 +10,16 @@ use leon_domain::{ConversationId, Entry, Status};
 use crate::app::Core;
 
 impl Core {
-    /// Finds the CLIs still running from before Leon started.
+    /// Finds the CLIs still running from before Leon started; what is left
+    /// of a conversation deleted since goes (NAV-8).
     pub(crate) fn reattach(&mut self) {
         let backends = Arc::clone(&self.ports.backends);
+        let mut gone = Vec::new();
         for id in backends.held() {
+            if !self.state.conversations.contains_key(&id) {
+                gone.push((id, None));
+                continue;
+            }
             let Some(spec) = self.session_spec(id) else {
                 continue;
             };
@@ -25,6 +31,7 @@ impl Core {
             }
             self.pump(id, attached.channel);
         }
+        self.discard(gone);
     }
 
     /// Conversation `id` was in a turn: what Leon recorded of it goes, the

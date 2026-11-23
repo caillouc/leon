@@ -57,7 +57,8 @@ fn main() -> anyhow::Result<()> {
         backends: Arc::new(
             leon_backends::Clis::new(login_path)
                 .with_skills_folder(data.join("skills"))
-                .with_holders(exe.clone(), data.join("runs")),
+                .with_holders(exe.clone(), data.join("runs"))
+                .with_home(home.clone()),
         ),
         catalog: Arc::new(leon_catalog::AgentFiles::new(home, sources)),
         git: Arc::new(leon_git::GitCli::new(login_path)),

@@ -68,16 +68,24 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   pull requests (NAV-6): no agent count, no time; a quiet flow is one line,
   its title, with its pull requests at the end of it.
 - **NAV-6** The flow's PRs at the end of the line under its title: the PR
-  icon in the colour of the most active one (open, then draft, merged,
-  closed), how many, and a red mark only when an open one is blocked (a
-  failed check, a conflict with its base): passing or running checks show
-  nothing. On hover, the list of them, one line each (icon, title,
+  icon and how many, in the colour of the most active one (open, then
+  draft, merged, closed), in amber while an open one's checks run, or in
+  red when an open one is blocked (a failed check, a conflict with its
+  base), red first. On hover, the list of them, one line each (icon, title,
   number), each opening Leon's view of it.
 - **NAV-7** Selecting a flow opens it in the main pane.
 - **NAV-8** Rename, pin, mark as unread, archive and delete a flow from its
   right-click menu in the left pane; search flows. Rename edits the title in
   place, its text selected: typing replaces it, a click places the caret or
-  selects text; Enter or a click elsewhere saves it.
+  selects text; Enter or a click elsewhere saves it. A flow in the archive
+  for more than a month (30 days) is deleted by Leon, looked for at launch
+  and once a day while it runs; one archived before this rule counts from
+  the update that brought it. A deleted flow leaves nothing of Leon's: its
+  agents are stopped, even mid-turn, Leon's logs of them go (and at launch,
+  any left from an earlier delete), and so do their Claude Code sessions
+  (`~/.claude/projects`). Codex and Copilot CLI keep their sessions: they
+  index them in databases of their own. Worktrees and branches stay: they
+  can hold work not pushed.
 - **NAV-9** Titles are generated automatically, as in Claude Code.
 - **NAV-10** A + next to each project starts a flow in it.
 - **NAV-11** A flow's row shows no issue: its issues are in the right
@@ -91,7 +99,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 
 ### Main pane
 
-- **CONV-1** Send messages; see the agent's answer stream live.
+- **CONV-1** Send messages; see the agent's answer stream live. A message
+  being written stays with its conversation: shown another one, the message
+  box shows that one's (or nothing), and coming back shows it again, its
+  long pastes with it, until the app is closed.
 - **CONV-2** Start a flow directly with a chosen agent. The new-flow page is
   a clean start page, as in GitHub Copilot's app: Leon's logo, then the
   message box with the agent, CLI, model, effort and permission in its row
@@ -109,7 +120,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   the conversation.
 - **CONV-8** Edit the last message (= go back to before it, send the new text).
 - **CONV-9** Agent questions and permission requests appear as cards to answer
-  with a click, as in Copilot and Claude Code.
+  with a click, as in Copilot and Claude Code. A permission request shows
+  what it would allow, whole, to judge it: the command, and the paths it
+  reaches (e.g. Copilot CLI asking to access paths outside its trusted
+  folders for a command it is about to run).
 - **CONV-10** The agent's suggested next message shows greyed in the empty
   message box; Tab writes it in.
 - **CONV-11** Slash commands and skills from the message box: typing `/`
@@ -309,6 +323,8 @@ flow**: one item in the left pane (D5).
 - **TODO-2** Info (CTX-1) shows, under the flow's pull requests and issues,
   its open to-dos under "To do", with a box to add one; the done ones fold
   under "N done". A to-do's what shows as markdown, its line breaks kept.
+  The "To do" heading folds the whole section, in every flow, kept across
+  restarts; folded, it still says how many are open.
 - **TODO-3** A button at the top right of the main pane, just left of the
   right pane, says how many to-dos are open in every flow; it opens the To
   do page in the main pane: one foldable group per flow with open to-dos
@@ -333,7 +349,9 @@ flow**: one item in the left pane (D5).
   GitHub). "Start flow" opens the new-flow form in the project whose
   repository it belongs to, the message starting with the issue
   (`owner/repo#12` and a blank line, the caret on it); the flow remembers the
-  issue, and the issue then offers "Open flow".
+  issue, and the issue then also offers "Open flow". "Start flow" is always
+  offered, on a row's hover and in its drawer, even when a flow was already
+  started for the issue: each new flow is linked to it too.
 - **GH-3** My open PRs, grouped by repository (each group foldable), with
   their state icon and checks. Clicking one opens its details in a drawer,
   laid out like its GitHub page: title and state pill, who wants to merge
@@ -406,7 +424,9 @@ flow**: one item in the left pane (D5).
   whether it is installed, which version, whether it is logged in, and what
   to do when something is missing. What Leon can do without (one coding CLI
   of several, the GitHub CLI) shows as not installed, neither a warning nor
-  a problem; no coding CLI at all is a problem. Its first check runs once
+  a problem; no coding CLI at all is a problem. Doctor's icon in the left
+  pane carries a dot only for a warning (amber) or a problem (red), none
+  when all works. Its first check runs once
   Leon's own tools listen, so it is right at launch. Settings, Doctor and Connectors sit side by
   side at the bottom of the left pane.
 - **DOCTOR-2** Usage limits, first in Doctor: for each CLI that said how

@@ -199,3 +199,37 @@ fn replayed_exchanges() {
         assert_eq!(sent, case.sent, "{}", case.name);
     }
 }
+
+/// Copilot CLI 1.0.114 asks to read paths outside its trusted folders for a
+/// shell command it announced just before: the question says why, and shows
+/// the command and each path, so the user can judge it.
+#[test]
+fn a_copilot_permission_shows_its_command_and_paths() {
+    let lines = include_str!("../../../fixtures/copilot/1.0.114/permission-paths.jsonl");
+    let answer = BackendCommand::Answer {
+        id: "acp-0".into(),
+        answer: "Allow once".into(),
+    };
+    let (events, sent) = replay(&spec(None), lines, vec![(0, send("Set up")), (4, answer)]);
+    let command = "cd /code/api && git fetch -q origin dev && git worktree add -q \
+                   .claude/worktrees/fix-retry -b fix-retry origin/dev && cd \
+                   .claude/worktrees/fix-retry && make sync >/tmp/sync.log 2>&1; echo $?; \
+                   git log --oneline -1";
+    let question = events
+        .iter()
+        .find(|e| matches!(e, BackendEvent::Question { .. }));
+    assert_eq!(
+        question,
+        Some(&BackendEvent::Question {
+            id: "acp-0".into(),
+            title: "Access paths outside trusted directories".into(),
+            detail: format!(
+                "$ {command}\n/code/api/.claude/worktrees/fix-retry/sync\n\
+                 /code/api/.claude/worktrees/fix-retry/log"
+            ),
+            options: vec!["Allow once".into(), "Always allow".into(), "Deny".into()],
+        })
+    );
+    let sent: Vec<String> = sent.iter().map(describe).collect();
+    assert_eq!(sent.last().map(String::as_str), Some("reply 0 allow_once"));
+}

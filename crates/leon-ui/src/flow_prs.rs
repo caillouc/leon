@@ -2,11 +2,12 @@
 //! many, and on hover the list of them, one line each (design.md, "PR and
 //! issue row", folded), opening Leon's view of it.
 
-use gpui::{AnyElement, Context, IntoElement, Render, SharedString, Window, div, prelude::*};
-use leon_domain::{FlowId, PrState, PullRequest};
+use gpui::{AnyElement, Context, IntoElement, Render, Rgba, SharedString, Window, div, prelude::*};
+use leon_domain::{CheckState, FlowId, PrState, PullRequest};
 
-use crate::github::pr_icon;
-use crate::pr_view::pr_state;
+use crate::github::pr_glyph;
+use crate::icons::icon;
+use crate::pr_view::{check_color, pr_state};
 use crate::theme;
 
 /// The state shown for several: the most active (open, then draft, merged,
@@ -15,15 +16,15 @@ fn lead(prs: &[PullRequest]) -> PrState {
     prs.iter().map(|p| p.state).min().unwrap_or(PrState::Closed)
 }
 
-/// The icon in the leading state's colour, how many, and a red mark when
-/// one of them is blocked (a failed check, a conflict); `None` without
-/// pull requests.
+/// The leading state's icon and how many, in its colour, or in red when
+/// one of them is blocked (a failed check, a conflict), or in the colour of
+/// running checks while an open one's run; `None` without pull requests.
 pub(crate) fn flow_prs(id: FlowId, prs: Vec<PullRequest>) -> Option<AnyElement> {
     if prs.is_empty() {
         return None;
     }
     let state = lead(&prs);
-    let blocked = prs.iter().any(crate::pr_view::blocked);
+    let color = color(&prs, state);
     Some(
         div()
             .id(SharedString::from(format!("flow-prs-{}", id.0)))
@@ -33,14 +34,31 @@ pub(crate) fn flow_prs(id: FlowId, prs: Vec<PullRequest>) -> Option<AnyElement> 
             .gap(crate::theme::rem(3.))
             .px(crate::theme::rem(4.))
             .rounded(crate::theme::rem(4.))
-            .text_color(pr_state(state).0)
+            .text_color(color)
             .hover(|s| s.bg(theme::surface_2()))
-            .child(pr_icon(state, 13.))
+            .child(icon(pr_glyph(state), color, 13.))
             .child(prs.len().to_string())
-            .when(blocked, |d| d.child(crate::widgets::mark(theme::err(), 6.)))
             .hoverable_tooltip(move |_, cx| cx.new(|_| PrList(prs.clone())).into())
             .into_any_element(),
     )
+}
+
+/// The colour of a flow's pull requests, `state` the leading one's: red
+/// when one is blocked, amber while an open one's checks run, else that
+/// state's (NAV-6).
+fn color(prs: &[PullRequest], state: PrState) -> Rgba {
+    let open = |p: &&PullRequest| matches!(p.state, PrState::Open | PrState::Draft);
+    if prs.iter().any(crate::pr_view::blocked) {
+        theme::err()
+    } else if prs
+        .iter()
+        .filter(open)
+        .any(|p| p.checks_state() == Some(CheckState::Pending))
+    {
+        check_color(CheckState::Pending)
+    } else {
+        pr_state(state).0
+    }
 }
 
 /// The list shown on hover.
@@ -122,6 +140,48 @@ mod tests {
         ];
         for (pr, marked) in cases {
             assert_eq!(crate::pr_view::blocked(&pr), marked, "{:?}", pr.state);
+        }
+    }
+
+    #[test]
+    fn the_icon_is_red_when_blocked_amber_while_checks_run() {
+        use leon_domain::{Check, CheckState};
+
+        use crate::pr_view::{check_color, pr_state};
+        use crate::theme;
+        let checked = |state, check| PullRequest {
+            checks: vec![Check {
+                name: "test".into(),
+                state: check,
+                url: None,
+            }],
+            ..pr(state)
+        };
+        let running = check_color(CheckState::Pending);
+        let cases = [
+            (
+                vec![checked(PrState::Open, CheckState::Pass)],
+                pr_state(PrState::Open).0,
+            ),
+            (vec![checked(PrState::Open, CheckState::Pending)], running),
+            (vec![checked(PrState::Draft, CheckState::Pending)], running),
+            // A merged one's late checks: its own colour.
+            (
+                vec![checked(PrState::Merged, CheckState::Pending)],
+                pr_state(PrState::Merged).0,
+            ),
+            // Blocked wins over running.
+            (
+                vec![
+                    checked(PrState::Open, CheckState::Pending),
+                    checked(PrState::Open, CheckState::Fail),
+                ],
+                theme::err(),
+            ),
+        ];
+        for (prs, expected) in cases {
+            let state = super::lead(&prs);
+            assert_eq!(super::color(&prs, state), expected, "{state:?}");
         }
     }
 }

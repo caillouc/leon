@@ -4,8 +4,12 @@
 use leon_core::ports::BackendEvent;
 use serde_json::{Value, json};
 
-use super::turn::OpenTool;
+use super::turn::{OpenTool, command};
 use crate::process::clip;
+
+/// The most of a request's detail shown: a long command whole, a script
+/// cut.
+const DETAIL_MAX: usize = 2000;
 
 /// A permission request waiting for the user's answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,19 +41,8 @@ impl Permission {
             })
             .collect();
         let call = &params["toolCall"];
-        let kind = call["kind"]
-            .as_str()
-            .or(known.map(|t| t.kind.as_str()))
-            .unwrap_or_default();
-        let title = match kind {
-            "execute" => "Run this command?",
-            "edit" | "delete" | "move" => "Apply these file changes?",
-            _ => "Allow this tool call?",
-        };
-        let detail = call["title"]
-            .as_str()
-            .or(known.map(|t| t.title.as_str()))
-            .unwrap_or_default();
+        let title = question(call, known);
+        let detail = detail(call, known, &title);
         // The allow-once option first: the one the cards recommend.
         let mut names: Vec<String> = options.iter().map(|(n, _, _)| n.clone()).collect();
         if let Some(i) = options.iter().position(|(_, _, k)| k == "allow_once") {
@@ -61,8 +54,8 @@ impl Permission {
             .map_or_else(|| rpc_id.to_string(), str::to_owned);
         let question = BackendEvent::Question {
             id: format!("acp-{id}"),
-            title: title.to_owned(),
-            detail: clip(detail, 200),
+            title,
+            detail,
             options: names,
         };
         let permission = Self {
@@ -94,4 +87,62 @@ impl Permission {
     fn reply(&self, outcome: &Value) -> Value {
         json!({ "jsonrpc": "2.0", "id": self.rpc_id, "result": { "outcome": outcome } })
     }
+}
+
+/// The question: the CLI's own reason when it asks about a tool call it
+/// announced under another title (Copilot CLI: "Access paths outside
+/// trusted directories" for a command); else by the tool's kind.
+fn question(call: &Value, known: Option<&OpenTool>) -> String {
+    if let (Some(tool), Some(reason)) = (known, call["title"].as_str())
+        && !reason.trim().is_empty()
+        && reason != tool.title
+    {
+        return reason.to_owned();
+    }
+    let kind = call["kind"]
+        .as_str()
+        .or(known.map(|t| t.kind.as_str()))
+        .unwrap_or_default();
+    match kind {
+        "execute" => "Run this command?",
+        "edit" | "delete" | "move" => "Apply these file changes?",
+        _ => "Allow this tool call?",
+    }
+    .to_owned()
+}
+
+/// What waits for approval, so the user can judge it: the command
+/// (`$ …`), its own or the announced tool call's, else the tool's name;
+/// then each path it reaches, one a line (Copilot CLI puts several in one
+/// location, comma-separated).
+fn detail(call: &Value, known: Option<&OpenTool>, question: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    match command(call).or_else(|| known.and_then(|t| t.command.clone())) {
+        Some(command) => lines.push(format!("$ {command}")),
+        None => lines.extend(
+            known
+                .map(|t| t.title.as_str())
+                .into_iter()
+                .chain(call["title"].as_str())
+                .find(|t| !t.trim().is_empty() && *t != question)
+                .map(str::to_owned),
+        ),
+    }
+    let located: Vec<&str> = call["locations"]
+        .as_array()
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|l| l["path"].as_str())
+        .collect();
+    let paths = if located.is_empty() {
+        call["rawInput"]["path"].as_str().into_iter().collect()
+    } else {
+        located
+    };
+    for path in paths.iter().flat_map(|p| p.split(", ")).map(str::trim) {
+        if !path.is_empty() && !lines.iter().any(|l| l == path) {
+            lines.push(path.to_owned());
+        }
+    }
+    clip(&lines.join("\n"), DETAIL_MAX)
 }

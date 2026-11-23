@@ -15,7 +15,9 @@ How the code is organised. Owned by agents; must follow
 - One CLI process per conversation, under its **holder** (I24): `leon hold
   <data>/runs/<conversation> -- <cli> <args…>`, the app's own binary, in its
   own process group so it outlives the app (`leon-backends`: `holder.rs`
-  runs in the holder, `conn.rs` is the app's side). The holder keeps the
+  runs in the holder, `conn.rs` is the app's side; a deleted conversation's
+  holder is stopped and its folder removed, `conn::discard`, and its Claude
+  Code session files go, `sessions.rs`). The holder keeps the
   CLI's stdin open, appends its stdout to `out` and stderr to `err`, takes
   the app's lines on the Unix socket `sock` (`>line` to stdin, `!stop`),
   and writes `exit` once the CLI has ended and its output is whole. The app
@@ -157,7 +159,7 @@ ships.
 
 | | Claude Code | Codex | Copilot CLI |
 |---|---|---|---|
-| Checked on | 2.1.288 local | 0.160.0 local | docs + ACP schema v1.32.0, 2026-11-17; not run |
+| Checked on | 2.1.288 local | 0.160.0 local | docs + ACP schema v1.32.0, 2026-11-17; 1.0.114 local: live tests 2026-11-18, a permission request recorded 2026-11-22 (`fixtures/copilot/1.0.114`) |
 | Transport | `-p --input-format stream-json --output-format stream-json --include-partial-messages` (local) | `codex app-server` JSON-RPC, marked experimental; schema from `generate-json-schema` (local) | `copilot --acp --stdio` (preview) |
 | Agent | `--agent`, `--agents <json>` (local) | No `--agent` flag (local) → agent's instructions in `thread/start.developerInstructions` (local schema) | instructions in ACP `systemPrompt` when advertised, else before the first prompt |
 | Model / effort | `--model <full id>`, `--effort`; Leon always passes both. Ids and defaults checked 2026-11-17: `opus` and the default run `claude-opus-5-5`, `sonnet` `claude-sonnet-5-5`, `haiku` `claude-haiku-4-5`; Claude Code reports no default effort, Leon uses `high` | `turn/start.model`, `turn/start.effort`; `model/list` default `gpt-6-luna`, effort `medium` | `--model=`, `--effort=` flags ⚠️ with `--acp`; Leon uses `medium` |

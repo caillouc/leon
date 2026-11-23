@@ -349,7 +349,7 @@ mod tests {
                 project: ProjectId(1),
                 title: String::new(),
                 pinned: false,
-                archived: false,
+                archived: None,
                 unread: false,
                 updated_at: 0,
                 folders: folders.clone(),

@@ -73,7 +73,7 @@ impl Workspace {
 
     fn flow_items(&self, id: FlowId, cx: &mut Context<Self>) -> Option<Vec<AnyElement>> {
         let c = &self.snapshot.flow(id)?.flow;
-        let (pinned, archived, unread) = (c.pinned, c.archived, c.unread);
+        let (pinned, archived, unread) = (c.pinned, c.archived.is_some(), c.unread);
         let mut items = vec![
             menu_item("rename", "Rename", false, cx, move |this, window, cx| {
                 this.start_rename(id, window, cx);

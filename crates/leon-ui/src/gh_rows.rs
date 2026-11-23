@@ -181,8 +181,8 @@ pub(crate) fn issue_ref_row(item: &GhRef) -> AnyElement {
 impl Workspace {
     /// An issue, its icon in its board column's colour. Under its title:
     /// its repository, board fields and labels. In the lists (`in_list`),
-    /// a link to the flow started for it, else "Start conversation" on
-    /// hover.
+    /// a link to the flow started for it, and "Start flow" on hover, even
+    /// when one was started.
     pub(crate) fn issue_row(
         &self,
         issue: &Issue,
@@ -201,7 +201,7 @@ impl Workspace {
             .child(labels(&issue.labels))
             .children(linked.map(|flow| flow_link(&item.text(), flow, cx)));
         Row {
-            hover: (in_list && linked.is_none()).then(|| self.issue_action(issue, cx)),
+            hover: in_list.then(|| self.start_flow_button(issue, cx)),
             item,
             icon: icon(Icon::Issue, self.issue_color(issue.status.as_ref()), 16.)
                 .into_any_element(),

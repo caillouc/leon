@@ -112,6 +112,11 @@ const MIGRATIONS: &[&str] = &[
       WHERE other.updated_at > flows.updated_at
          OR (other.updated_at = flows.updated_at AND other.id > flows.id)
     );",
+    // 16: when each flow was archived (NAV-8), so Leon deletes it a month
+    // later; one archived before is counted from now, never at once.
+    "ALTER TABLE flows ADD COLUMN archived_at INTEGER;
+    UPDATE flows SET archived_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    WHERE archived = 1;",
 ];
 
 /// Latest schema version this build knows.
@@ -312,5 +317,33 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(titles, ["new", "tie", "old"]);
+    }
+
+    /// A flow archived before Leon knew when is counted from the
+    /// migration, so it is not deleted at once (NAV-8).
+    #[test]
+    fn flows_already_archived_count_from_now() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..15] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 15).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, path, added_at) VALUES (1, 'api', '/code/api', 0);
+             INSERT INTO flows (id, project_id, title, updated_at, archived) VALUES
+               (1, 1, 'archived', 10, 1), (2, 1, 'live', 10, 0);",
+        )
+        .unwrap();
+        run(&mut conn).unwrap();
+        let at: Vec<Option<i64>> = conn
+            .prepare("SELECT archived_at FROM flows ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        // 2026-01-01, well before any run of this test.
+        assert!(at[0].is_some_and(|t| t > 1_767_225_600_000), "{at:?}");
+        assert_eq!(at[1], None);
     }
 }

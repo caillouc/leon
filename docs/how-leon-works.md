@@ -117,7 +117,8 @@ on the flow's row, until you tick it off; `list_todos` reads them).
   progress…), in the board's order. A click opens the issue on GitHub;
   "Start flow" opens the new-flow form in the project whose
   `origin` remote is the issue's repository, with the issue's title and link
-  as the first message.
+  as the first message. It stays offered once a flow was started for the
+  issue ("Open flow" goes to that one), so an issue can have several flows.
 - Clicking a file in Changes or Branch opens a drawer with every file's
   diff, at the one clicked. Press a line's + to comment, or drag it over
   several lines; comments pile up into one review sent from the drawer.

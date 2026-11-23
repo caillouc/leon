@@ -1,7 +1,7 @@
 //! A holder and Leon's connection to it, with `cat` as the CLI: what Leon
 //! sends comes back as the CLI's output. Temporary folders only.
 
-use super::{Holders, Opening, ended, find, turn_ended, turn_started};
+use super::{Holders, Opening, discard, ended, find, turn_ended, turn_started};
 use crate::holder::{EXIT, hold};
 
 /// A holder for `cat` in `dir`, run in this test's runtime (Leon starts a
@@ -98,4 +98,34 @@ async fn an_idle_cli_ends_when_leon_goes_away() {
     // Nothing to come back to: forgotten, its folder removed.
     assert!(find(&holders, "8").is_none());
     assert!(!dir.exists());
+}
+
+/// A deleted conversation's holder ends its CLI, even mid-turn, and its
+/// folder goes (NAV-8).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_discarded_conversation_stops_and_leaves_no_folder() {
+    let runs = tempfile::tempdir().unwrap();
+    let holders = Holders {
+        exe: std::path::PathBuf::from("leon"),
+        runs: runs.path().to_owned(),
+    };
+    let dir = holders.dir("7");
+    let holder = holding(&dir);
+    for _ in 0..200 {
+        if dir.join(super::SOCK).exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    turn_started(&dir);
+    discard(&holders, "7");
+    assert!(!dir.exists());
+    // It ends (failing to note its end in the folder now gone).
+    tokio::time::timeout(std::time::Duration::from_secs(5), holder)
+        .await
+        .expect("the holder ends")
+        .unwrap()
+        .ok();
+    // Nothing left to discard: nothing happens.
+    discard(&holders, "8");
 }

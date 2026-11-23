@@ -16,6 +16,10 @@ const DETAIL_MAX: usize = 200;
 pub(super) struct OpenTool {
     pub title: String,
     pub kind: String,
+    /// The shell command it runs (`rawInput.command`), when it runs one: what
+    /// a permission request about it shows (Copilot CLI 1.0.114 asks with the
+    /// paths only, under the same id).
+    pub command: Option<String>,
 }
 
 /// The agent message being streamed and the tool calls still open.
@@ -94,6 +98,7 @@ impl Turn {
         let tool = OpenTool {
             title: update["title"].as_str().unwrap_or_default().to_owned(),
             kind: update["kind"].as_str().unwrap_or("other").to_owned(),
+            command: command(update),
         };
         let (name, detail) = describe(&tool);
         out.push(BackendEvent::Tool {
@@ -106,8 +111,17 @@ impl Turn {
         out
     }
 
-    /// An update of a tool call: the files an edit names, then its end.
+    /// An update of a tool call: its command if it gives one, the files an
+    /// edit names, then its end.
     fn tool_update(&mut self, update: &Value) -> Vec<BackendEvent> {
+        if let (Some(c), Some(tool)) = (
+            command(update),
+            update["toolCallId"]
+                .as_str()
+                .and_then(|id| self.tools.get_mut(id)),
+        ) {
+            tool.command = Some(c);
+        }
         let mut out: Vec<BackendEvent> = self.files(update).into_iter().collect();
         out.extend(self.tool_status(update));
         out
@@ -167,6 +181,15 @@ impl Turn {
 
 /// Name and detail of a tool call: Leon's verb for its kind and the agent's
 /// title, or the title alone for kinds with no verb.
+/// A tool call's shell command, from its `rawInput` (ACP schema; Copilot
+/// CLI 1.0.114 sends it for `execute`).
+pub(super) fn command(call: &Value) -> Option<String> {
+    call["rawInput"]["command"]
+        .as_str()
+        .filter(|c| !c.trim().is_empty())
+        .map(str::to_owned)
+}
+
 fn describe(tool: &OpenTool) -> (String, String) {
     let verb = match tool.kind.as_str() {
         "read" => "Read",

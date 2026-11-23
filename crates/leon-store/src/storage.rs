@@ -81,7 +81,12 @@ fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
         project: ProjectId(row.get(1)?),
         title: row.get(2)?,
         pinned: row.get(3)?,
-        archived: row.get(4)?,
+        // The time it was archived, while it is.
+        archived: row
+            .get::<_, bool>(4)?
+            .then(|| row.get::<_, Option<i64>>(9))
+            .transpose()?
+            .flatten(),
         unread: row.get(5)?,
         updated_at: row.get(6)?,
         folders: folders(&row.get::<_, String>(7)?),
@@ -199,7 +204,8 @@ impl Storage for Store {
         let conn = self.lock();
         let mut stmt = conn
             .prepare_cached(
-                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders, todo_position
+                "SELECT id, project_id, title, pinned, archived, unread, updated_at, folders, todo_position,
+                        archived_at
                  FROM flows
                  ORDER BY updated_at DESC, id DESC",
             )
@@ -246,7 +252,7 @@ impl Storage for Store {
             project,
             title: title.to_owned(),
             pinned: false,
-            archived: false,
+            archived: None,
             unread: false,
             updated_at: now,
             folders: Vec::new(),
@@ -261,16 +267,17 @@ impl Storage for Store {
         let tx = conn.transaction().map_err(err(C))?;
         tx.execute(
             "UPDATE flows SET title = ?2, pinned = ?3, archived = ?4, unread = ?5, updated_at = ?6,
-             folders = ?7 WHERE id = ?1",
+             folders = ?7, archived_at = ?8 WHERE id = ?1",
             params![
                 c.id.0,
                 c.title,
                 c.pinned,
-                c.archived,
+                c.archived.is_some(),
                 c.unread,
                 c.updated_at,
                 serde_json::Value::from(c.folders.iter().map(|p| path_text(p)).collect::<Vec<_>>())
                     .to_string(),
+                c.archived,
             ],
         )
         .map_err(err(C))?;
@@ -717,5 +724,24 @@ mod tests {
         let store = Store::open(&path).unwrap();
         let shown = leon_domain::todo_flows(&store.list_flows().unwrap(), &store.todos().unwrap());
         assert_eq!(shown, [second.id, first.id]);
+    }
+
+    /// When a flow was archived is kept across restarts, and cleared when
+    /// it leaves the archive (NAV-8).
+    #[test]
+    fn the_archive_time_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let store = Store::open(&path).unwrap();
+        let project = store.add_project("api", Path::new("/code/api"), 1).unwrap();
+        let mut flow = store.create_flow(project.id, "Fix", 1).unwrap();
+        flow.archived = Some(42);
+        store.update_flow(&flow).unwrap();
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.list_flows().unwrap()[0].archived, Some(42));
+        flow.archived = None;
+        store.update_flow(&flow).unwrap();
+        assert_eq!(store.list_flows().unwrap()[0].archived, None);
     }
 }

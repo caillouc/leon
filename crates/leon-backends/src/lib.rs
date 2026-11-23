@@ -22,6 +22,7 @@ mod mcp;
 mod options;
 mod process;
 mod rpc;
+mod sessions;
 mod summary;
 mod title;
 mod told;
@@ -43,6 +44,9 @@ pub struct Clis {
     /// The holders the CLIs run under, so they outlive Leon (I24); none in
     /// tests: the CLIs are Leon's own children there.
     holders: Option<conn::Holders>,
+    /// The user's home, where the CLIs keep their sessions: a deleted
+    /// conversation's goes with it (NAV-8); none in tests.
+    home: Option<std::path::PathBuf>,
 }
 
 impl Clis {
@@ -52,6 +56,7 @@ impl Clis {
             path,
             skills: None,
             holders: None,
+            home: None,
         }
     }
 
@@ -60,6 +65,14 @@ impl Clis {
     #[must_use]
     pub fn with_skills_folder(mut self, folder: std::path::PathBuf) -> Self {
         self.skills = Some(folder);
+        self
+    }
+
+    /// Removes a deleted conversation's session from the CLI's files under
+    /// `home`, where the CLI keeps them in files alone (NAV-8).
+    #[must_use]
+    pub fn with_home(mut self, home: std::path::PathBuf) -> Self {
+        self.home = Some(home);
         self
     }
 
@@ -171,6 +184,23 @@ impl Backends for Clis {
 
     fn options(&self, backend: BackendKind) -> BackendOptions {
         options::for_backend(backend)
+    }
+
+    fn discard(
+        &self,
+        id: leon_domain::ConversationId,
+        session: Option<leon_core::ports::CliSession>,
+    ) {
+        if let Some(holders) = self.holders.as_ref() {
+            conn::discard(holders, &id.0.to_string());
+        }
+        // Codex and Copilot CLI index their sessions in databases of their
+        // own too: theirs stay (sessions.rs).
+        if let (Some(home), Some((BackendKind::ClaudeCode, session))) =
+            (self.home.as_deref(), session)
+        {
+            sessions::discard_claude(&home.join(".claude").join("projects"), &session);
+        }
     }
 
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError> {

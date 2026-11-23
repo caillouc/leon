@@ -34,7 +34,8 @@ pub use diff::{
 };
 pub use doctor::{DoctorCheck, DoctorSection, Health, version_check, version_in};
 pub use flow::{
-    Attention, Conversation, ConversationId, ConversationSettings, Flow, FlowId, Status,
+    ARCHIVE_KEPT_MS, Attention, Conversation, ConversationId, ConversationSettings, Flow, FlowId,
+    Status,
 };
 pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,

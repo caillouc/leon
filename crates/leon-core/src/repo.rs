@@ -440,6 +440,7 @@ impl Core {
             Internal::QuickTick => self.quick_refresh(),
             Internal::Tick => {
                 self.stop_idle_clis();
+                self.purge_archive();
                 for dir in self.open_folders() {
                     self.refresh_folder_pr(dir);
                 }
@@ -461,7 +462,7 @@ impl Core {
         self.state
             .flows
             .iter()
-            .filter(|c| !c.archived)
+            .filter(|c| c.archived.is_none())
             .flat_map(|c| self.state.folders_of(c.id))
             .filter(|dir| seen.insert(dir.clone()))
             .collect()

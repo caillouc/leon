@@ -33,7 +33,7 @@ impl Core {
             .state
             .flows
             .iter()
-            .filter(|c| !c.archived)
+            .filter(|c| c.archived.is_none())
             .flat_map(|c| c.links.iter().cloned())
             .filter(|item| seen.insert(item.clone()))
             .collect();

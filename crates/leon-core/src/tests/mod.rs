@@ -1,6 +1,7 @@
 //! Core behaviour with fake storage, CLIs, git and GitHub.
 
 mod agents;
+mod archive;
 mod folders;
 mod held;
 mod repo;
@@ -152,7 +153,7 @@ impl Storage for FakeStorage {
             project,
             title: title.into(),
             pinned: false,
-            archived: false,
+            archived: None,
             unread: false,
             updated_at: now,
             folders: Vec::new(),
@@ -248,6 +249,8 @@ struct FakeBackends {
     title: Mutex<Option<String>>,
     /// Copilot CLI's connectors wait for this, to test a slow CLI.
     copilot_answers: std::sync::atomic::AtomicBool,
+    /// The conversations whose leftovers were removed, and their sessions.
+    discarded: Mutex<Vec<(ConversationId, Option<crate::ports::CliSession>)>>,
 }
 
 impl Backends for FakeBackends {
@@ -260,6 +263,9 @@ impl Backends for FakeBackends {
             events: event_tx,
         });
         Ok(BackendChannel { commands, events })
+    }
+    fn discard(&self, id: ConversationId, session: Option<crate::ports::CliSession>) {
+        self.discarded.lock().unwrap().push((id, session));
     }
     fn held(&self) -> Vec<ConversationId> {
         self.held

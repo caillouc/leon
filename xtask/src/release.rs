@@ -16,10 +16,11 @@ use crate::bundle::{build_app, run, signing_identity, workspace_root};
 
 pub(crate) fn release() -> bool {
     let identity = signing_identity();
-    if !identity.starts_with("Developer ID Application:") {
+    if !identity.name.starts_with("Developer ID Application:") {
         eprintln!(
             "release: needs a \"Developer ID Application\" certificate in the keychain \
-             (or LEON_SIGN_IDENTITY); found \"{identity}\""
+             (or LEON_SIGN_IDENTITY); found \"{}\"",
+            identity.name
         );
         return false;
     }
@@ -37,7 +38,7 @@ pub(crate) fn release() -> bool {
                 "runtime",
                 "--timestamp",
                 "--sign",
-                &identity,
+                &identity.key,
                 path,
             ],
         )
@@ -45,7 +46,7 @@ pub(crate) fn release() -> bool {
     if !sign(&app) {
         return false;
     }
-    println!("release: signed with \"{identity}\"");
+    println!("release: signed with \"{}\"", identity.name);
     let root = workspace_root();
     let dmg = root.join(format!(
         "target/release/Leon-{}.dmg",

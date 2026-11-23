@@ -410,6 +410,9 @@ impl BackendOptions {
     }
 }
 
+/// A conversation's CLI and that CLI's own id of its session.
+pub type CliSession = (BackendKind, String);
+
 /// Starts CLI sessions. Must be called inside the core's tokio runtime.
 pub trait Backends: Send + Sync + 'static {
     /// Starts a CLI session.
@@ -424,6 +427,13 @@ pub trait Backends: Send + Sync + 'static {
     /// Connectors view (TOOLS-1): `backend`'s plugins, MCP servers and
     /// account connectors, with their state. Blocks; can take seconds.
     fn connectors(&self, backend: BackendKind) -> leon_domain::CliConnectors;
+    /// Removes what conversation `id` leaves once deleted (NAV-8): its CLI,
+    /// stopped, Leon's log of it, and `session` (its CLI and that CLI's
+    /// session id) where the CLI keeps sessions in files alone. Blocks
+    /// briefly.
+    fn discard(&self, id: ConversationId, session: Option<CliSession>) {
+        let _ = (id, session);
+    }
     /// The conversations whose CLI may still run from before Leon started
     /// (I24).
     fn held(&self) -> Vec<leon_domain::ConversationId> {

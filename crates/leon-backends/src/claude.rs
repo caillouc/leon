@@ -294,6 +294,12 @@ impl Parser {
             Some("control_request") => self.asks.request(&v),
             Some("assistant") if top_level => self.assistant(&v),
             Some("user") if top_level => self.tool_results(&v),
+            // A result of Claude Code's own, not of the user's message: on
+            // resume, 2.1.288 first reports a background shell of the
+            // previous session and closes that report with a result
+            // (`origin.kind`: "task-notification", seen 2026-11-23). The
+            // user's turn goes on.
+            Some("result") if v["origin"]["kind"] == "task-notification" => Vec::new(),
             Some("result") => {
                 let mut out = Vec::new();
                 if v["is_error"] == true && v["subtype"] != "success" {
@@ -464,6 +470,32 @@ mod tests {
             events.last(),
             Some(BackendEvent::TurnEnded { stopped: false, .. })
         ));
+    }
+
+    /// Recorded from Claude Code 2.1.288 resumed on a conversation, 2026-11-23
+    /// (its first four lines; the turn after them in the documented shapes):
+    /// it first reports a background shell of the previous session, with a
+    /// `result` of its own (`origin: task-notification`), then answers the
+    /// user. Only the user's turn ends: the first result ends nothing.
+    #[test]
+    fn a_task_notification_on_resume_ends_no_turn() {
+        let events = parse_all(include_str!(
+            "../fixtures/claude/2.1.288/resume-task-notification.jsonl"
+        ));
+        let ended: Vec<&BackendEvent> = events
+            .iter()
+            .filter(|e| matches!(e, BackendEvent::TurnEnded { .. }))
+            .collect();
+        assert_eq!(ended.len(), 1, "{events:?}");
+        assert!(matches!(
+            events.last(),
+            Some(BackendEvent::TurnEnded { .. })
+        ));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BackendEvent::Text(t) if t == "Looking at the code."))
+        );
     }
 
     /// Documented stream-json shapes (⚠️ not recorded yet: needs a logged-in

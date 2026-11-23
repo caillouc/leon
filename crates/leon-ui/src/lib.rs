@@ -18,6 +18,7 @@ mod diff_rows;
 mod diff_split;
 mod diff_view;
 mod doctor;
+mod drafts;
 mod drag_line;
 mod drawer;
 mod flash;

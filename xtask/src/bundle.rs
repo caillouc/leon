@@ -35,13 +35,13 @@ pub(crate) fn bundle(install: bool) -> bool {
         return false;
     };
     let identity = signing_identity();
-    if identity == "-" {
+    if identity.key == "-" {
         println!(
             "bundle: signed ad hoc; macOS will ask again for folder access. Add your \
              Apple developer certificate, or create one named \"Leon Local\" (README)."
         );
     } else {
-        println!("bundle: signed with \"{identity}\"");
+        println!("bundle: signed with \"{}\"", identity.name);
     }
     if !run(
         "codesign",
@@ -49,7 +49,7 @@ pub(crate) fn bundle(install: bool) -> bool {
             "--force",
             "--deep",
             "--sign",
-            &identity,
+            &identity.key,
             &app.to_string_lossy(),
         ],
     ) {
@@ -136,30 +136,49 @@ pub(crate) fn run(program: &str, args: &[&str]) -> bool {
     }
 }
 
+/// A code-signing certificate: its name, and what `codesign` is given to
+/// pick it (its SHA-1 hash: two certificates can share a name, a renewed one
+/// and the one it replaces, and `codesign` refuses an ambiguous name).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Identity {
+    pub name: String,
+    pub key: String,
+}
+
 /// The certificate to sign with: `LEON_SIGN_IDENTITY`, else the best
 /// code-signing identity of the keychain (see [`pick_identity`]), else `-`
 /// (ad hoc).
-pub(crate) fn signing_identity() -> String {
+pub(crate) fn signing_identity() -> Identity {
     if let Ok(name) = std::env::var("LEON_SIGN_IDENTITY")
         && !name.trim().is_empty()
     {
-        return name;
+        return Identity {
+            key: name.clone(),
+            name,
+        };
     }
     let listed = Command::new("security")
         .args(["find-identity", "-v", "-p", "codesigning"])
         .output()
         .map_or_default(|out| String::from_utf8_lossy(&out.stdout).into_owned());
-    pick_identity(&listed).unwrap_or_else(|| "-".to_owned())
+    pick_identity(&listed).unwrap_or_else(|| Identity {
+        name: "-".to_owned(),
+        key: "-".to_owned(),
+    })
 }
 
 /// From `security find-identity` output (`  1) <hash> "<name>"` lines), the
 /// identity macOS keeps folder permissions for across rebuilds: an Apple
 /// Developer ID, else an Apple Development certificate (both from an Apple
 /// developer account), else the self-signed "Leon Local".
-fn pick_identity(listed: &str) -> Option<String> {
-    let names: Vec<&str> = listed
+fn pick_identity(listed: &str) -> Option<Identity> {
+    let found: Vec<(&str, &str)> = listed
         .lines()
-        .filter_map(|line| line.split('"').nth(1))
+        .filter_map(|line| {
+            let mut parts = line.split('"');
+            let key = parts.next()?.split_whitespace().nth(1)?;
+            Some((key, parts.next()?))
+        })
         .collect();
     [
         "Developer ID Application:",
@@ -167,8 +186,11 @@ fn pick_identity(listed: &str) -> Option<String> {
         "Leon Local",
     ]
     .into_iter()
-    .find_map(|kind| names.iter().find(|name| name.starts_with(kind)))
-    .map(|name| (*name).to_owned())
+    .find_map(|kind| found.iter().find(|(_, name)| name.starts_with(kind)))
+    .map(|(key, name)| Identity {
+        name: (*name).to_owned(),
+        key: (*key).to_owned(),
+    })
 }
 
 #[cfg(test)]
@@ -177,7 +199,7 @@ mod tests {
 
     #[test]
     fn a_developer_account_certificate_comes_first() {
-        let line = |n: u8, name: &str| format!("  {n}) 0123ABCD \"{name}\"\n");
+        let line = |n: u8, name: &str| format!("  {n}) HASH{n} \"{name}\"\n");
         let dev = "Apple Development: Dev Name (TEAM123)";
         let id = "Developer ID Application: Dev Name (TEAM123)";
         let cases = [
@@ -190,7 +212,19 @@ mod tests {
             ("     0 valid identities found\n".to_owned(), None),
         ];
         for (listed, expected) in cases {
-            assert_eq!(pick_identity(&listed).as_deref(), expected, "{listed}");
+            let picked = pick_identity(&listed);
+            let name = picked.as_ref().map(|i| i.name.as_str());
+            assert_eq!(name, expected, "{listed}");
         }
+    }
+
+    /// Two certificates of one name (a renewed one): the first is signed
+    /// with by its hash, which `codesign` takes where the name is ambiguous.
+    #[test]
+    fn a_certificate_is_picked_by_its_hash() {
+        let name = "Developer ID Application: Dev Name (TEAM123)";
+        let listed = format!("  1) AAAA \"{name}\"\n  2) BBBB \"{name}\"\n");
+        let picked = pick_identity(&listed).map(|i| (i.key, i.name));
+        assert_eq!(picked, Some(("AAAA".to_owned(), name.to_owned())));
     }
 }

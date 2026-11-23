@@ -113,7 +113,7 @@ impl Workspace {
         let archived: Vec<_> = snapshot
             .flows
             .iter()
-            .filter(|c| c.flow.archived)
+            .filter(|c| c.flow.archived.is_some())
             .filter(matches)
             .collect();
         if !archived.is_empty() {
@@ -387,10 +387,10 @@ pub(crate) fn now_ms() -> i64 {
 
 /// Shown under Pinned.
 fn is_pinned(c: &FlowView) -> bool {
-    c.flow.pinned && !c.flow.archived
+    c.flow.pinned && c.flow.archived.is_none()
 }
 
 /// Shown under its project.
 fn in_project(c: &FlowView, project: leon_domain::ProjectId) -> bool {
-    c.flow.project == project && !c.flow.pinned && !c.flow.archived
+    c.flow.project == project && !c.flow.pinned && c.flow.archived.is_none()
 }

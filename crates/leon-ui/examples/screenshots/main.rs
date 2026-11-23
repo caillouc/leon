@@ -131,9 +131,12 @@ fn conversation(
         },
         question: (id == 3).then(|| Question {
             id: "q".into(),
-            title: "Run this command?".into(),
-            detail: "cargo test --workspace".into(),
-            options: strings(&["Allow once", "Deny"]),
+            title: "Access paths outside trusted directories".into(),
+            detail: "$ cd /code/api && git worktree add -q ../api-fix -b fix origin/main && cd \
+                     ../api-fix && make sync >/tmp/sync.log 2>&1; git log --oneline -1\n\
+                     /code/api-fix/sync\n/code/api-fix/log"
+                .into(),
+            options: strings(&["Allow once", "Always allow", "Deny"]),
         }),
         suggestions: if id == 3 {
             strings(&["Run the tests", "Open a draft PR"])
@@ -170,7 +173,7 @@ fn flow(id: i64, project: i64, title: &str, unread: bool, pinned: bool) -> Flow 
         project: ProjectId(project),
         title: title.into(),
         pinned,
-        archived: false,
+        archived: None,
         unread,
         updated_at: hours_ago(id * 5),
         // The first flow works in two repositories (CTX-2).

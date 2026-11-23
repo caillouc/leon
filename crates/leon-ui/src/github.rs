@@ -279,18 +279,30 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// "Open flow" when one was started for the issue, else "Start
-    /// flow" in the project whose repository it belongs to.
-    pub(crate) fn issue_action(&self, issue: &Issue, cx: &mut Context<Self>) -> AnyElement {
+    /// What the drawer offers for an issue: "Open flow" when one was
+    /// started for it, and always "Start flow" (GH-2).
+    pub(crate) fn issue_actions(&self, issue: &Issue, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let item = GhRef::issue(&issue.repo, issue.number);
-        let id = SharedString::from(format!("gh-act-{}", item.text()));
-        if let Some(flow) = self.flow_for_issue(&item) {
-            return open_flow(id, flow, cx);
-        }
+        let open = self.flow_for_issue(&item).map(|flow| {
+            open_flow(
+                SharedString::from(format!("gh-open-{}", item.text())),
+                flow,
+                cx,
+            )
+        });
+        open.into_iter()
+            .chain([self.start_flow_button(issue, cx)])
+            .collect()
+    }
+
+    /// "Start flow" for an issue, in the project whose repository it
+    /// belongs to; another one when a flow was already started for it.
+    pub(crate) fn start_flow_button(&self, issue: &Issue, cx: &mut Context<Self>) -> AnyElement {
+        let item = GhRef::issue(&issue.repo, issue.number);
         let project = self.project_for_repo(&issue.repo);
         button(
-            id,
-            "Start conversation",
+            SharedString::from(format!("gh-start-{}", item.text())),
+            "Start flow",
             cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
                 this.core.send(Intent::ShowDetail(None));

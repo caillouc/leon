@@ -31,12 +31,13 @@ fn counts(sections: &[DoctorSection]) -> (usize, usize) {
     (count(Health::Problem), count(Health::Warning))
 }
 
-/// The colour of a report's worst finding.
-pub(crate) fn worst(sections: &[DoctorSection]) -> Rgba {
+/// The colour of a report's worst finding: amber for a warning, red for a
+/// problem; `None` when all works, which needs no mark.
+pub(crate) fn worst(sections: &[DoctorSection]) -> Option<Rgba> {
     match counts(sections) {
-        (0, 0) => theme::ok(),
-        (0, _) => theme::warn(),
-        _ => theme::err(),
+        (0, 0) => None,
+        (0, _) => Some(theme::warn()),
+        _ => Some(theme::err()),
     }
 }
 
@@ -191,7 +192,8 @@ pub(crate) fn report(sections: &[DoctorSection]) -> Vec<AnyElement> {
 mod tests {
     use leon_domain::{DoctorCheck, DoctorSection, Health};
 
-    use super::{counts, summary};
+    use super::{counts, summary, worst};
+    use crate::theme;
 
     #[test]
     fn the_summary_counts_problems_and_warnings() {
@@ -207,5 +209,18 @@ mod tests {
         assert_eq!(summary(1, 1), "1 problem, 1 warning");
         assert_eq!(summary(0, 2), "2 warnings");
         assert_eq!(summary(0, 0), "Everything works");
+        // The left pane's dot: red for a problem, amber for a warning, none
+        // when all works.
+        let ok = DoctorSection {
+            title: "Git".into(),
+            checks: vec![DoctorCheck::new(Health::Ok, "Installed", "yes")],
+        };
+        let warned = DoctorSection {
+            title: "Git".into(),
+            checks: vec![DoctorCheck::new(Health::Warning, "Version", "old")],
+        };
+        assert_eq!(worst(&sections), Some(theme::err()));
+        assert_eq!(worst(std::slice::from_ref(&warned)), Some(theme::warn()));
+        assert_eq!(worst(&[ok]), None);
     }
 }

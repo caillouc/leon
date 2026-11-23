@@ -102,6 +102,23 @@ pub(crate) fn open(
     Ok(Opening::Held { dir, from: 0 })
 }
 
+/// Conversation `key` is gone (NAV-8): its holder, if it runs, ends its CLI
+/// (`!stop`, even mid-turn), and its folder goes.
+pub(crate) fn discard(holders: &Holders, key: &str) {
+    let dir = holders.dir(key);
+    if dir.join(SOCK).exists()
+        && !dir.join(EXIT).exists()
+        && let Ok(mut socket) = std::os::unix::net::UnixStream::connect(dir.join(SOCK))
+    {
+        let _ = std::io::Write::write_all(&mut socket, b"!stop\n");
+    }
+    if let Err(error) = std::fs::remove_dir_all(&dir)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::warn!(%error, conversation = key, "removing a conversation's run folder");
+    }
+}
+
 /// Conversation `key`'s holder from before Leon started, if it still runs
 /// or its turn was not read to the end; and whether a turn was running.
 pub(crate) fn find(holders: &Holders, key: &str) -> Option<(Opening, bool)> {
