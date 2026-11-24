@@ -366,10 +366,11 @@ async fn removing_a_project_forgets_it_and_its_flows() {
     assert!(h.storage.flows.lock().unwrap().is_empty());
 }
 
-/// What a CLI says of the plan's limits is kept for that CLI, the latest
-/// replacing the one before (DOCTOR-2).
+/// What a CLI says of its plan — windows and credits — is kept for that
+/// CLI with when it said it, the latest replacing the one before, and saved
+/// for the next launch (DOCTOR-2, USE-1).
 #[tokio::test(flavor = "multi_thread")]
-async fn a_clis_latest_limits_are_shown() {
+async fn a_clis_latest_plan_usage_is_kept() {
     let h = harness();
     new_flow(&h, BackendKind::Codex).await;
     started(&h, 1).await;
@@ -378,14 +379,52 @@ async fn a_clis_latest_limits_are_shown() {
         used,
         resets_at: Some(1_000),
     };
-    emit(&h, 0, BackendEvent::Limits(vec![window(10)]));
-    until(&h.core, "first limits", |s| !s.limits.is_empty()).await;
-    emit(&h, 0, BackendEvent::Limits(vec![window(42)]));
-    let s = until(&h.core, "latest limits", |s| {
-        s.limits.first().is_some_and(|(_, w)| w[0].used == 42)
+    let said = |used, credits: Option<&str>| BackendEvent::Limits {
+        windows: vec![window(used)],
+        credits: credits.map(str::to_owned),
+    };
+    emit(&h, 0, said(10, Some("1300")));
+    until(&h.core, "first usage", |s| !s.usage.is_empty()).await;
+    emit(&h, 0, said(42, None));
+    let s = until(&h.core, "latest usage", |s| {
+        s.usage.first().is_some_and(|u| u.windows[0].used == 42)
     })
     .await;
-    assert_eq!(*s.limits, [(BackendKind::Codex, vec![window(42)])]);
+    let expected = leon_domain::PlanUsage {
+        backend: BackendKind::Codex,
+        windows: vec![window(42)],
+        credits: None,
+        at: 1_000,
+    };
+    assert_eq!(*s.usage, std::slice::from_ref(&expected));
+    assert_eq!(*h.storage.plan_usage.lock().unwrap(), [expected]);
+}
+
+/// What a CLI said of its plan before Leon started shows at once; one that
+/// can tell without a turn (Codex) is asked at launch (DOCTOR-2).
+#[tokio::test(flavor = "multi_thread")]
+async fn plan_usage_shows_from_the_start() {
+    let storage = Arc::new(FakeStorage::default());
+    let old = leon_domain::PlanUsage {
+        backend: BackendKind::ClaudeCode,
+        windows: Vec::new(),
+        credits: None,
+        at: 500,
+    };
+    storage.plan_usage.lock().unwrap().push(old.clone());
+    let core = start(
+        &tokio::runtime::Handle::current(),
+        ports(
+            Arc::clone(&storage) as Arc<dyn Storage>,
+            Arc::new(FakeBackends::default()),
+        ),
+        Settings::default(),
+    );
+    core.send(Intent::RunDoctor);
+    let s = until(&core, "both", |s| s.usage.len() == 2).await;
+    assert_eq!(s.usage[0], old);
+    assert_eq!(s.usage[1].backend, BackendKind::Codex);
+    assert_eq!(s.usage[1].credits.as_deref(), Some("900"));
 }
 
 /// Projects take the order the user drags them into, kept by the store
@@ -459,5 +498,64 @@ async fn images_go_with_the_message() {
                 PathBuf::from(format!("/data/images/{}/shot.jpg", id.0)),
             ],
         })
+    );
+}
+
+/// A message sent while the agent answers waits, shows as queued, and goes
+/// when the answer ends; a second one joins it; removed, nothing goes
+/// (CONV-19).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_message_sent_while_the_agent_answers_goes_when_it_ends() {
+    let h = harness();
+    let id = new_flow(&h, BackendKind::Codex).await;
+    next_command(&h, 0).await;
+    let send = |text: &str| {
+        h.core.send(Intent::Send {
+            conversation: id,
+            text: text.into(),
+            images: Vec::new(),
+        });
+    };
+    send("Also check the tests");
+    send("and the docs");
+    let s = until(&h.core, "queued", |s| {
+        s.conversations[&id].queued.as_deref() == Some("Also check the tests\n\nand the docs")
+    })
+    .await;
+    assert_eq!(s.flows[0].status, Status::Running);
+    let end = || {
+        emit(
+            &h,
+            0,
+            BackendEvent::TurnEnded {
+                stopped: false,
+                usage: None,
+            },
+        );
+    };
+    end();
+    assert_eq!(
+        next_command(&h, 0).await,
+        BackendCommand::Send("Also check the tests\n\nand the docs".into())
+    );
+    let s = until(&h.core, "sent", |s| s.conversations[&id].queued.is_none()).await;
+    assert_eq!(s.flows[0].status, Status::Running);
+    // Removed before the end: nothing goes.
+    send("Never mind");
+    until(&h.core, "queued again", |s| {
+        s.conversations[&id].queued.is_some()
+    })
+    .await;
+    h.core.send(Intent::Unqueue(id));
+    until(&h.core, "removed", |s| {
+        s.conversations[&id].queued.is_none()
+    })
+    .await;
+    end();
+    let s = until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
+    assert!(
+        !entries(&s, id)
+            .iter()
+            .any(|e| matches!(e, Entry::User { text } if text == "Never mind"))
     );
 }

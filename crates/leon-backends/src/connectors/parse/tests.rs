@@ -38,8 +38,9 @@ fn claude_and_codex_listings_are_read() {
             "claude mcp list",
             |out| Some(claude_servers(out)),
             include_str!("../../../fixtures/claude/2.1.288/mcp-list.txt"),
+            // AccuWeather, Booking.com and Uber, on every account, left out.
             &[
-                (Account, On, 12),
+                (Account, On, 9),
                 (Account, NeedsLogin, 20),
                 (Account, Failed, 1),
             ],
@@ -226,6 +227,15 @@ fn claude_status_lines_are_read() {
         (
             "docs: https://api.anthropic.com/v1/pages/mcp - ✔ Connected",
             Some(("docs", Server, On, "https://api.anthropic.com/v1/pages/mcp")),
+        ),
+        // On every account without the user adding them: left out too.
+        (
+            "claude.ai AccuWeather®: https://mcp.accuweather.com/mcp - ✔ Connected",
+            None,
+        ),
+        (
+            "claude.ai Booking.com: https://demandapi-mcp.booking.com/v1/mcp - ✔ Connected",
+            None,
         ),
         (
             "local: npx -y server - x - ✔ Connected",

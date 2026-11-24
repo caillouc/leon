@@ -2,8 +2,27 @@
 //! it: the share of each window its limit counts in (5 hours, a week…) and
 //! when that window starts again.
 
-/// One window of a plan's limit.
+use serde::{Deserialize, Serialize};
+
+use crate::BackendKind;
+
+/// What a CLI last said of its plan (DOCTOR-2, USE-1): its windows, the
+/// credits its account has left, and when it said it, in Unix milliseconds.
+/// Kept across restarts.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanUsage {
+    /// The CLI.
+    pub backend: BackendKind,
+    /// Its windows, shortest first.
+    pub windows: Vec<LimitWindow>,
+    /// The credits its account has left, when it has some to count.
+    pub credits: Option<String>,
+    /// When it said it.
+    pub at: i64,
+}
+
+/// One window of a plan's limit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LimitWindow {
     /// Its length, in minutes: 300 for 5 hours, 10 080 for a week.
     pub minutes: u32,

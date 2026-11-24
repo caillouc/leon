@@ -83,6 +83,10 @@ by side and published together. Each push to `main` keeps their built
 dependencies (`.github/workflows/release-cache.yml`), so a release compiles
 only Leon's own crates.
 
+Before tagging, add the version's section to `CHANGELOG.md` (`## v0.1.0`):
+what changed for users, in a few high-level lines. It becomes the release's
+notes; without it the release stops before building.
+
 ```bash
 git tag v0.1.0
 ```

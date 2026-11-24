@@ -30,19 +30,9 @@ pub(crate) fn copy_button(
     text: impl Into<gpui::SharedString>,
 ) -> gpui::Stateful<gpui::Div> {
     let text = text.into();
-    div()
-        .id(id)
-        .flex_none()
-        .p(crate::theme::rem(3.))
-        .rounded(crate::theme::rem(4.))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::surface_2()))
-        .child(icon(Icon::Copy, theme::fg_muted(), 13.))
-        .on_click(move |_, window, cx| {
-            // Not also a click on what is around it.
-            cx.stop_propagation();
-            copy(window, cx, text.to_string());
-        })
+    crate::widgets::icon_button(id, Icon::Copy, None, move |_, window, cx| {
+        copy(window, cx, text.to_string());
+    })
 }
 
 /// Puts `text` on the clipboard and shows "Copied" where the user clicked.

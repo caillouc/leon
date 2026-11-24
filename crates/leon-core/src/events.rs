@@ -98,7 +98,7 @@ pub(crate) fn apply(core: &mut Core, id: ConversationId, event: BackendEvent) {
             }
             core.record_entry(id, Entry::Error { text });
         }
-        BackendEvent::Limits(windows) => limits(core, id, windows),
+        BackendEvent::Limits { windows, credits } => plan(core, id, (windows, credits)),
     }
 }
 
@@ -165,19 +165,15 @@ fn tool_done(core: &mut Core, id: ConversationId, tool: &str, output: String, fa
     }
 }
 
-/// Keeps what conversation `id`'s CLI says of the plan's limits, for that
-/// CLI (DOCTOR-2).
-fn limits(core: &mut Core, id: ConversationId, windows: Vec<leon_domain::LimitWindow>) {
-    let state = core.state_mut();
-    let Some(backend) = state
+/// What conversation `id`'s CLI says of its plan, for that CLI (DOCTOR-2,
+/// USE-1).
+fn plan(core: &mut Core, id: ConversationId, said: crate::ports::PlanSaid) {
+    let backend = core
+        .state_mut()
         .conversations
         .get(&id)
-        .map(|s| s.conversation.settings.backend)
-    else {
-        return;
-    };
-    let all = std::sync::Arc::make_mut(&mut state.limits);
-    all.retain(|(b, _)| *b != backend);
-    all.push((backend, windows));
-    all.sort_by_key(|(b, _)| leon_domain::BackendKind::ALL.iter().position(|x| x == b));
+        .map(|s| s.conversation.settings.backend);
+    if let Some(backend) = backend {
+        core.plan_said(backend, said);
+    }
 }

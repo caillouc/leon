@@ -18,6 +18,52 @@ pub struct Settings {
     /// `ui.open_flows_on`: what a flow opens on from the left pane
     /// (SETTINGS-3).
     pub open_on: OpenOn,
+    /// `ui.editor`: the editor files and worktrees open in (GIT-7); `None`:
+    /// the first one installed.
+    pub editor: Option<Editor>,
+}
+
+/// An editor Leon opens files and worktrees in (GIT-7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Editor {
+    /// Visual Studio Code, `code`.
+    VsCode,
+    /// Zed, `zed`.
+    Zed,
+}
+
+impl Editor {
+    /// Every editor Leon knows, in the order it picks the first installed.
+    pub const ALL: [Self; 2] = [Self::VsCode, Self::Zed];
+
+    /// As the config file writes it.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::VsCode => "vscode",
+            Self::Zed => "zed",
+        }
+    }
+
+    /// From the config file's word.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|e| e.id() == id)
+    }
+
+    /// Its name in the app.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::VsCode => "VS Code",
+            Self::Zed => "Zed",
+        }
+    }
+
+    /// Where files open: the `chosen` one when installed, else the first
+    /// installed.
+    pub fn pick(chosen: Option<Self>, installed: &[Self]) -> Option<Self> {
+        chosen
+            .filter(|e| installed.contains(e))
+            .or_else(|| installed.first().copied())
+    }
 }
 
 /// The app's zoom, in percent: text, icons, spacing and widths

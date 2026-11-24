@@ -16,10 +16,11 @@ use crate::workspace::{Screen, Workspace};
 /// on screen: no flow has id 0 (SQLite ids start at 1).
 const NO_FLOW: leon_domain::FlowId = leon_domain::FlowId(0);
 
-/// The open drawer.
-/// Width of the drawer's list of files.
-const FILES: f32 = 280.;
+/// Width of the drawer's list of files, at first, at least and at most.
+pub(crate) const FILES: f32 = 280.;
+const FILES_RANGE: (f32, f32) = (160., 640.);
 
+/// The open drawer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Drawer {
     pub source: DiffSource,
@@ -110,7 +111,7 @@ impl Workspace {
         let files = diff.as_ref().map(|diff| {
             div()
                 .id("drawer-files")
-                .w(crate::theme::rem(FILES))
+                .w(crate::theme::rem(self.right.files_width))
                 .flex_none()
                 .h_full()
                 .overflow_y_scroll()
@@ -118,6 +119,24 @@ impl Workspace {
                 .border_color(theme::border())
                 .bg(theme::panel())
                 .children(self.file_rows(id, source, &diff.files, cx))
+        });
+        // Its right edge drags it wider or narrower.
+        let edge = files.is_some().then(|| {
+            div()
+                .id("drawer-files-edge")
+                .w(crate::theme::rem(8.))
+                .mx(crate::theme::rem(-4.))
+                .h_full()
+                .flex_none()
+                .cursor(gpui::CursorStyle::ResizeLeftRight)
+                .hover(|s| s.bg(theme::accent_soft()))
+                .on_mouse_down(
+                    gpui::MouseButton::Left,
+                    cx.listener(|this, _, _, cx| {
+                        this.right.files_drag = true;
+                        cx.stop_propagation();
+                    }),
+                )
         });
         let summary = diff.map(|diff| {
             let n = diff.files.len();
@@ -133,7 +152,21 @@ impl Workspace {
                 .child(counts(added, removed))
                 .child(diff.against)
         });
-        let header = div()
+        // A flow's own diff opens in the editor (GIT-7); a pull request's,
+        // GitHub's, says it is read-only and why.
+        let (open, read_only) = if source == DiffSource::PullRequest {
+            let why = div()
+                .text_size(crate::theme::rem(12.))
+                .text_color(theme::fg_muted())
+                .child(
+                    "Read-only: the pull request as GitHub shows it. To comment for an \
+                     agent, open the flow's Changes or Branch diff, where its files are.",
+                );
+            (None, Some(why))
+        } else {
+            (self.open_worktree(id, cx), None)
+        };
+        let title = div()
             .flex()
             .items_center()
             .gap_3()
@@ -149,15 +182,34 @@ impl Workspace {
             )
             .children(summary)
             .child(div().flex_1())
+            .children(open)
             .child(self.diff_layout_toggle(cx));
-        let body = div().flex_1().min_h_0().flex().children(files).child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(self.diff_rows(id, source, scroll_to.as_deref(), cx)),
-        );
+        let header = div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(title)
+            .children(read_only);
+        let area = std::rc::Rc::clone(&self.right.files_area);
+        let body = div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .relative()
+            .on_mouse_move(cx.listener(|this, e: &gpui::MouseMoveEvent, _, cx| {
+                this.drag_files(e, cx);
+            }))
+            .child(crate::widgets::probe(area))
+            .children(files)
+            .children(edge)
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(self.diff_rows(id, source, scroll_to.as_deref(), cx)),
+            );
         // Comments go to an agent from a flow's own diffs only.
         let review = (source != DiffSource::PullRequest)
             .then(|| self.render_review_bar(id, window, cx))
@@ -169,5 +221,27 @@ impl Workspace {
             review,
             cx.listener(|this, _, _, cx| this.close_drawer(cx)),
         ))
+    }
+
+    /// While the file list's edge is dragged, the list takes the width left
+    /// of the mouse; the drag ends when the button is up.
+    fn drag_files(&mut self, e: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
+        if !self.right.files_drag {
+            return;
+        }
+        if e.pressed_button != Some(gpui::MouseButton::Left) {
+            self.right.files_drag = false;
+            return;
+        }
+        let Some(area) = self.right.files_area.get() else {
+            return;
+        };
+        let zoom = self.snapshot.settings.zoom.factor();
+        let width =
+            (f32::from(e.position.x - area.origin.x) / zoom).clamp(FILES_RANGE.0, FILES_RANGE.1);
+        if (width - self.right.files_width).abs() > 0.5 {
+            self.right.files_width = width;
+            cx.notify();
+        }
     }
 }

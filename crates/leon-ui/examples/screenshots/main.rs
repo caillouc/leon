@@ -164,6 +164,7 @@ fn conversation(
         } else {
             Vec::new()
         },
+        queued: None,
     }
 }
 
@@ -383,13 +384,7 @@ fn options() -> HashMap<BackendKind, BackendOptions> {
                 ]),
                 efforts: strings(&["low", "medium", "high", "xhigh", "max"]),
                 default_effort: Some("high".into()),
-                permissions: strings(&[
-                    "auto",
-                    "bypassPermissions",
-                    "acceptEdits",
-                    "plan",
-                    "manual",
-                ]),
+                permissions: strings(&["auto", "bypassPermissions", "acceptEdits", "manual"]),
             },
         ),
         (
@@ -528,7 +523,7 @@ fn sample() -> Snapshot {
         git: repo::git(),
         prs: repo::prs(),
         linked_prs: repo::linked_prs(),
-        limits: repo::limits(),
+        usage: repo::usage(),
         my_issues: repo::my_issues(),
         my_prs: repo::my_prs(),
         todos: Arc::new(todos()),

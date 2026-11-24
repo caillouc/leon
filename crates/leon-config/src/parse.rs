@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::Path;
 
-use leon_domain::{BackendKind, ConversationDefaults, OpenOn, Settings, Zoom};
+use leon_domain::{BackendKind, ConversationDefaults, Editor, OpenOn, Settings, Zoom};
 use toml::{Table, Value};
 
 /// Config format version this build reads.
@@ -154,6 +154,13 @@ fn read_ui(value: &Value, settings: &mut Settings, warnings: &mut Vec<Warning>) 
                     "must be \"flow\" or \"conversation\", ignored",
                 )),
             },
+            "editor" => match value.as_str().and_then(Editor::from_id) {
+                Some(editor) => settings.editor = Some(editor),
+                None => warnings.push(Warning::new(
+                    "ui.editor",
+                    "must be \"vscode\" or \"zed\", ignored",
+                )),
+            },
             other => warnings.push(Warning::new(format!("ui.{other}"), "unknown key, ignored")),
         }
     }
@@ -282,6 +289,7 @@ mod tests {
             ("[ui]\nzoom = 400", "ui.zoom"),
             ("[ui]\nzoom = \"big\"", "ui.zoom"),
             ("[ui]\nopen_flows_on = \"graph\"", "ui.open_flows_on"),
+            ("[ui]\neditor = \"emacs\"", "ui.editor"),
             ("[ui]\nfont = \"Inter\"", "ui.font"),
         ];
         for (text, key) in cases {

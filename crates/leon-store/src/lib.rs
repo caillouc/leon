@@ -9,6 +9,7 @@
 mod migrations;
 mod storage;
 mod todos;
+mod usage;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};

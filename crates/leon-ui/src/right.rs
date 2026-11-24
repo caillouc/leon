@@ -63,6 +63,11 @@ pub(crate) struct RightState {
     pub split_ratio: f32,
     pub split_drag: bool,
     pub split_area: crate::widgets::Area,
+    /// The diff drawer's list of files: its width, dragged by its edge, and
+    /// where the drawer's body is, to follow the mouse.
+    pub files_width: f32,
+    pub files_drag: bool,
+    pub files_area: crate::widgets::Area,
     pub comment: Entity<TextareaState>,
     /// The answer to a review thread being written, and that thread's id
     /// (GH-8).
@@ -80,7 +85,7 @@ impl RightState {
     ) -> (Self, Vec<Subscription>) {
         let comment = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .auto_grow(2, 8)
+                .auto_grow(1, 8)
                 .submit_on_enter(true)
                 .placeholder("Comment for the agent")
         });
@@ -111,6 +116,9 @@ impl RightState {
             split_ratio: 0.5,
             split_drag: false,
             split_area: std::rc::Rc::default(),
+            files_width: crate::diff_drawer::FILES,
+            files_drag: false,
+            files_area: std::rc::Rc::default(),
             comment,
             thread_reply,
             replying: None,
@@ -136,12 +144,9 @@ impl Workspace {
             .bg(theme::panel())
             .border_l_1()
             .border_color(theme::border());
+        // Drawn for a flow only (workspace.rs).
         let Screen::Flow(id) = self.screen else {
-            return frame
-                .child(empty(
-                    "Select a flow to see its changes, branch diff and pull request.",
-                ))
-                .into_any_element();
+            return frame.into_any_element();
         };
         let body = match self.right_tab(id) {
             RightTab::Changes => self.render_diff(id, DiffSource::Changes, cx),

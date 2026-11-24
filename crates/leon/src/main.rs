@@ -2,6 +2,7 @@
 //! hands the UI a handle on it. No logic lives here.
 
 mod about;
+mod editors;
 mod update;
 
 use std::ffi::OsString;
@@ -76,6 +77,7 @@ fn main() -> anyhow::Result<()> {
         clock: now_ms,
         about,
         updater: Arc::new(update::SelfUpdate::new(&exe, &data)),
+        editors: Arc::new(editors::LocalEditors::new(login_path)),
     };
     let core = leon_core::start(runtime.handle(), ports, settings);
     match leon_app_tools::serve(runtime.handle(), &socket, core.app_tools()) {

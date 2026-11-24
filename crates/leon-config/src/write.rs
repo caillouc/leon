@@ -168,6 +168,12 @@ pub fn update(text: &str, settings: &Settings) -> Result<String, String> {
             value(settings.open_on.id()),
         ),
     );
+    set(
+        &mut doc,
+        "ui",
+        "editor",
+        settings.editor.map(|e| value(e.id())),
+    );
     Ok(doc.to_string())
 }
 
@@ -258,9 +264,10 @@ mod tests {
                 Settings {
                     zoom: leon_domain::Zoom(125),
                     open_on: leon_domain::OpenOn::Conversation,
+                    editor: Some(leon_domain::Editor::Zed),
                     ..Settings::default()
                 },
-                "version = 1\n\n[ui]\nzoom = 125\nopen_flows_on = \"conversation\"\n",
+                "version = 1\n\n[ui]\nzoom = 125\nopen_flows_on = \"conversation\"\neditor = \"zed\"\n",
             ),
             (
                 "version = 1\n\n[ui]\nzoom = 125\n",

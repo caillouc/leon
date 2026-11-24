@@ -288,11 +288,19 @@ impl Core {
         // works on: a turn its CLI started by itself answers there too.
         let reply_to = s.reply_to.take().or_else(|| works_for(s));
         let answer = reply_to.map(|_| last_answer(s, failed));
-        let next = s.inbox.pop_front();
+        // The user's waiting message first, then other agents' (CONV-19).
+        let queued = s.queued.take();
+        let next = if queued.is_none() {
+            s.inbox.pop_front()
+        } else {
+            None
+        };
         if let (Some(to), Some(answer)) = (reply_to, answer) {
             self.message(id, to, answer, Sent::Answer);
         }
-        if let Some(w) = next {
+        if let Some((text, images)) = queued {
+            self.send(id, &text, &images);
+        } else if let Some(w) = next {
             self.message(w.from, id, w.text, w.sent);
         }
         reply_to.is_some()

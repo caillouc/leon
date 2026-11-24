@@ -8,7 +8,7 @@ use gpui::{
 use gpui_component::input::{InputEvent, Textarea, TextareaState};
 use leon_core::Intent;
 use leon_domain::{
-    ConversationDefaults, ConversationSettings, FoldPattern, OpenOn, Settings, Zoom,
+    ConversationDefaults, ConversationSettings, Editor, FoldPattern, OpenOn, Settings, Zoom,
 };
 
 use crate::icons::{Icon, icon};
@@ -180,6 +180,12 @@ impl Workspace {
                     .child(field("Open a flow on", Self::open_on_choice(&settings, cx))),
             ))
             .child(section(
+                "Editor",
+                "Where \"Open in …\" opens a worktree, or a file of it, from a diff or \
+                 the right pane: one of the editors Leon found installed.",
+                field("Open in", self.editor_choice(&settings, cx)),
+            ))
+            .child(section(
                 "New flows",
                 "What the new-flow form starts with.",
                 div()
@@ -297,6 +303,40 @@ impl Workspace {
         div()
             .flex()
             .child(segmented("settings-zoom", options))
+            .into_any_element()
+    }
+
+    /// The editor files and worktrees open in (GIT-7): one of those
+    /// installed, the first by default.
+    fn editor_choice(&self, settings: &Settings, cx: &mut Context<Self>) -> AnyElement {
+        let installed = &self.snapshot.editors;
+        let Some(current) = Editor::pick(settings.editor, installed) else {
+            return div()
+                .text_size(crate::theme::rem(12.5))
+                .text_color(theme::fg_faint())
+                .child("None found: install VS Code or Zed, with its command-line tool")
+                .into_any_element();
+        };
+        let options = installed
+            .iter()
+            .map(|&editor| {
+                let next = Settings {
+                    editor: Some(editor),
+                    ..settings.clone()
+                };
+                let click: OnClick = Box::new(cx.listener(move |this, _, _, _| {
+                    this.save(next.clone());
+                }));
+                (
+                    SharedString::from(editor.display_name()),
+                    current == editor,
+                    click,
+                )
+            })
+            .collect();
+        div()
+            .flex()
+            .child(segmented("settings-editor", options))
             .into_any_element()
     }
 

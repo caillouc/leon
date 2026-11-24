@@ -54,6 +54,21 @@ lead to a new input box and etc. This new naming/concept can appear in the
 leon's UI if needed". Entries above and below written before this use
 "conversation" for a flow and "agent session" for a conversation.
 
+**D9 — Answers to the open questions (2026-11-24).** In the maintainer's
+words: right pane, "current right panel is fine"; talking to the coder
+directly, "keep current behavior"; queueing the next message while an
+answer runs, "if possible yes" (CONV-19); a notification when an agent asks
+a question, "yes" (NOTIF-1); review requests in My issues / PRs, "no";
+usage, "keep plan limit and show cost and credit usage when the cli is not
+based on a subscription" (USE-1); GitHub review comments, "all good here.
+keep current code"; scheduled tasks, "still to define"; theme, "keep this
+single theme for now"; command palette or several windows, "no"; resuming
+sessions started in a terminal, "no"; Windows, Linux arm64, remote/SSH,
+"maybe remote yes"; GitHub Enterprise or several accounts, "no for now";
+the UI word for the CLI choice, "same as today"; manual file editing in the
+app, "no"; Claude's plan mode, "no need for the plan permission mode of
+claude" (no longer offered in the permission picker).
+
 ## Accepted on 2026-11-17
 
 Proposals P1–P15, accepted as written by the maintainer on 2026-11-17. Their
@@ -342,3 +357,21 @@ and its MIME type (ACP v1 schema; Copilot announces `promptCapabilities.image`,
 1.0.114). The text keeps "[Image #N]" where each was put. Proposed with
 thumbnails; chosen by the maintainer on 2026-11-24: "go without thumbnails
 for now".
+
+**I28 — What each CLI said of its plan is saved (DOCTOR-2).** SQLite
+`plan_usage` (migration 17): per CLI, its windows as JSON, its credits and
+when it said it; Doctor shows it with that time until the CLI says again.
+Codex is also asked when Doctor runs, by a short `codex app-server`
+(`account/rateLimits/read`, a real run on 0.160.0, 2026-11-24). Proposed as
+"keep the last limits Leon saw" and "ask Codex at launch"; chosen by the
+maintainer on 2026-11-24: "ok for both (can you show from when the display
+usage come from)".
+
+**I29 — The user's editor (GIT-7, SETTINGS-4).** Leon finds VS Code and
+Zed by their command-line tool on the login shell's `PATH` (`code`; `zed` or
+`zeditor`), or on macOS inside their app, and opens a worktree with a file
+in it with `code <folder> -g <file>` (1.140.0) or `zed <folder> <file>`
+(1.29.3), both from their `--help` on 2026-11-24 (⚠️ the folder and file
+together not tried). Settings keeps the choice in `ui.editor`; without it,
+the first installed. Chosen by the maintainer on 2026-11-24: "Setting,
+auto-detected".

@@ -523,10 +523,15 @@ impl Render for Workspace {
                     // Every flow's to-dos, at its top right (TODO-3).
                     .child(self.todos_corner(cx)),
             )
-            .when(self.panes.right_open, |d| {
-                d.child(Self::pane_handle(Side::Right, cx))
-                    .child(self.render_right(window, cx))
-            })
+            // Only a flow has something there: other screens leave it
+            // out, and a flow shows it again as it was.
+            .when(
+                self.panes.right_open && matches!(self.screen, Screen::Flow(_)),
+                |d| {
+                    d.child(Self::pane_handle(Side::Right, cx))
+                        .child(self.render_right(window, cx))
+                },
+            )
             .children(self.render_detail(cx))
             // Over the details: a pull request's changes open from its view.
             .children(self.render_drawer(window, cx))

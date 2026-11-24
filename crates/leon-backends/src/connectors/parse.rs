@@ -191,6 +191,17 @@ const CLAUDE_STATUSES: [(&str, ConnectorState); 9] = [
 /// vendor's host.
 const ANTHROPIC_CONNECTORS: &str = "https://api.anthropic.com/";
 
+/// Account connectors on every claude.ai account, connected without the user
+/// adding or logging in to them, that `claude mcp list` does not mark as such:
+/// by their hosts, as listed on 2026-11-24 (Claude Code 2.1.288). Asked by the
+/// maintainer: "if this info cannot be retrieved dynamically, you can hard
+/// code it".
+const CLAUDE_DEFAULT_CONNECTORS: [&str; 3] = [
+    "https://mcp.accuweather.com/",
+    "https://demandapi-mcp.booking.com/",
+    "https://mcp.uber.com/",
+];
+
 /// `claude mcp list` (text only): one `name: target - <mark> status` line
 /// per server, the status sometimes followed by ` — <error>`. Names starting
 /// with `claude.ai ` are the account's connectors; the ones Anthropic provides
@@ -213,7 +224,14 @@ fn claude_server(line: &str) -> Option<Connector> {
         Some((&rest[..at], status, *state))
     })?;
     let (kind, name) = match name.strip_prefix("claude.ai ") {
-        Some(_) if target.starts_with(ANTHROPIC_CONNECTORS) => return None,
+        Some(_)
+            if target.starts_with(ANTHROPIC_CONNECTORS)
+                || CLAUDE_DEFAULT_CONNECTORS
+                    .iter()
+                    .any(|h| target.starts_with(h)) =>
+        {
+            return None;
+        }
         Some(name) => (ConnectorKind::Account, name),
         None => (ConnectorKind::Server, name),
     };

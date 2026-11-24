@@ -143,6 +143,58 @@ pub fn status_dot(status: Status) -> Div {
     }
 }
 
+/// A small icon button: icon 13 muted, then `label` (11.5 muted) when
+/// given, its background on hover (copy a branch, open a worktree in the
+/// editor). The click stays its own.
+pub fn icon_button(
+    id: impl Into<ElementId>,
+    glyph: crate::icons::Icon,
+    label: Option<SharedString>,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(crate::theme::rem(4.))
+        .p(crate::theme::rem(3.))
+        .rounded(crate::theme::rem(4.))
+        .text_size(crate::theme::rem(11.5))
+        .text_color(theme::fg_muted())
+        .whitespace_nowrap()
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::surface_2()))
+        .child(crate::icons::icon(glyph, theme::fg_muted(), 13.))
+        .children(label)
+        .on_click(move |e, window, cx| {
+            cx.stop_propagation();
+            on_click(e, window, cx);
+        })
+}
+
+/// A small text action ("+ Add project", "Open in Zed"): 11.5 muted, its
+/// background on hover.
+pub fn text_action(
+    id: impl Into<ElementId>,
+    text: impl Into<SharedString>,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .px(crate::theme::rem(6.))
+        .py(crate::theme::rem(1.))
+        .rounded_md()
+        .text_size(crate::theme::rem(11.5))
+        .text_color(theme::fg_muted())
+        .whitespace_nowrap()
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
+        .child(text.into())
+        .on_click(on_click)
+}
+
 /// A plain text button.
 pub fn button(
     id: impl Into<ElementId>,

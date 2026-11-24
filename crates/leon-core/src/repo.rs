@@ -67,6 +67,10 @@ pub(crate) enum Internal {
     Release(Result<leon_domain::Release, String>),
     /// The newer Leon is in place, or why not (DOCTOR-3).
     Installed(Result<(), String>),
+    /// A short message for the user, from a background job.
+    Flash(String),
+    /// What a CLI said of its plan without a turn (DOCTOR-2).
+    PlanUsage(leon_domain::BackendKind, crate::ports::PlanSaid),
 }
 
 impl Core {
@@ -432,6 +436,8 @@ impl Core {
             Internal::Tools(cli) => self.tools_done(cli),
             Internal::Release(release) => self.release_read(release),
             Internal::Installed(result) => self.update_installed(result),
+            Internal::PlanUsage(backend, said) => self.plan_said(backend, said),
+            Internal::Flash(message) => self.flash(message),
             Internal::PrDiff(item, files) => {
                 // Only the pull request still shown, not one closed since.
                 if let Some(diff) = self.state.pr_diff.as_mut().filter(|d| d.pr == item) {

@@ -50,6 +50,10 @@ pub trait Storage: Send + Sync + 'static {
     fn set_todo_order(&self, order: &[FlowId]) -> Result<(), PortError>;
     /// Every flow's to-dos, in the order they were added (TODO-1).
     fn todos(&self) -> Result<Vec<Todo>, PortError>;
+    /// What each CLI last said of its plan (DOCTOR-2, USE-1).
+    fn plan_usage(&self) -> Result<Vec<leon_domain::PlanUsage>, PortError>;
+    /// Keeps what a CLI said of its plan, in place of what it said before.
+    fn save_plan_usage(&self, usage: &leon_domain::PlanUsage) -> Result<(), PortError>;
     /// Adds a to-do to flow `flow`, its `(when, what)`, by the agent of
     /// conversation `by` or the user (`None`).
     fn add_todo(
@@ -324,7 +328,13 @@ pub enum BackendEvent {
     Failed(String),
     /// How much of the user's plan limits the CLI says is used, each window
     /// shortest first (DOCTOR-2).
-    Limits(Vec<leon_domain::LimitWindow>),
+    Limits {
+        /// Its windows.
+        windows: Vec<leon_domain::LimitWindow>,
+        /// The credits its account has left, as it writes them, when it
+        /// has some to count (USE-1).
+        credits: Option<String>,
+    },
 }
 
 /// The image files Leon sends (CONV-18): extension, MIME type.
@@ -468,6 +478,10 @@ impl BackendOptions {
     }
 }
 
+/// What a CLI says of its plan: its windows, and the credits its account
+/// has left when it counts some (DOCTOR-2, USE-1).
+pub type PlanSaid = (Vec<leon_domain::LimitWindow>, Option<String>);
+
 /// A conversation's CLI and that CLI's own id of its session.
 pub type CliSession = (BackendKind, String);
 
@@ -491,6 +505,12 @@ pub trait Backends: Send + Sync + 'static {
     /// briefly.
     fn discard(&self, id: ConversationId, session: Option<CliSession>) {
         let _ = (id, session);
+    }
+    /// What `backend` says of its plan without a turn — its windows and the
+    /// credits its account has left — for a CLI that can (DOCTOR-2). Blocks.
+    fn plan_usage(&self, backend: BackendKind) -> Option<PlanSaid> {
+        let _ = backend;
+        None
     }
     /// Saves an image of a message to conversation `id` with the
     /// conversation's files, and returns its path (CONV-18, I27). Blocks
@@ -611,6 +631,20 @@ pub trait GitHub: Send + Sync + 'static {
     ) -> Result<PathBuf, PortError>;
     /// Doctor: `gh` installed, its version, logged in. Blocks.
     fn doctor(&self) -> DoctorSection;
+}
+
+/// The user's editors, where files and worktrees open (GIT-7).
+pub trait Editors: Send + Sync + 'static {
+    /// The editors installed, in `Editor::ALL` order. Blocks briefly.
+    fn installed(&self) -> Vec<leon_domain::Editor>;
+    /// Opens `folder` in `editor`, and `file` in it when given. Blocks
+    /// briefly: the editor goes on by itself.
+    fn open(
+        &self,
+        editor: leon_domain::Editor,
+        folder: &Path,
+        file: Option<&Path>,
+    ) -> Result<(), PortError>;
 }
 
 /// Leon putting a newer release of itself in its own place (DOCTOR-3, I26).

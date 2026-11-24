@@ -167,6 +167,14 @@ impl Storage for Store {
         crate::todos::todos(&self.lock())
     }
 
+    fn plan_usage(&self) -> Result<Vec<leon_domain::PlanUsage>, PortError> {
+        crate::usage::plan_usage(&self.lock())
+    }
+
+    fn save_plan_usage(&self, usage: &leon_domain::PlanUsage) -> Result<(), PortError> {
+        crate::usage::save(&self.lock(), usage)
+    }
+
     fn add_todo(
         &self,
         flow: FlowId,

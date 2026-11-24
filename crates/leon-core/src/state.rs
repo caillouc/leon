@@ -39,6 +39,9 @@ pub(crate) struct ConversationState {
     pub reply_to: Option<ConversationId>,
     /// Messages from other conversations waiting for this one to finish its turn.
     pub inbox: VecDeque<Waiting>,
+    /// The user's message written while it answered, and its images: sent
+    /// when the answer ends, before the inbox (CONV-19).
+    pub queued: Option<(String, Vec<crate::ports::Image>)>,
 }
 
 /// A message from another conversation, not sent yet.
@@ -75,6 +78,7 @@ impl ConversationState {
             carry_context: false,
             reply_to: None,
             inbox: VecDeque::new(),
+            queued: None,
         }
     }
 
@@ -140,7 +144,9 @@ pub(crate) struct State {
     /// GitHub actions under way (GH-5..8).
     pub acting: Arc<std::collections::HashSet<crate::snapshot::Acting>>,
     /// How much of each CLI's plan limits is used, as it last said (DOCTOR-2).
-    pub limits: Arc<Vec<(leon_domain::BackendKind, Vec<leon_domain::LimitWindow>)>>,
+    pub usage: Arc<Vec<leon_domain::PlanUsage>>,
+    /// The editors installed (GIT-7).
+    pub editors: Arc<Vec<leon_domain::Editor>>,
     /// The GitHub repository of each project, from its `origin`.
     pub project_repos: Arc<HashMap<ProjectId, String>>,
 }
@@ -358,6 +364,7 @@ impl State {
                     waiting_for: self.waiting_for(s.conversation.id),
                     name: self.conversation_name(s.conversation.id),
                     folder: self.folder_of(s),
+                    queued: s.queued.as_ref().map(|(text, _)| text.clone()),
                 };
                 (s.conversation.id, view)
             })
@@ -406,7 +413,8 @@ impl State {
             tools: self.tools.clone(),
             tools_pending: self.tools_pending.clone(),
             acting: Arc::clone(&self.acting),
-            limits: Arc::clone(&self.limits),
+            usage: Arc::clone(&self.usage),
+            editors: Arc::clone(&self.editors),
             project_repos: Arc::clone(&self.project_repos),
         }
     }

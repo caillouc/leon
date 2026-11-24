@@ -53,7 +53,7 @@ fn problems_name_the_command_and_keep_the_other_lists() {
             BackendKind::ClaudeCode,
             Ok(printed("Installed plugins:")),
             Ok(printed(CLAUDE_SERVERS)),
-            33,
+            30,
             Some("`claude plugin list --json` printed a list Leon cannot read"),
         ),
         (

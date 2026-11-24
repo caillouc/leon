@@ -88,7 +88,9 @@ pub struct Snapshot {
     /// How much of each CLI's plan limits is used, as it last said, in
     /// `BackendKind::ALL` order; a CLI that said nothing yet is absent
     /// (DOCTOR-2).
-    pub limits: Arc<Vec<(leon_domain::BackendKind, Vec<leon_domain::LimitWindow>)>>,
+    pub usage: Arc<Vec<leon_domain::PlanUsage>>,
+    /// The editors installed, where files and worktrees open (GIT-7).
+    pub editors: Arc<Vec<leon_domain::Editor>>,
     /// The GitHub repository (`owner/name`) of each project, from its
     /// `origin`: an issue starts a flow in its repository's project.
     pub project_repos: Arc<HashMap<ProjectId, String>>,
@@ -187,6 +189,8 @@ pub struct ConversationView {
     pub name: String,
     /// The folder of its flow it works in (CTX-2), if known.
     pub folder: Option<PathBuf>,
+    /// The user's message waiting for the answer to end (CONV-19).
+    pub queued: Option<String>,
 }
 
 /// A question from the CLI, shown as a card (CONV-9).

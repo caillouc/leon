@@ -114,6 +114,39 @@ pub(crate) struct Data {
     /// Each file's syntax colours, per hunk and line, when opened and its
     /// language has a grammar (I21).
     styles: Vec<Option<FileStyles>>,
+    /// Each file's widest line number, in digits: its number columns fit it.
+    digits: Vec<usize>,
+    /// The folder of the flow's own diff and the editor files open in, for
+    /// "Open in …" (GIT-7); `None` for a pull request's or without editor.
+    open_in: Option<(std::path::PathBuf, leon_domain::Editor)>,
+}
+
+/// A line number column's width for numbers of `digits` digits, in the
+/// diff's mono 11.5 (a digit about 7 wide), with room on both sides.
+fn number_width(digits: usize) -> f32 {
+    // At most a few digits: the cast is exact.
+    #[allow(clippy::cast_precision_loss, reason = "a handful of digits")]
+    let digits = digits as f32;
+    digits * 7. + 8.
+}
+
+/// Where the code of file `f` starts in a row: its number columns (two
+/// unified, one a side), the + and the sign; comments start there too.
+fn code_start(data: &Data, f: usize) -> f32 {
+    let columns = if data.split.is_some() { 1. } else { 2. };
+    columns * number_width(data.digits.get(f).copied().unwrap_or(3)) + 16. + 12.
+}
+
+/// The digits of a file's widest line number: its last hunk holds it.
+fn widest(file: &FileDiff) -> usize {
+    let last = file.hunks.last().map_or(0, |h| {
+        h.lines
+            .iter()
+            .map(|l| l.old.unwrap_or(0).max(l.new.unwrap_or(0)))
+            .max()
+            .unwrap_or(0)
+    });
+    last.to_string().len()
 }
 
 /// A file's syntax colours: per hunk, per line.
@@ -179,6 +212,14 @@ impl Workspace {
                 offset_in_item: gpui::px(0.),
             });
         }
+        let digits = files.iter().map(widest).collect();
+        let open_in = (source != DiffSource::PullRequest)
+            .then(|| folder.clone())
+            .flatten()
+            .zip(leon_domain::Editor::pick(
+                self.snapshot.settings.editor,
+                &self.snapshot.editors,
+            ));
         let data = Rc::new(Data {
             flow: id,
             source,
@@ -197,6 +238,8 @@ impl Workspace {
             split: split.then_some(self.right.split_ratio),
             view: cx.entity().downgrade(),
             styles,
+            digits,
+            open_in,
         });
         let rows = list(state, move |ix, _window, cx| {
             let row = match data.rows.get(ix) {
@@ -415,20 +458,9 @@ fn render_row(data: &Rc<Data>, row: Row, cx: &mut App) -> AnyElement {
             };
             crate::diff_split::pair(data, half(left, Numbers::Old), half(right, Numbers::New))
         }
-        Row::Comment(ix) => {
-            let removed = data
-                .review
-                .get(ix)
-                .is_some_and(|p| p.comment.kind == LineKind::Removed);
-            crate::diff_split::under_side(data, removed, pending_comment(data, ix))
-        }
-        Row::Draft => {
-            let removed = data
-                .draft
-                .as_ref()
-                .is_some_and(|d| d.kind == LineKind::Removed);
-            crate::diff_split::under_side(data, removed, draft_box(data, cx))
-        }
+        // Comments span the code's whole width, side by side too.
+        Row::Comment(ix) => pending_comment(data, ix),
+        Row::Draft => draft_box(data, cx),
     }
 }
 
@@ -513,6 +545,24 @@ fn file_header(data: &Rc<Data>, f: usize) -> AnyElement {
         )
         .children(file.binary.then(|| tag("binary".to_owned())))
         .child(counts(file.added, file.removed))
+        .children(data.open_in.clone().map(|(folder, editor)| {
+            let (file, view) = (folder.join(&file.path), data.view.clone());
+            crate::widgets::text_action(
+                ("diff-open-editor", f),
+                format!("Open in {}", editor.display_name()),
+                move |_, _, cx| {
+                    cx.stop_propagation();
+                    let (folder, file) = (folder.clone(), file.clone());
+                    view.update(cx, |this, _| {
+                        this.core.send(leon_core::Intent::OpenInEditor {
+                            folder,
+                            file: Some(file),
+                        });
+                    })
+                    .ok();
+                },
+            )
+        }))
         .on_click(move |_, _, cx| {
             let path = path.clone();
             view.update(cx, |this, cx| {
@@ -556,11 +606,12 @@ fn line_row(data: &Rc<Data>, f: usize, h: usize, l: usize, numbers: Numbers) -> 
     } else {
         bg
     };
+    let width = number_width(data.digits.get(f).copied().unwrap_or(3));
     let number = |n: Option<u32>| {
         div()
-            .w(crate::theme::rem(34.))
+            .w(crate::theme::rem(width))
             .flex_none()
-            .pr(crate::theme::rem(6.))
+            .pr(crate::theme::rem(4.))
             .flex()
             .justify_end()
             .text_color(theme::fg_faint())
@@ -666,9 +717,13 @@ fn pending_comment(data: &Rc<Data>, ix: usize) -> AnyElement {
         return div().into_any_element();
     };
     let (id, view) = (data.flow, data.view.clone());
+    let f = data
+        .files
+        .iter()
+        .position(|f| f.path == pending.comment.path);
     div()
         .my_1()
-        .ml(crate::theme::rem(84.))
+        .ml(crate::theme::rem(f.map_or(84., |f| code_start(data, f))))
         .pl_2()
         .border_l_2()
         .border_color(theme::warn())
@@ -710,25 +765,31 @@ fn pending_comment(data: &Rc<Data>, ix: usize) -> AnyElement {
         .into_any_element()
 }
 
+/// The comment being written: as wide as the code, one line high to start,
+/// its buttons at its right, centred on its height.
 fn draft_box(data: &Rc<Data>, _cx: &mut App) -> AnyElement {
     let (cancel_view, save_view) = (data.view.clone(), data.view.clone());
+    let f = data
+        .draft
+        .as_ref()
+        .and_then(|d| data.files.iter().position(|f| f.path == d.path));
     div()
         .my_1()
-        .ml(crate::theme::rem(84.))
-        .max_w(crate::theme::rem(340.))
-        .p_2()
+        .ml(crate::theme::rem(f.map_or(84., |f| code_start(data, f))))
+        .mr_2()
+        .p(crate::theme::rem(6.))
         .flex()
-        .flex_col()
+        .items_center()
         .gap(crate::theme::rem(6.))
         .rounded_md()
         .border_1()
         .border_color(theme::border_strong())
         .bg(theme::surface())
-        .child(Textarea::new(&data.comment))
+        .child(div().flex_1().min_w_0().child(Textarea::new(&data.comment)))
         .child(
             div()
+                .flex_none()
                 .flex()
-                .justify_end()
                 .gap(crate::theme::rem(6.))
                 .child(button("comment-cancel", "Cancel", move |_, _, cx| {
                     cancel_view

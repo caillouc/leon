@@ -46,6 +46,8 @@ pub struct Ports {
     pub about: crate::doctor::About,
     /// Leon updating itself (DOCTOR-3).
     pub updater: Arc<dyn crate::ports::Updater>,
+    /// The user's editors (GIT-7).
+    pub editors: Arc<dyn crate::ports::Editors>,
 }
 
 /// The UI's handle on the core.
@@ -283,6 +285,8 @@ impl Core {
         );
         self.state.flows = Self::report(flows).unwrap_or_default();
         self.load_todos();
+        self.load_plan_usage();
+        self.load_editors();
         for conversation in Self::report(conversations).unwrap_or_default() {
             self.state
                 .conversations
@@ -387,6 +391,8 @@ impl Core {
                 text,
                 images,
             } => self.rewind(conversation, entry, (&text, &images)),
+            Intent::Unqueue(conversation) => self.unqueue(conversation),
+            Intent::OpenInEditor { folder, file } => self.open_in_editor(folder, file),
             Intent::Stop(conversation) => {
                 if let Some(commands) = self.live.get(&conversation) {
                     let _ = commands.send(BackendCommand::Interrupt);
@@ -695,14 +701,37 @@ impl Core {
         Some(self.state.conversations.get_mut(&id)?.push(timed))
     }
 
-    /// Sends the user's message (CONV-1), with its images (CONV-18).
-    fn send(&mut self, id: ConversationId, text: &str, images: &[crate::ports::Image]) {
+    /// Sends the user's message (CONV-1), with its images (CONV-18); while
+    /// the agent answers, it waits for the end, joined to any already
+    /// waiting (CONV-19).
+    pub(crate) fn send(&mut self, id: ConversationId, text: &str, images: &[crate::ports::Image]) {
         // Replying means its answer was read.
         self.mark_read(id);
+        if let Some(s) = self
+            .state
+            .conversations
+            .get_mut(&id)
+            .filter(|s| s.status == Status::Running)
+        {
+            let (queued, waiting) = s.queued.get_or_insert_default();
+            if !queued.is_empty() {
+                queued.push_str("\n\n");
+            }
+            queued.push_str(text.trim());
+            waiting.extend_from_slice(images);
+            return;
+        }
         let entry = Entry::User {
             text: text.to_owned(),
         };
         self.deliver_with(id, entry, text, images);
+    }
+
+    /// Drops the message waiting for the answer to end (CONV-19).
+    fn unqueue(&mut self, id: ConversationId) {
+        if let Some(s) = self.state.conversations.get_mut(&id) {
+            s.queued = None;
+        }
     }
 
     /// Records `entry` in a conversation's transcript and sends `message` to its

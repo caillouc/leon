@@ -246,6 +246,9 @@ pub(crate) struct Parser {
     subagents_started: u32,
     /// The agent's task list, by task id, in creation order (CONV-14).
     tasks: Vec<(String, PlanStep)>,
+    /// It runs on the user's subscription, not an API key: its cost is
+    /// only what the API would bill, not shown (USE-1).
+    subscription: bool,
 }
 
 impl Parser {
@@ -255,13 +258,18 @@ impl Parser {
         };
         let top_level = v.get("parent_tool_use_id").is_none_or(Value::is_null);
         match v["type"].as_str() {
-            Some("system") if v["subtype"] == "init" => v["session_id"]
-                .as_str()
-                .map(|id| BackendEvent::Ready {
-                    cli_session: id.to_owned(),
-                })
-                .into_iter()
-                .collect(),
+            Some("system") if v["subtype"] == "init" => {
+                // "none" on a claude.ai login (2.1.288, a real run on a team
+                // subscription, 2026-11-24).
+                self.subscription = v["apiKeySource"] == "none";
+                v["session_id"]
+                    .as_str()
+                    .map(|id| BackendEvent::Ready {
+                        cli_session: id.to_owned(),
+                    })
+                    .into_iter()
+                    .collect()
+            }
             Some("stream_event") if top_level => {
                 let event = &v["event"];
                 let delta = &event["delta"];
@@ -285,7 +293,10 @@ impl Parser {
             // How much of the plan is used (DOCTOR-2); seen on a real run of
             // Claude Code 2.1.288, 2026-11-20.
             Some("rate_limit_event") => crate::limits::claude(&v["rate_limit_info"])
-                .map(BackendEvent::Limits)
+                .map(|windows| BackendEvent::Limits {
+                    windows,
+                    credits: None,
+                })
                 .into_iter()
                 .collect(),
             Some("control_request") => self.asks.request(&v),
@@ -305,9 +316,13 @@ impl Parser {
                         .unwrap_or("Claude Code reported an error");
                     out.push(BackendEvent::Failed(text.to_owned()));
                 }
+                let usage = usage(&v).map(|u| Usage {
+                    cost_usd: u.cost_usd.filter(|_| !self.subscription),
+                    ..u
+                });
                 out.push(BackendEvent::TurnEnded {
                     stopped: false,
-                    usage: usage(&v),
+                    usage,
                 });
                 out
             }
@@ -536,6 +551,26 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, BackendEvent::Text(t) if t == "Looking at the code."))
         );
+    }
+
+    /// On a subscription Claude Code still says what the API would cost:
+    /// Leon leaves it out; with an API key it shows (USE-1).
+    #[test]
+    fn the_cost_shows_only_with_an_api_key() {
+        let turn = |source: &str| {
+            let lines = [
+                format!(r#"{{"type":"system","subtype":"init","session_id":"s1","apiKeySource":"{source}"}}"#),
+                r#"{"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.016211,"usage":{"input_tokens":10,"output_tokens":3}}"#.to_owned(),
+            ];
+            parse_all(&lines.join("\n"))
+                .into_iter()
+                .find_map(|e| match e {
+                    BackendEvent::TurnEnded { usage, .. } => usage.and_then(|u| u.cost_usd),
+                    _ => None,
+                })
+        };
+        assert_eq!(turn("none"), None);
+        assert_eq!(turn("ANTHROPIC_API_KEY"), Some(0.016_211));
     }
 
     /// Documented stream-json shapes (⚠️ not recorded yet: needs a logged-in

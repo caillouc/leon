@@ -1,5 +1,5 @@
 //! Side-by-side diffs (GIT-2): the divider between the old and the new
-//! side, dragged left or right, and comments under the side they are on.
+//! side, dragged left or right.
 
 use std::rc::Rc;
 
@@ -48,25 +48,6 @@ pub(crate) fn pair(data: &Rc<Data>, old: AnyElement, new: AnyElement) -> AnyElem
                 }),
         )
         .child(div().flex_1().min_w_0().overflow_hidden().child(new))
-        .into_any_element()
-}
-
-/// A comment row, side by side under the side its line is on (`removed`:
-/// the old side); unified, as it is.
-pub(crate) fn under_side(data: &Rc<Data>, removed: bool, row: AnyElement) -> AnyElement {
-    let Some(ratio) = data.split else {
-        return row;
-    };
-    let (left, right) = if removed {
-        (Some(row), None)
-    } else {
-        (None, Some(row))
-    };
-    div()
-        .flex()
-        .child(div().w(relative(ratio)).min_w_0().children(left))
-        .child(div().w(crate::theme::rem(DIVIDER)).flex_none())
-        .child(div().flex_1().min_w_0().children(right))
         .into_any_element()
 }
 

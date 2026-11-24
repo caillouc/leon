@@ -112,16 +112,72 @@ impl Workspace {
                 .into_any_element()
         };
         let branch = self.folder_git(id).and_then(|g| g.branch.clone());
+        let open = self.open_in_editor(folder.clone(), cx);
         Some(
             div()
+                .flex_1()
+                .min_w_0()
                 .flex()
                 .items_center()
                 .gap(crate::theme::rem(4.))
                 .child(crate::icons::folder(false, theme::fg_muted(), 13.))
                 .child(div().flex_none().max_w(gpui::relative(0.45)).child(repo))
-                .child(div().min_w_0().child(worktree))
+                // The branch shrinks first, its buttons always show.
+                .child(div().flex_1().min_w_0().child(worktree))
                 .children(branch.map(|b| crate::clipboard::copy_button("right-copy-branch", b)))
+                .children(open)
                 .into_any_element(),
+        )
+    }
+}
+
+impl Workspace {
+    /// "Open in Zed" at the end of the worktree line (GIT-7): the external
+    /// link icon and its words while the pane has room, the icon alone when
+    /// it is narrow; `None` when no editor is installed.
+    fn open_in_editor(&self, folder: PathBuf, cx: &mut Context<Self>) -> Option<AnyElement> {
+        /// From this width the pane says the words too.
+        const WORDS_FROM: f32 = 400.;
+        let editor =
+            leon_domain::Editor::pick(self.snapshot.settings.editor, &self.snapshot.editors)?;
+        let words = (self.panes.right >= WORDS_FROM)
+            .then(|| gpui::SharedString::from(format!("Open in {}", editor.display_name())));
+        let open = cx.listener(move |this, _, _, _| {
+            this.core.send(Intent::OpenInEditor {
+                folder: folder.clone(),
+                file: None,
+            });
+        });
+        Some(
+            crate::widgets::icon_button(
+                "right-open-editor",
+                crate::icons::Icon::External,
+                words,
+                open,
+            )
+            .into_any_element(),
+        )
+    }
+
+    /// "Open this worktree in Zed", in the diff drawer's header (GIT-7);
+    /// `None` when no editor is installed.
+    pub(crate) fn open_worktree(&self, id: FlowId, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let folder = self.folder(id)?;
+        let editor =
+            leon_domain::Editor::pick(self.snapshot.settings.editor, &self.snapshot.editors)?;
+        let open = cx.listener(move |this, _, _, _| {
+            this.core.send(Intent::OpenInEditor {
+                folder: folder.clone(),
+                file: None,
+            });
+        });
+        Some(
+            crate::widgets::text_action(
+                "right-open-editor",
+                format!("Open this worktree in {}", editor.display_name()),
+                open,
+            )
+            .into_any_element(),
         )
     }
 }

@@ -74,6 +74,16 @@ pub enum Intent {
         /// Images put in it, in order (CONV-18).
         images: Vec<crate::ports::Image>,
     },
+    /// Open a worktree in the user's editor, and a file of it when given
+    /// (GIT-7).
+    OpenInEditor {
+        /// The worktree.
+        folder: std::path::PathBuf,
+        /// A file in it, by its full path.
+        file: Option<std::path::PathBuf>,
+    },
+    /// Drop the message waiting for the answer to end (CONV-19).
+    Unqueue(ConversationId),
     /// Stop the running answer (CONV-6).
     Stop(ConversationId),
     /// Answer a question card (CONV-9).

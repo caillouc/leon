@@ -55,6 +55,26 @@ pub(crate) fn codex(limits: &Value) -> Option<Vec<LimitWindow>> {
     (!windows.is_empty()).then_some(windows)
 }
 
+/// What Codex's `rateLimits` say: its windows and its credits; `None` when
+/// they say neither.
+pub(crate) fn codex_said(limits: &Value) -> Option<leon_core::ports::PlanSaid> {
+    let windows = codex(limits).unwrap_or_default();
+    let credits = codex_credits(limits);
+    (!windows.is_empty() || credits.is_some()).then_some((windows, credits))
+}
+
+/// Codex's credits balance, from its `rateLimits.credits` (`balance`,
+/// `hasCredits`, `unlimited`; app-server schema of 0.160.0, 2026-11-24):
+/// shown only when the account has credits and they are not unlimited
+/// (USE-1).
+fn codex_credits(limits: &Value) -> Option<String> {
+    let credits = &limits["credits"];
+    if credits["hasCredits"] != true || credits["unlimited"] == true {
+        return None;
+    }
+    credits["balance"].as_str().map(str::to_owned)
+}
+
 /// A window `percent` used, resetting at `resets_at` (Unix seconds).
 #[allow(
     clippy::cast_possible_truncation,
@@ -74,7 +94,29 @@ mod tests {
     use leon_domain::LimitWindow;
     use serde_json::{Value, json};
 
-    use super::{claude, codex};
+    use super::{claude, codex, codex_credits};
+
+    #[test]
+    fn codex_credits_show_only_when_counted() {
+        let cases = [
+            (
+                json!({ "credits": { "hasCredits": true, "unlimited": false, "balance": "1250" } }),
+                Some("1250"),
+            ),
+            (
+                json!({ "credits": { "hasCredits": true, "unlimited": true, "balance": "0" } }),
+                None,
+            ),
+            (
+                json!({ "credits": { "hasCredits": false, "unlimited": false, "balance": null } }),
+                None,
+            ),
+            (json!({ "primary": {} }), None),
+        ];
+        for (limits, expected) in cases {
+            assert_eq!(codex_credits(&limits).as_deref(), expected, "{limits}");
+        }
+    }
 
     fn window(minutes: u32, used: u32, resets_at: i64) -> LimitWindow {
         LimitWindow {

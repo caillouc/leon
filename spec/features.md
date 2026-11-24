@@ -165,6 +165,10 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   (no thumbnail for now); removing that text removes the image. The images
   go to the agent with the message; they stay with the draft (CONV-1) until
   it is sent.
+- **CONV-19** A message written while the agent is answering can be sent
+  (Enter): it waits, shown as "Queued" above the message box with "Remove",
+  and goes when the answer ends, before any other agent's message; a second
+  one joins it.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the
@@ -309,6 +313,13 @@ flow**: one item in the left pane (D5).
   and side by side the comment box sits under their side. Comments pile up
   as one pending review; "Send" posts them all
   as a single message to the conversation (file, lines, quoted code, comment).
+- **GIT-7** Open in the user's editor: a diff's file header ("Open in Zed")
+  opens its worktree in the editor with that file open; "Open in Zed" at the
+  end of the right pane's worktree line (its icon alone when the pane is
+  narrow) and "Open this worktree in Zed" in the diff drawer's header open
+  the worktree. A pull request's diff, from GitHub, is
+  read-only and says so: comments for an agent go on the flow's own diffs. The editor is chosen in Settings among
+  those installed (VS Code, Zed), the first one found by default.
 - **GH-1** Status of each of the flow's PRs.
 
 ### To-dos
@@ -398,7 +409,7 @@ flow**: one item in the left pane (D5).
 ### Notifications
 
 - **NOTIF-1** Desktop notification, with a short sound, when an agent's answer
-  is ready.
+  is ready, and when an agent asks a question.
 
 ### Connectors
 
@@ -426,6 +437,8 @@ flow**: one item in the left pane (D5).
   page's column (a conversation, Settings, the GitHub lists, Doctor,
   Connectors) also grows with the window: half the room a wider pane
   leaves goes to it.
+- **SETTINGS-4** The editor "Open in …" uses (GIT-7), among those Leon
+  finds installed.
 - **SETTINGS-3** What a flow opens on when picked in the left pane: its
   Flow diagram (default) or its main conversation, the one the user started
   it with. A flow of one conversation opens on it either way: a diagram of
@@ -446,10 +459,12 @@ flow**: one item in the left pane (D5).
   side at the bottom of the left pane.
 - **DOCTOR-2** Usage limits, first in Doctor: for each CLI that said how
   much of the user's plan is used, one bar per window (5h, week…), its
-  share — amber from 75 %, red from 90 % — and when it starts again. Each
-  CLI says it while one of its conversations runs, so it shows after its
-  first turn since Leon started; a window past its reset shows empty.
-  Claude Code and Codex say it; Copilot CLI does not.
+  share — amber from 75 %, red from 90 % — and when it starts again, with
+  when the CLI said it ("said 5m ago"). What a CLI said last is kept across
+  restarts until it says again: Claude Code says it during a turn, Codex
+  also when Doctor runs (at launch, "Run again"); a window past its reset
+  shows empty. Copilot CLI does not say it (its plan budget and limits show
+  only in its own `/usage`).
 - **DOCTOR-3** Updates: Leon checks for a newer release at launch and once a
   day. Doctor then shows that it is available (which version, which one runs,
   a link to its release notes), and its icon in the left pane carries a blue
@@ -462,7 +477,11 @@ flow**: one item in the left pane (D5).
 
 ### Usage
 
-- **USE-1** Usage stats.
+- **USE-1** Usage stats: plan limits stay as they are (DOCTOR-2); for a CLI
+  not on a subscription, its cost and credit usage: Claude Code's cost under
+  each answer only when it runs on an API key (on a subscription it is only
+  what the API would bill); the credits Codex's account has left, in
+  Doctor's usage card, when it has some. Copilot CLI runs on a subscription.
 
 ### Later
 
@@ -580,22 +599,6 @@ flow**: one item in the left pane (D5).
 
 ## Open
 
-- Right pane: Info · Changes · Branch enough? (CTX-1)
-- When you talk directly to the coder, its answer stays with you; only answers
-  to the planner's messages go back to the planner. *(proposal)*
-- Queue the next message while an answer is running?
-- Notifications (NOTIF-1): also when an agent asks a question?
-- My issues / PRs: include review requests?
-- Usage (USE-1): on subscriptions, plan limits (5 h / weekly windows) and tokens
-  rather than cost? Where shown?
-- GitHub (GH-6): inline review comments and replies? Review state? Other actions?
 - Scheduled tasks: trigger, what runs, where results land, app open or not?
-- Light and dark theme, or one?
-- Command palette, several windows? (Settings screen and shortcuts: decided,
-  SETTINGS-1, QUAL-4.)
-- Resume sessions started in a terminal?
-- Windows, Linux arm64, remote/SSH projects?
-- GitHub Enterprise or several accounts?
-- UI word for the CLI choice: "Tool" or "Backend"?
-- Claude's plan mode as a permission choice?
-- Any manual file editing in the app?
+  *(still to define)*
+- Remote projects over SSH, as in Zed *(maybe, later)*.

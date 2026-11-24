@@ -305,8 +305,9 @@ impl Session {
             "item/started" => self.item_started(&p["item"]),
             "item/completed" => self.item_completed(&p["item"]),
             // How much of the plan is used (DOCTOR-2).
-            "account/rateLimits/updated" => crate::limits::codex(&p["rateLimits"])
-                .map(BackendEvent::Limits)
+            // And its credits, when the account has some (USE-1).
+            "account/rateLimits/updated" => crate::limits::codex_said(&p["rateLimits"])
+                .map(|(windows, credits)| BackendEvent::Limits { windows, credits })
                 .into_iter()
                 .collect(),
             "turn/started" => {
@@ -699,11 +700,14 @@ mod tests {
                 BackendEvent::TextDelta("pong".into()),
                 BackendEvent::Text("pong".into()),
                 // Its free plan's 30-day window (DOCTOR-2).
-                BackendEvent::Limits(vec![leon_domain::LimitWindow {
-                    minutes: 43_200,
-                    used: 1,
-                    resets_at: Some(1_797_093_720_000),
-                }]),
+                BackendEvent::Limits {
+                    windows: vec![leon_domain::LimitWindow {
+                        minutes: 43_200,
+                        used: 1,
+                        resets_at: Some(1_797_093_720_000),
+                    }],
+                    credits: None,
+                },
                 BackendEvent::TurnEnded {
                     stopped: false,
                     usage: Some(Usage {

@@ -37,16 +37,31 @@ maintainer first.
   centred, Leon's bicorne (the app icon's hat alone, `leon-hat.png`, 160
   wide, 64 above the box), then the message box, then quiet pickers and the agent's
   description under it. No labelled form.
-- **The right pane**: its tabs at the header's height (48), the close
+- **The right pane** shows on a flow only; every other screen (Settings,
+  Doctor, Connectors, the GitHub lists, the To do page, a new flow) leaves it
+  out, and a flow shows it again as it was. Its tabs at the header's height (48), the close
   button at their right. Info is the whole flow's: PR rows under a
   "Pull requests" section label, then issue rows under "Issues", no box. On Changes and Branch, one line (36) under the tabs names
   the worktree they show, as Zed's two pickers — folder icon, the
   repository (a title picker when the flow works in several), its worktree
   by branch (a branch picker, mono and muted, when that repository has
   several: branch names only, "main · <branch>" for the repository's own
-  checkout), a copy button for the branch.
-- **A diff drawer** lists its files down its left side (280, `panel`), the
-  same rows as the Changes and Branch tabs; the diffs fill the rest.
+  checkout), shrinking first when the pane is narrow, then two icon
+  buttons: copy the branch, and open the worktree in the editor (external
+  link, with "Open in Zed" beside it from a pane 400 wide, the icon alone
+  below).
+- **A diff drawer** lists its files down its left side (280 at first,
+  dragged from 160 to 640 by its right edge, `panel`), the same rows as the
+  Changes and Branch tabs; the diffs fill the rest. Its header: the title,
+  the summary, then at its right "Open this worktree in Zed" (a flow's own
+  diff) and the Unified / Side by side choice; a pull request's adds, under
+  it, why it is read-only (12 muted). A diff line's number
+  columns fit its file's widest number (a digit 7, plus 8); a comment, being
+  written or pending, starts where the code starts and runs to its end,
+  side by side too, its box one line high at first with Cancel and "Add to
+  review" at its right, centred on its height.
+- **The left pane's bottom row** (Settings, Doctor, Connectors): each its
+  icon 14 and name 11.5 on one line, centred, 4 above and below.
 - **Drawers** (a PR or issue, a diff) open over everything: 84 % of the
   window wide, at most 1400, 90 % high, on a dimmed backdrop (`scrim`).
   Close button top right; a click outside or Esc closes them.
@@ -161,7 +176,7 @@ Use these; do not restyle them in place.
 | Drag to reorder | `on_drag` / `on_drop`, `widgets::moved` | Projects: the project's line, folded, lifted (accent border, `surface`, shadow, closed hand), follows the mouse up and down only, in the pane's column, tilting with its speed about where the hand holds it (at most 4°, the far end lagging: `/` going down, `\` going up), rocking back level through the other way when the mouse stops (`drag_line.rs`: GPUI turns no box holding text, so the line is drawn in 2 px upright strips, each moved up or down); its place in the list stays empty from the drag's start and moves as it passes the others: it goes before the one under the mouse on that one's upper half, after it on its lower half (never by where that one shows, so the order holds still as the list makes room); a drop anywhere in the pane keeps that order. To do page groups: the same, by their header, the line as wide as the group (its project's mark, title, open count). CLI order: a lifted copy follows (accent border, `surface`, shadow, closed hand), the box under it is tinted `accent_soft`, a drop gives it that place |
 | Button under way | `Workspace::act` + `snapshot.acting` | the same button, its label in "…ing" ("Posting…"), at 60 % opacity, a second click ignored, until the action's notice |
 | Drawer header button | `header_button` (gh_detail) | icon + label, quiet until hovered. A PR's header, right to left: Open on GitHub, Copy link, Files changed, always there from the first frame; then its actions (draft, merge…), which come with its details, on their left, so nothing moves under the mouse when they appear |
-| Small text action | — | 11.5, muted, hover `surface_2` ("+ Add project") |
+| Small text action | `widgets::text_action` | 11.5, muted, hover `surface_2` and `fg` ("+ Add project", "Remove", "Open in Zed" at the end of a diff's file header) |
 | Segmented choice | `widgets::segmented` | options side by side, chosen one `accent_soft` |
 | Section label | `widgets::label` | 10.5 uppercase faint |
 | To-do row | `todos_view` | its box 16 (open: muted square; done or ticked: green checked), "<when> → <what>" side by side: an amber hourglass 13 (`warn`), the when `fg_muted` as wide as it reads up to 40 %, a faint arrow on its first line, the what as markdown with line breaks kept taking the rest, each wrapping in its own column; "Added by" 11.5 faint under it, the agent's name in its agent colour, on hover a small red bin (`trash-2` 13, `err`) at its end that removes it; done: plain, struck through, muted. Ticked or binned, it fades to 20 % over 3 s before it goes; a click on its box, or "Undo" (accent, in the bin's place), meanwhile keeps it. A double click on its when or what turns that part into an in-place edit (below). Info: under the PRs and issues, "To do" (a fold toggle: chevron 15 then the label; folded, the open count faint after it, the whole section hidden, the same in every flow), then a row like a to-do's: a faint empty box, "When…" (40 %) → "What to do", Enter in either adds it, then "N done" folded |
@@ -185,12 +200,13 @@ Use these; do not restyle them in place.
 | Link in a row | e.g. a check's "Failing ↗" in the PR view, a failed job's name in a row | only the text is clickable, brighter on hover |
 | Notice in a conversation | `transcript` (`Entry::Notice`) | "You answered: …", "Stopped by you", a setting changed: 12 faint, left, where a tool row's name starts (20 in, past its chevron and gap), so an answer reads under the tool it allowed; never centred |
 | Update card | `update_view::update_card` | Doctor's first card while there is something to say about Leon's own update (none when up to date): a Doctor card, `info` icon 16 in `accent`, the title says the state ("Leon 0.5.0 is available", "Updating to…", "…is installed", "…could not be installed"); one row: what it means, muted (the error in `err` red), then its buttons on the right — Update (primary, macOS app only) and Release notes; "Updating…" at 60 %; Restart Leon (primary); Try again and Release notes |
+| Queued message | `composer::queued_line` | above the message box while a message waits for the answer to end: "Queued" in `accent`, its first line 12 muted, cut with an ellipsis, then "Remove" (small text action) |
 | Question card | composer | amber edge, "QUESTION" label, title, detail (mono 12.5 on `surface_2`, wrapping, one line each: `$ <command>`, then each path), one button per option (first primary) |
 | Hover list | e.g. a flow's PRs (`flow_prs`) | `overlay`, `border_strong`, shadow, 340 wide, body text 13 set on it (it is drawn outside the window's root); PR rows folded to one line |
 | A flow's PRs in its row | `flow_prs::flow_prs` | the leading state's PR icon 13 and how many, in that state's colour; in `warn` amber (the running CI indicator's) while an open one's checks run; in `err` red when an open one is blocked (a failed check, a conflict), red first; no separate mark |
 | Menu | right-click (`row_menu`) | `surface`, `border_strong`, at the click |
 | Flash | `flash.rs` | an action's result, top right under the header, 4 s, once |
-| Copy button | `clipboard::copy_button` | copy icon 13 muted, hover `surface_2` (a code block, the right pane's branch) |
+| Icon button | `widgets::icon_button` | an icon 13 muted, its words 11.5 muted after it when given, 3 around, radius 4, hover `surface_2`: the copy button (`clipboard::copy_button`: a code block, the right pane's branch), "Open in Zed" on the right pane's worktree line |
 | Copied | `clipboard::copy` | "✓ Copied" just above the click, 1.2 s |
 | Tooltip | — | none yet; prefer visible text |
 

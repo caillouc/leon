@@ -166,6 +166,9 @@ impl Workspace {
         } else {
             self.waiting_lines(&s)
         };
+        if let Some(text) = &s.queued {
+            column = column.child(queued_line(conversation, text, cx));
+        }
         if !live.is_empty() {
             column = column.child(
                 div()
@@ -261,17 +264,10 @@ impl Workspace {
 
     /// Sends the composer's text to the shown conversation (CONV-1).
     pub(crate) fn send_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // While the agent answers, the core keeps it until the end (CONV-19).
         let Some(conversation) = self.current_conversation() else {
             return;
         };
-        if self
-            .snapshot
-            .conversations
-            .get(&conversation)
-            .is_some_and(|s| s.status == Status::Running)
-        {
-            return;
-        }
         let content = self.composer.read(cx).content();
         let text = crate::message_input::message(&content, &self.put.pasted);
         if text.is_empty() {
@@ -383,4 +379,36 @@ fn plan_card(plan: &[leon_domain::PlanStep]) -> AnyElement {
         )
         .children(steps)
         .into_any_element()
+}
+
+/// The user's message waiting for the answer to end (CONV-19): "Queued",
+/// its first line, and "Remove".
+fn queued_line(conversation: ConversationId, text: &str, cx: &mut Context<Workspace>) -> Div {
+    let first = text.lines().next().unwrap_or_default().to_owned();
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_size(crate::theme::rem(12.))
+        .text_color(theme::fg_muted())
+        .child(
+            div()
+                .flex_none()
+                .text_color(theme::accent())
+                .child("Queued"),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(first),
+        )
+        .child(crate::widgets::text_action(
+            "unqueue",
+            "Remove",
+            cx.listener(move |this, _, _, _| this.core.send(Intent::Unqueue(conversation))),
+        ))
 }

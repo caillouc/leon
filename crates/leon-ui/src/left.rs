@@ -208,19 +208,11 @@ impl Workspace {
             .justify_between()
             .pr_2()
             .child(label("Projects"))
-            .child(
-                div()
-                    .id("add-project")
-                    .px(crate::theme::rem(6.))
-                    .py(crate::theme::rem(1.))
-                    .rounded_md()
-                    .text_size(crate::theme::rem(11.5))
-                    .text_color(theme::fg_muted())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::surface_2()).text_color(theme::fg()))
-                    .child("+ Add project")
-                    .on_click(cx.listener(|this, _, _, cx| this.add_project(cx))),
-            )
+            .child(crate::widgets::text_action(
+                "add-project",
+                "+ Add project",
+                cx.listener(|this, _, _, cx| this.add_project(cx)),
+            ))
             .into_any_element()
     }
 

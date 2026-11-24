@@ -2,6 +2,7 @@
 
 mod agents;
 mod archive;
+mod editor;
 mod folders;
 mod held;
 mod questions;
@@ -37,6 +38,7 @@ struct FakeStorage {
     entries: Mutex<HashMap<ConversationId, Vec<TimedEntry>>>,
     folded: Mutex<std::collections::BTreeSet<String>>,
     todos: Mutex<Vec<leon_domain::Todo>>,
+    plan_usage: Mutex<Vec<leon_domain::PlanUsage>>,
 }
 
 impl Storage for FakeStorage {
@@ -84,6 +86,15 @@ impl Storage for FakeStorage {
     }
     fn todos(&self) -> Result<Vec<leon_domain::Todo>, PortError> {
         Ok(self.todos.lock().unwrap().clone())
+    }
+    fn plan_usage(&self) -> Result<Vec<leon_domain::PlanUsage>, PortError> {
+        Ok(self.plan_usage.lock().unwrap().clone())
+    }
+    fn save_plan_usage(&self, usage: &leon_domain::PlanUsage) -> Result<(), PortError> {
+        let mut all = self.plan_usage.lock().unwrap();
+        all.retain(|u| u.backend != usage.backend);
+        all.push(usage.clone());
+        Ok(())
     }
     fn add_todo(
         &self,
@@ -269,6 +280,10 @@ impl Backends for FakeBackends {
     fn discard(&self, id: ConversationId, session: Option<crate::ports::CliSession>) {
         self.discarded.lock().unwrap().push((id, session));
     }
+    /// Codex tells its plan without a turn: no window, 900 credits.
+    fn plan_usage(&self, backend: BackendKind) -> Option<crate::ports::PlanSaid> {
+        (backend == BackendKind::Codex).then(|| (Vec::new(), Some("900".to_owned())))
+    }
     /// A pasted image is saved under its conversation; a dropped file named
     /// `broken` cannot be read.
     fn save_image(
@@ -414,6 +429,7 @@ fn ports(storage: Arc<dyn Storage>, backends: Arc<dyn Backends>) -> Ports {
             )]
         }),
         updater: Arc::new(update::FakeUpdater::default()),
+        editors: Arc::new(editor::FakeEditors::default()),
     }
 }
 

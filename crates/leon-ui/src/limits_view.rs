@@ -1,6 +1,7 @@
 //! The CLIs' plan limits, first in Doctor (DOCTOR-2): for each CLI that
 //! said how much of its plan is used, one bar per window (5 hours, a
-//! week…), its share, and when it starts again. A card like Doctor's others.
+//! week…), its share, and when it starts again; then the credits its
+//! account has left, when it says (USE-1). A card like Doctor's others.
 
 use gpui::{AnyElement, Div, FontWeight, IntoElement, Rgba, div, prelude::*, relative};
 use leon_domain::{LimitWindow, window_name};
@@ -14,46 +15,59 @@ impl Workspace {
     /// it has said its limits, else when they will show.
     pub(crate) fn limits_card(&self) -> AnyElement {
         let now = crate::left::now_ms();
-        let rows = self
-            .snapshot
-            .limits
-            .iter()
-            .enumerate()
-            .map(|(ix, (backend, windows))| {
-                div()
-                    .px_4()
-                    .py(theme::rem(8.))
-                    .flex()
-                    .items_start()
-                    .gap_3()
-                    .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
-                    .child(
-                        div()
-                            .w(theme::rem(197.))
-                            .flex_none()
-                            .text_color(theme::fg())
-                            .child(backend.display_name()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap(theme::rem(6.))
-                            .children(windows.iter().map(|w| window_row(w, now))),
-                    )
-            });
-        let waiting = self.snapshot.limits.is_empty().then(|| {
+        let usage = &self.snapshot.usage;
+        let rows = usage.iter().enumerate().map(|(ix, u)| {
+            div()
+                .px_4()
+                .py(theme::rem(8.))
+                .flex()
+                .items_start()
+                .gap_3()
+                .when(ix > 0, |d| d.border_t_1().border_color(theme::border()))
+                .child(
+                    div()
+                        .w(theme::rem(197.))
+                        .flex_none()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .text_color(theme::fg())
+                                .child(u.backend.display_name()),
+                        )
+                        // When it said it: kept across restarts.
+                        .child(
+                            div()
+                                .text_size(theme::rem(11.5))
+                                .text_color(theme::fg_faint())
+                                .child(format!("said {}", crate::left::since(u.at))),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(theme::rem(6.))
+                        .children(u.windows.iter().map(|w| window_row(w, now)))
+                        // Credits its account has left, when it says (USE-1).
+                        .children(u.credits.as_ref().map(|c| {
+                            div()
+                                .text_color(theme::fg_muted())
+                                .child(format!("Credits: {c} left"))
+                        })),
+                )
+        });
+        let waiting = usage.is_empty().then(|| {
             div()
                 .px_4()
                 .py(theme::rem(8.))
                 .text_size(theme::rem(12.5))
                 .text_color(theme::fg_faint())
                 .child(
-                    "A CLI says how much of your plan is used during a turn: its limits \
-                     show here once one of its conversations has run since Leon started. \
-                     Claude Code and Codex say it; Copilot CLI does not.",
+                    "A CLI says how much of your plan is used: Codex when Doctor runs, \
+                     Claude Code during a turn. Copilot CLI does not say it.",
                 )
         });
         div()
@@ -82,7 +96,7 @@ impl Workspace {
                         div()
                             .text_size(theme::rem(12.))
                             .text_color(theme::fg_faint())
-                            .child("as each CLI last said, during a turn"),
+                            .child("as each CLI last said"),
                     ),
             )
             .children(rows)

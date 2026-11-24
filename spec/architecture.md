@@ -176,7 +176,7 @@ ships.
 | Subagent counts (CONV-13) | `parent_tool_use_id`; `--forward-subagent-text` (local) | `CollabAgent*` items (local schema) | ⚠️ |
 | Suggested replies (CONV-10) | `--prompt-suggestions` → `prompt_suggestion` message (local) | ⚠️ | ⚠️ |
 | Questions and approvals (CONV-9) | `--permission-prompt-tool stdio`: `control_request` `can_use_tool` on stdout (`AskUserQuestion` or the tool to approve), `control_response` `allow` (with `updatedInput.answers` for questions) or `deny` on stdin (run 2026-11-20); without the flag `AskUserQuestion` is not offered and approvals are refused (I23) | `item/commandExecution/requestApproval`, `item/fileChange/requestApproval` (local schema) | ACP `session/request_permission` |
-| Usage limits (DOCTOR-2) | `rate_limit_event` on stream-json: `rate_limit_info.unifiedWindows.five_hour` / `.seven_day` (`utilization` 0–1, `resetsAt` s), else the top-level window (run 2026-11-20) | `account/rateLimits/updated`: `rateLimits.primary` / `.secondary` (`usedPercent`, `windowDurationMins`, `resetsAt` s) (recorded 0.160.0) | none found (ACP `usage_update` is the context window, not the plan) ⚠️ |
+| Usage limits (DOCTOR-2) | `rate_limit_event` on stream-json: `rate_limit_info.unifiedWindows.five_hour` / `.seven_day` (`utilization` 0–1, `resetsAt` s), else the top-level window (run 2026-11-20) | `account/rateLimits/updated`: `rateLimits.primary` / `.secondary` (`usedPercent`, `windowDurationMins`, `resetsAt` s), `.credits` (recorded 0.160.0); without a turn, `account/rateLimits/read` from a short `codex app-server` (`plan.rs`, run 2026-11-24) | none over ACP; its session events (`session.usage_checkpoint`: AI credits, premium requests) are per session, its plan budget and limits only in `/usage` (1.0.114, 2026-11-24) |
 | Title (NAV-9) | one-off `claude -p --model haiku --output-format text` (run 2026-11-17) | one-off `codex exec --skip-git-repo-check --ephemeral -s read-only` (run 2026-11-17) | none: the first line stays |
 | Permission | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` (local) | `-a`, `-s`, `--dangerously-bypass-approvals-and-sandbox` (local) | `--allow-all-tools`, `--allow-all` (I3) |
 | MCP list | `--mcp-config` + `--allowedTools mcp__leon` (local) | `thread/start.config.mcp_servers`, Leon's with `default_tools_approval_mode = "approve"` (live, 0.160.0) | ACP `mcpServers`; `--allow-tool=leon` ⚠️ |
@@ -303,7 +303,9 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   text; its `claude.ai …` lines are the account's connectors; Codex's runs
   with `--disable plugins`, plugins' servers being shown through their
   plugin). What a CLI ships or turns on itself is dropped by the readers
-  (`connectors/parse.rs`). Read in the background each time the view opens:
+  (`connectors/parse.rs`), Claude's account connectors on every account
+  (AccuWeather, Booking.com, Uber) by their hosts, `claude mcp list` not
+  marking them. Read in the background each time the view opens:
   one task per CLI, its two commands at once; each answer lands in the
   snapshot on its own (`Snapshot::tools`), `Snapshot::tools_pending` naming
   the CLIs still asked.

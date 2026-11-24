@@ -21,6 +21,7 @@ mod images;
 mod limits;
 mod mcp;
 mod options;
+mod plan;
 mod process;
 mod rpc;
 mod sessions;
@@ -219,6 +220,13 @@ impl Backends for Clis {
             (self.home.as_deref(), session)
         {
             sessions::discard_claude(&home.join(".claude").join("projects"), &session);
+        }
+    }
+
+    fn plan_usage(&self, backend: BackendKind) -> Option<leon_core::ports::PlanSaid> {
+        match backend {
+            BackendKind::Codex => plan::codex((self.path)()),
+            BackendKind::ClaudeCode | BackendKind::CopilotCli => None,
         }
     }
 

@@ -212,3 +212,12 @@ fn connectors_are_listed() {
         assert_eq!(cli.problem, None, "{backend:?}");
     }
 }
+
+/// Codex tells its plan without a turn (DOCTOR-2): at least one window.
+#[test]
+#[ignore = "runs the real Codex CLI with the user's login"]
+fn codex_says_its_plan_without_a_turn() {
+    let said = Clis::default().plan_usage(BackendKind::Codex);
+    let (windows, _) = said.expect("codex said nothing of its plan");
+    assert_ne!(windows.len(), 0, "no window");
+}

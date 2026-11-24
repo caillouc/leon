@@ -4,7 +4,8 @@ name: Release
 # notarized .dmg for macOS (Apple Silicon) and the Linux binary. Both are
 # built side by side, then published together, so a release always has both.
 # Their dependencies come already built from main (release-cache.yml): a tag
-# can read main's caches but not another tag's, so it saves none.
+# can read main's caches but not another tag's, so it saves none. Its notes
+# are CHANGELOG.md's section for the tag: without one, nothing is built.
 on:
   push:
     tags: ["v*"]
@@ -13,7 +14,16 @@ permissions:
   contents: write
 
 jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: CHANGELOG.md says what changed
+        run: .github/release-notes.sh "$GITHUB_REF_NAME"
+
   macos:
+    needs: notes
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +76,7 @@ jobs:
           if-no-files-found: error
 
   linux:
+    needs: notes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,14 +113,18 @@ jobs:
     needs: [macos, linux]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
+      # What changed, for users: CHANGELOG.md's section for the tag.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          .github/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
-            --title "Leon $GITHUB_REF_NAME" --generate-notes
+            --title "Leon $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"

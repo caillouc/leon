@@ -42,12 +42,12 @@ pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,
     ReviewThread, issues_by_status, prs_by_repo, repo_name,
 };
-pub use limits::{LimitWindow, window_name};
+pub use limits::{LimitWindow, PlanUsage, window_name};
 pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};
 pub use project::{Project, ProjectId};
 pub use review::{ReviewComment, review_message};
-pub use settings::{ConversationDefaults, OpenOn, Settings, Zoom};
+pub use settings::{ConversationDefaults, Editor, OpenOn, Settings, Zoom};
 pub use sprint::{Iteration, current_sprint};
 pub use todo::{Todo, TodoId, open_todos, todo_flows};
 pub use transcript::{

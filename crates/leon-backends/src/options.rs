@@ -89,7 +89,8 @@ pub(crate) fn for_backend(backend: BackendKind) -> BackendOptions {
             ),
             efforts: list(&["low", "medium", "high", "xhigh", "max"]),
             default_effort: Some("high".to_owned()),
-            permissions: list(&["auto", "bypassPermissions", "acceptEdits", "plan", "manual"]),
+            // Not `plan` (the maintainer, 2026-11-24, D9).
+            permissions: list(&["auto", "bypassPermissions", "acceptEdits", "manual"]),
         },
         // app-server `model/list`, 2026-11-17: gpt-6-luna is the default,
         // `medium` every model's default effort.

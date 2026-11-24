@@ -117,6 +117,15 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE flows ADD COLUMN archived_at INTEGER;
     UPDATE flows SET archived_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
     WHERE archived = 1;",
+    // 17: what each CLI last said of its plan (DOCTOR-2, USE-1), shown
+    // after a restart until it says again: its windows as JSON, its
+    // credits, when.
+    "CREATE TABLE plan_usage (
+        backend TEXT PRIMARY KEY,
+        windows TEXT NOT NULL,
+        credits TEXT,
+        at INTEGER NOT NULL
+    ) STRICT;",
 ];
 
 /// Latest schema version this build knows.

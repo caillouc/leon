@@ -10,6 +10,7 @@
 mod agents;
 mod app;
 mod doctor;
+mod editor;
 mod events;
 mod folders;
 mod fresh;
@@ -27,6 +28,7 @@ mod state;
 mod todos;
 mod tools;
 mod update;
+mod usage;
 
 pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use doctor::About;

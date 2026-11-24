@@ -240,21 +240,25 @@ pub fn linked_prs() -> Arc<HashMap<leon_domain::GhRef, PullRequest>> {
 }
 
 /// What the CLIs said of their plan limits (DOCTOR-2).
-pub fn limits() -> Arc<Vec<(leon_domain::BackendKind, Vec<leon_domain::LimitWindow>)>> {
+pub fn usage() -> Arc<Vec<leon_domain::PlanUsage>> {
     let window = |minutes, used, hours: i64| leon_domain::LimitWindow {
         minutes,
         used,
         resets_at: Some(crate::hours_ago(-hours)),
     };
     Arc::new(vec![
-        (
-            leon_domain::BackendKind::ClaudeCode,
-            vec![window(300, 34, 3), window(10_080, 81, 50)],
-        ),
-        (
-            leon_domain::BackendKind::Codex,
-            vec![window(300, 6, 4), window(10_080, 12, 120)],
-        ),
+        leon_domain::PlanUsage {
+            backend: leon_domain::BackendKind::ClaudeCode,
+            windows: vec![window(300, 34, 3), window(10_080, 81, 50)],
+            credits: None,
+            at: crate::hours_ago(1),
+        },
+        leon_domain::PlanUsage {
+            backend: leon_domain::BackendKind::Codex,
+            windows: vec![window(300, 6, 4), window(10_080, 12, 120)],
+            credits: None,
+            at: crate::hours_ago(0),
+        },
     ])
 }
 
