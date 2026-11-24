@@ -84,8 +84,9 @@ dependencies (`.github/workflows/release-cache.yml`), so a release compiles
 only Leon's own crates.
 
 Before tagging, add the version's section to `CHANGELOG.md` (`## v0.1.0`):
-what changed for users, in a few high-level lines. It becomes the release's
-notes; without it the release stops before building.
+what changed for users, about six bullets of one short line each, never
+wrapped (GitHub shows each newline as a line break). It becomes the
+release's notes; without it the release stops before building.
 
 ```bash
 git tag v0.1.0

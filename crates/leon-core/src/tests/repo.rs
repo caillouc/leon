@@ -49,12 +49,12 @@ impl Git for FakeGit {
     fn is_main_checkout(&self, dir: &Path) -> bool {
         !dir.components().any(|c| c.as_os_str() == ".worktrees")
     }
-    /// `/code/api`, `/code/web`, `/code/docs` and the temporary folder are
+    /// `/code/api`, `/code/web`, `/code/docs` and [`real_repo`] are
     /// repositories, `/code/api/.worktrees/fix` a worktree of the first.
     fn working_tree(&self, path: &Path) -> Option<PathBuf> {
-        let temp = std::env::temp_dir();
-        if path.starts_with(&temp) {
-            return Some(temp);
+        let real = real_repo();
+        if path.starts_with(&real) {
+            return Some(real);
         }
         [
             "/code/api/.worktrees/fix",
@@ -497,4 +497,13 @@ async fn an_action_shows_under_way_until_github_answers() {
         s.flash.as_ref().map(|(_, text)| text.as_str()),
         Some("#99 is a draft again")
     );
+}
+
+/// A repository's own checkout that exists on disk, for what needs a real
+/// folder (`start_agent`): a folder of its own in the temporary one, not the
+/// temporary folder itself, which is `/tmp` on Linux where other tests write.
+pub(super) fn real_repo() -> PathBuf {
+    let dir = std::env::temp_dir().join("leon-test-repo");
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }

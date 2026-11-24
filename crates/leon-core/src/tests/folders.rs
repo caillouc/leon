@@ -168,7 +168,7 @@ async fn a_main_checkout_shows_once_an_agent_works_in_it() {
     let planner = new_flow(&h, BackendKind::Codex).await;
     next_command(&h, 0).await;
     // A repository's own checkout on disk: start_agent wants a folder.
-    let (docs, web) = (PathBuf::from("/code/docs"), std::env::temp_dir());
+    let (docs, web) = (PathBuf::from("/code/docs"), repo::real_repo());
     // A coder started in the web checkout, by name: nothing joins.
     let start = crate::ports::AppToolCall::StartAgent {
         agent: "coder".into(),
