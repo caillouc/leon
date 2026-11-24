@@ -6,9 +6,36 @@ use serde_json::Value;
 use crate::parse::{nodes, text};
 
 /// Checks of a pull request node; empty when the query did not ask for them.
+/// A job run more than once counts once, its latest run, as GitHub shows
+/// them: the most recently started per name, workflow and event, a status
+/// once per context (`eliminateDuplicates` in cli/cli's
+/// `pkg/cmd/pr/checks/aggregate.go`, read on 2026-11-24).
 pub(crate) fn checks(pr: &Value) -> Vec<Check> {
     let rollup = &pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"];
-    nodes(&rollup["contexts"]).filter_map(check).collect()
+    let mut found: Vec<&Value> = nodes(&rollup["contexts"]).collect();
+    // Latest first; one never started (`null`) counts as the oldest.
+    found.sort_by(|a, b| b["startedAt"].as_str().cmp(&a["startedAt"].as_str()));
+    let mut seen = std::collections::HashSet::new();
+    found
+        .into_iter()
+        .filter(|c| seen.insert(key(c)))
+        .filter_map(check)
+        .collect()
+}
+
+/// What makes two contexts the same check: a status's context; a run's
+/// name, workflow and event.
+fn key(context: &Value) -> String {
+    if let Some(status) = context["context"].as_str() {
+        return format!("status/{status}");
+    }
+    let run = &context["checkSuite"]["workflowRun"];
+    format!(
+        "run/{}/{}/{}",
+        context["name"].as_str().unwrap_or_default(),
+        run["workflow"]["name"].as_str().unwrap_or_default(),
+        run["event"].as_str().unwrap_or_default()
+    )
 }
 
 /// A GitHub Actions or app check (`CheckRun`), or a commit status
@@ -110,6 +137,82 @@ mod tests {
                 "{context}"
             );
         }
+    }
+
+    /// A job run again — a second workflow run for the same push — counts
+    /// once, its latest run: as `gh pr checks` and GitHub show them. Each
+    /// workflow and event keeps its own (cli/cli `aggregate.go`).
+    #[test]
+    fn each_check_counts_once_its_latest_run() {
+        let run = |name: &str,
+                   status: &str,
+                   conclusion: Option<&str>,
+                   started: Option<&str>,
+                   workflow: &str,
+                   event: &str| {
+            json!({ "__typename": "CheckRun", "name": name, "status": status,
+                "conclusion": conclusion, "startedAt": started,
+                "checkSuite": { "workflowRun": { "event": event, "workflow": { "name": workflow } } } })
+        };
+        let contexts = [
+            run(
+                "pytest",
+                "COMPLETED",
+                Some("SUCCESS"),
+                Some("2026-11-24T13:53:04Z"),
+                "Tests",
+                "pull_request",
+            ),
+            run(
+                "pytest",
+                "IN_PROGRESS",
+                None,
+                Some("2026-11-24T13:53:06Z"),
+                "Tests",
+                "pull_request",
+            ),
+            run(
+                "sync",
+                "COMPLETED",
+                Some("SUCCESS"),
+                Some("2026-11-24T13:52:59Z"),
+                "Sync on push",
+                "push",
+            ),
+            run(
+                "sync",
+                "COMPLETED",
+                Some("SUCCESS"),
+                Some("2026-11-24T13:53:05Z"),
+                "Sync on PR",
+                "pull_request",
+            ),
+            run(
+                "lint",
+                "COMPLETED",
+                Some("FAILURE"),
+                Some("2026-11-24T13:53:00Z"),
+                "Tests",
+                "pull_request",
+            ),
+            // Queued, not started: older than any started run, as for gh.
+            run("lint", "QUEUED", None, None, "Tests", "pull_request"),
+        ];
+        let pr = json!({ "commits": { "nodes": [{ "commit": { "statusCheckRollup": {
+            "contexts": { "nodes": contexts } } } }] } });
+        let found: Vec<(String, CheckState)> =
+            checks(&pr).into_iter().map(|c| (c.name, c.state)).collect();
+        let mut found = found;
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            found,
+            [
+                ("lint".to_owned(), CheckState::Fail),
+                ("pytest".to_owned(), CheckState::Pending),
+                ("sync".to_owned(), CheckState::Pass),
+                ("sync".to_owned(), CheckState::Pass),
+            ]
+        );
     }
 
     #[test]

@@ -7,7 +7,8 @@ fragment prDetails on PullRequest {
   } }
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
     __typename
-    ... on CheckRun { name status conclusion detailsUrl }
+    ... on CheckRun { name status conclusion detailsUrl startedAt
+      checkSuite { workflowRun { event workflow { name } } } }
     ... on StatusContext { context state targetUrl }
   } } } } } }
 }

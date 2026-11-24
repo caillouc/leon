@@ -34,11 +34,9 @@ fn recorded_open_pull_request() {
         checks: vec![
             check("CodeQL-Build (go, manual, ./.github/codeql/codeql-config.yml)"),
             check("label-external / label_issues"),
-            // Recorded SKIPPED: shown as skipped, not passed.
-            Check {
-                state: CheckState::Skipped,
-                ..check("label-external")
-            },
+            // Recorded SKIPPED: shown as skipped, not passed. Recorded twice,
+            // before the query asked for each run's workflow and event: the
+            // same check, so once.
             Check {
                 state: CheckState::Skipped,
                 ..check("label-external")

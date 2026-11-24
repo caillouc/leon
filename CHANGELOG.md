@@ -3,6 +3,10 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.7.1
+
+- **CI checks**: a pull request's checks count each job once, as GitHub shows them.
+
 ## v0.7.0
 
 - **Queued messages**: write while the agent works; your message goes when it finishes.

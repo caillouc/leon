@@ -282,6 +282,9 @@ Only stdio servers are passed; `.mcp.json` servers over HTTP are skipped.
   `read:project` scope the query is retried without them and issues show
   under "No status". A project's GitHub repository is read from its `origin`
   remote (`Git::github_repo`) to pick the project for an issue.
+- A pull request's checks count each job once, its latest run: the most
+  recently started per name, workflow and event, a status once per context,
+  as `gh pr checks` does (`checks.rs`); GitHub's rollup keeps every run.
 - Details (the drawer): one query for the issue (body, assignees, comments)
   or the PR (checks, reviewers, comments, description, unresolved review
   threads), by repository and number, read in
