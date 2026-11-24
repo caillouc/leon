@@ -67,6 +67,9 @@ pub trait Storage: Send + Sync + 'static {
     fn set_todo_done(&self, id: TodoId, done: bool) -> Result<(), PortError>;
     /// Removes a to-do for good.
     fn remove_todo(&self, id: TodoId) -> Result<(), PortError>;
+    /// Puts a to-do back as it was, its id kept, in place of what it has
+    /// become: the user undid its tick or removal (TODO-1).
+    fn restore_todo(&self, todo: &Todo) -> Result<(), PortError>;
     /// Changes a to-do's `(when, what)`.
     fn edit_todo(&self, id: TodoId, when_what: (&str, &str)) -> Result<(), PortError>;
     /// Folds or unfolds a GitHub list's group.

@@ -179,7 +179,7 @@ Use these; do not restyle them in place.
 | Small text action | `widgets::text_action` | 11.5, muted, hover `surface_2` and `fg` ("+ Add project", "Remove", "Open in Zed" at the end of a diff's file header, "Mark as unread" at the right of a flow's title bar, hidden when already unread) |
 | Segmented choice | `widgets::segmented` | options side by side, chosen one `accent_soft` |
 | Section label | `widgets::label` | 10.5 uppercase faint |
-| To-do row | `todos_view` | its box 16 (open: muted square; done or ticked: green checked), "<when> → <what>" side by side: an amber hourglass 13 (`warn`), the when `fg_muted` as wide as it reads up to 40 %, a faint arrow on its first line, the what as markdown with line breaks kept taking the rest, each wrapping in its own column; "Added by" 11.5 faint under it, the agent's name in its agent colour, on hover a small red bin (`trash-2` 13, `err`) at its end that removes it; done: plain, struck through, muted. Ticked or binned, it fades to 20 % over 3 s before it goes; a click on its box, or "Undo" (accent, in the bin's place), meanwhile keeps it. A double click on its when or what turns that part into an in-place edit (below). Info: under the PRs and issues, "To do" (a fold toggle: chevron 15 then the label; folded, the open count faint after it, the whole section hidden, the same in every flow), then a row like a to-do's: a faint empty box, "When…" (40 %) → "What to do", Enter in either adds it, then "N done" folded |
+| To-do row | `todos_view` | its box 16 (open: muted square; done or ticked: green checked), "<when> → <what>" side by side: an amber hourglass 13 (`warn`), the when `fg_muted` as wide as it reads up to 40 %, a faint arrow on its first line, the what as markdown with line breaks kept taking the rest, each wrapping in its own column; "Added by" 11.5 faint under it, the agent's name in its agent colour, on hover a small red bin (`trash-2` 13, `err`) at its end that removes it; done: plain, struck through, muted. Ticked or binned, it goes at once, and the undo note shows (below). A double click on its when or what turns that part into an in-place edit (below). Info: under the PRs and issues, "To do" (a fold toggle: chevron 15 then the label; folded, the open count faint after it, the whole section hidden, the same in every flow), then a row like a to-do's: a faint empty box, "When…" (40 %) → "What to do", Enter in either adds it, then "N done" folded |
 | To-dos button | `todos_view::todos_corner` | at the main pane's top right (headers keep 72 free): list icon 15 + how many are open, quiet until hovered, `accent_soft` on the To do page it opens. On a flow with the right pane closed, the button opening that pane (`panel-right` 16) sits right of it, the flow's header keeping 36 more free |
 | In-place edit | `widgets::in_place` | a flow's name in its row, a to-do's part: the text box with no border and no focus ring, on `surface_2`, radius 4, its text at 13 exactly where the text was (its 4 inset taken back), growing with its lines |
 | To do page | `todos_view::render_todos` | a page like the GitHub lists: `pane_header`, then one foldable group per flow, in the user's order, dragged by its header (`Workspace::group_with`: its project's colour (`theme::name_color` of its repository, as in the GitHub lists), title 13.5 semibold and project faint, then "Open flow" (the row link), open count), its to-do rows, its done ones folded |
@@ -206,6 +206,7 @@ Use these; do not restyle them in place.
 | A flow's PRs in its row | `flow_prs::flow_prs` | the leading state's PR icon 13 and how many, in that state's colour; in `warn` amber (the running CI indicator's) while an open one's checks run; in `err` red when an open one is blocked (a failed check, a conflict), red first; no separate mark |
 | Menu | right-click (`row_menu`) | `surface`, `border_strong`, at the click |
 | Flash | `flash.rs` | an action's result, top right under the header, 4 s, once |
+| Undo note | `todo_undo.rs` | the flash's box (`flash::toast`) at the window's bottom right, 6 s: "To-do done" or "To-do removed", then "Undo" (12.5, accent); a newer tick or removal takes its place |
 | Icon button | `widgets::icon_button` | an icon 13 muted, its words 11.5 muted after it when given, 3 around, radius 4, hover `surface_2`: the copy button (`clipboard::copy_button`: a code block, the right pane's branch), "Open in Zed" on the right pane's worktree line |
 | Copied | `clipboard::copy` | "✓ Copied" just above the click, 1.2 s |
 | Tooltip | — | none yet; prefer visible text |
@@ -233,8 +234,6 @@ Only what shows work going on moves:
   its shadow, every 0.5 s (`spinner.rs`), in the working blue.
 - **Dragged project**: its line leans with the mouse's speed and swings
   back once into place when the mouse stops.
-- **Ticked or binned to-do**: it fades over 3 s, time to undo a misclick,
-  before it goes.
 - **Flow box**: a working agent's colour goes round its box's border.
   With reduced motion, the loader shows instead.
 - Nothing else animates: no fades, no slides.

@@ -130,6 +130,10 @@ impl Storage for FakeStorage {
         self.todos.lock().unwrap().retain(|t| t.id != id);
         Ok(())
     }
+    fn restore_todo(&self, todo: &leon_domain::Todo) -> Result<(), PortError> {
+        crate::todos::put_back(&mut self.todos.lock().unwrap(), todo.clone());
+        Ok(())
+    }
     fn set_todo_done(&self, id: leon_domain::TodoId, done: bool) -> Result<(), PortError> {
         for todo in self.todos.lock().unwrap().iter_mut().filter(|t| t.id == id) {
             todo.done = done;

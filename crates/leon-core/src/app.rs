@@ -419,6 +419,7 @@ impl Core {
             }
             Intent::SetTodoDone(id, done) => self.set_todo_done(id, done),
             Intent::RemoveTodo(id) => self.remove_todo(id),
+            Intent::RestoreTodo(todo) => self.restore_todo(todo),
             Intent::EditTodo { id, when, what } => self.edit_todo(id, (&when, &what)),
             Intent::RemoveProject(id) => self.remove_project(id),
             Intent::FoldGroup(key, folded) => self.fold_group(key, folded),
@@ -430,14 +431,7 @@ impl Core {
             }
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
             Intent::MarkConversationUnread(id) => self.mark_unread(id),
-            Intent::WindowActive(active) => {
-                self.window_active = active;
-                // Back in Leon on a conversation's tab: its answer is seen
-                // (NAV-4).
-                if let Some(id) = self.reading.filter(|_| active) {
-                    self.mark_read(id);
-                }
-            }
+            Intent::WindowActive(active) => self.window_active(active),
             Intent::Read(id) => self.read(id),
             Intent::Delete(id) => self.delete(id),
             Intent::RefreshGit(id) => {
@@ -737,6 +731,15 @@ impl Core {
             text: text.to_owned(),
         };
         self.deliver_with(id, entry, text, images);
+    }
+
+    /// Leon's window became active or not. Back in Leon on a
+    /// conversation's tab: its answer is seen (NAV-4).
+    fn window_active(&mut self, active: bool) {
+        self.window_active = active;
+        if let Some(id) = self.reading.filter(|_| active) {
+            self.mark_read(id);
+        }
     }
 
     /// Drops the message waiting for the answer to end (CONV-19).

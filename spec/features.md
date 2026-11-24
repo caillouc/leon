@@ -341,10 +341,10 @@ flow**: one item in the left pane (D5).
   (merging, deploying, reviewing, checking it worked) either. The to-do
   says which agent added it. An agent reads the
   flow's to-dos with `list_todos`, open then done, each with who added it.
-  The user ticks one with its box: it fades for a few seconds, a second
-  click undoing the tick, then is done; a done one opens again with its
-  box. The small red bin its row shows on hover removes it for good, after
-  the same fade, "Undo" taking the bin's place meanwhile. A double click on
+  The user ticks one with its box: it is done at once; a done one opens
+  again with its box. The small red bin its row shows on hover removes it
+  for good. Either way, a note at the window's bottom right offers "Undo"
+  for a few seconds, which puts the to-do back as it was. A double click on
   a to-do's when or what edits it in place, its text where it was: Enter or
   leaving the box saves it, Esc gives up.
 - **TODO-2** Info (CTX-1) shows, under the flow's pull requests and issues,

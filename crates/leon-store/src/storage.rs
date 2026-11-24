@@ -193,6 +193,10 @@ impl Storage for Store {
         crate::todos::remove(&self.lock(), id)
     }
 
+    fn restore_todo(&self, todo: &Todo) -> Result<(), PortError> {
+        crate::todos::restore(&self.lock(), todo)
+    }
+
     fn edit_todo(&self, id: TodoId, when_what: (&str, &str)) -> Result<(), PortError> {
         crate::todos::edit(&self.lock(), id, when_what)
     }

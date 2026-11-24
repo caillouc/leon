@@ -2,12 +2,11 @@
 //! to add one; every flow's on their own page, opened by a button at the
 //! main pane's top right; how many are open on each flow's row.
 
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::collections::HashSet;
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, Context, Entity, FontWeight, IntoElement,
-    SharedString, Subscription, Window, div, prelude::*, relative,
+    AnyElement, Context, Entity, FontWeight, IntoElement, SharedString, Subscription, Window, div,
+    prelude::*, relative,
 };
 use gpui_component::Sizable as _;
 use gpui_component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
@@ -18,16 +17,13 @@ use leon_domain::{FlowId, Todo, TodoId, open_todos, todo_flows};
 use crate::drag_line::{self, DragLine, DraggedTodoFlow, Lead};
 use crate::icons::{Icon, chevron, icon};
 use crate::theme::{self, rem};
+use crate::todo_undo::Did;
 use crate::widgets::{HEADER_HEIGHT, centered, empty, label, pane_header};
 use crate::workspace::{Screen, Workspace, value_of};
 
 /// Room the to-dos button takes at the main pane's top right: the panes'
 /// headers keep it free.
 pub(crate) const BUTTON_ROOM: f32 = 72.;
-
-/// How long a ticked to-do fades before it is done: time to undo a
-/// misclick.
-const FADE: Duration = Duration::from_secs(3);
 
 /// The key of Info's To do section's fold: the same in every flow, kept
 /// across restarts.
@@ -43,10 +39,8 @@ pub(crate) struct TodoState {
     pub what: Entity<InputState>,
     /// The flows whose done to-dos are shown, in Info and on the page.
     pub show_done: HashSet<FlowId>,
-    /// To-dos fading out, ticked or removed, each with where it goes and
-    /// its click (one undone then made again starts over).
-    pub fading: HashMap<TodoId, (Going, u64)>,
-    clicks: u64,
+    /// The latest tick or removal, while it can be undone.
+    pub undo: crate::todo_undo::TodoUndo,
     /// The to-do part being edited, after a double click.
     pub editing: Option<Editing>,
     /// A flow's group being dragged on the To do page, and the place it
@@ -74,15 +68,6 @@ pub(crate) enum Part {
     What,
 }
 
-/// Where a fading to-do goes once it has faded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Going {
-    /// Ticked: to the done ones.
-    Done,
-    /// Its bin clicked: removed for good.
-    Removed,
-}
-
 impl TodoState {
     pub(crate) fn new(
         window: &mut Window,
@@ -105,8 +90,7 @@ impl TodoState {
             when,
             what,
             show_done: HashSet::new(),
-            fading: HashMap::new(),
-            clicks: 0,
+            undo: crate::todo_undo::TodoUndo::default(),
             editing: None,
             drag: None,
             column: crate::widgets::Area::default(),
@@ -133,30 +117,6 @@ impl Workspace {
         for input in [&self.todos.when, &self.todos.what] {
             input.update(cx, |state, cx| state.set_value("", window, cx));
         }
-    }
-
-    /// To-do `id` fades, then is done or removed (`going`), unless the
-    /// user undoes it meanwhile: time to correct a misclick (TODO-1).
-    fn fade(&mut self, id: TodoId, going: Going, cx: &mut Context<Self>) {
-        self.todos.clicks += 1;
-        let click = self.todos.clicks;
-        self.todos.fading.insert(id, (going, click));
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(FADE).await;
-            this.update(cx, |this, cx| {
-                if this.todos.fading.get(&id) == Some(&(going, click)) {
-                    this.todos.fading.remove(&id);
-                    this.core.send(match going {
-                        Going::Done => Intent::SetTodoDone(id, true),
-                        Going::Removed => Intent::RemoveTodo(id),
-                    });
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
-        cx.notify();
     }
 
     /// The flow's to-dos in Info (TODO-2): the open ones, the box to add
@@ -282,7 +242,6 @@ impl Workspace {
                 (s.name.clone(), crate::agent_color::agent_color(&all, s))
             });
         let group = SharedString::from(format!("todo-{place}-{}", id.0));
-        let fading = self.todos.fading.get(&id).copied();
         let row = div()
             .id(group.clone())
             .group(group.clone())
@@ -293,7 +252,7 @@ impl Workspace {
             .items_start()
             .gap_3()
             .hover(|s| s.bg(theme::surface()))
-            .child(check(id, done, fading.map(|(going, _)| going), place, cx))
+            .child(check(id, done, place, cx))
             .child(
                 div()
                     .flex_1()
@@ -321,18 +280,8 @@ impl Workspace {
                             .child(div().text_color(color).child(name))
                     })),
             )
-            .child(remove(id, fading.map(|(going, _)| going), group, place, cx));
-        // Ticked or removed: it fades out until it goes.
-        match fading {
-            Some((_, click)) => row
-                .with_animation(
-                    SharedString::from(format!("todo-fade-{place}-{}-{click}", id.0)),
-                    Animation::new(FADE),
-                    |row, t| row.opacity(1. - 0.8 * t),
-                )
-                .into_any_element(),
-            None => row.into_any_element(),
-        }
+            .child(remove(id, group, place, cx));
+        row.into_any_element()
     }
 
     /// An open to-do as it reads: what it waits for, muted, an arrow, then
@@ -695,16 +644,10 @@ impl Workspace {
     }
 }
 
-/// A to-do's box: a click ticks an open one (it fades, then is done), undoes
-/// a tick while it fades, or opens a done one again.
-fn check(
-    id: TodoId,
-    done: bool,
-    going: Option<Going>,
-    place: &str,
-    cx: &mut Context<Workspace>,
-) -> AnyElement {
-    let (glyph, color) = if done || going == Some(Going::Done) {
+/// A to-do's box: a click ticks an open one (done at once, with a note to
+/// undo it), or opens a done one again.
+fn check(id: TodoId, done: bool, place: &str, cx: &mut Context<Workspace>) -> AnyElement {
+    let (glyph, color) = if done {
         (Icon::Passed, theme::ok())
     } else {
         (Icon::Pending, theme::fg_muted())
@@ -719,50 +662,28 @@ fn check(
         .on_click(cx.listener(move |this, _, _, cx| {
             if done {
                 this.core.send(Intent::SetTodoDone(id, false));
-            } else if this.todos.fading.remove(&id).is_some() {
-                cx.notify();
             } else {
-                this.fade(id, Going::Done, cx);
+                this.do_todo(id, Did::Done, cx);
             }
         }))
         .into_any_element()
 }
 
-/// A to-do's small red bin, shown on hover: a click removes it once it has
-/// faded; meanwhile "Undo" takes its place and keeps it.
-fn remove(
-    id: TodoId,
-    going: Option<Going>,
-    group: SharedString,
-    place: &str,
-    cx: &mut Context<Workspace>,
-) -> AnyElement {
-    let button = div()
+/// A to-do's small red bin, shown on hover: a click removes it at once,
+/// with a note to undo it.
+fn remove(id: TodoId, group: SharedString, place: &str, cx: &mut Context<Workspace>) -> AnyElement {
+    div()
         .id(SharedString::from(format!("todo-remove-{place}-{}", id.0)))
         .flex_none()
         .rounded(rem(4.))
-        .cursor_pointer();
-    if going == Some(Going::Removed) {
-        return button
-            .px_1()
-            .text_size(rem(12.))
-            .text_color(theme::accent())
-            .hover(|s| s.opacity(0.8))
-            .child("Undo")
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.todos.fading.remove(&id);
-                cx.notify();
-            }))
-            .into_any_element();
-    }
-    button
+        .cursor_pointer()
         .p(rem(3.))
         .opacity(0.)
         .group_hover(group, |s| s.opacity(1.))
         .hover(|s| s.bg(theme::surface_2()))
         .child(icon(Icon::Trash, theme::err(), 13.))
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.fade(id, Going::Removed, cx);
+            this.do_todo(id, Did::Removed, cx);
         }))
         .into_any_element()
 }

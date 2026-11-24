@@ -63,6 +63,7 @@ mod syntax;
 #[cfg(test)]
 mod test_data;
 mod theme;
+mod todo_undo;
 mod todos_view;
 mod tools_view;
 mod transcript;

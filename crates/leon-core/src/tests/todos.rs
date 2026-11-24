@@ -139,3 +139,33 @@ async fn the_to_do_page_keeps_the_users_order_a_new_flow_comes_last() {
     let stored = leon_domain::todo_flows(&storage.list_flows().unwrap(), &storage.todos().unwrap());
     assert_eq!(stored, [a, c, b]);
 }
+
+/// Undoing a tick or a removal puts the to-do back as it was: open, in its
+/// place, with its id (TODO-1).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_undone_tick_or_removal_puts_the_todo_back_as_it_was() {
+    let h = harness();
+    new_flow(&h, BackendKind::ClaudeCode).await;
+    let flow = until(&h.core, "flow", |s| !s.flows.is_empty()).await.flows[0]
+        .flow
+        .id;
+    for what in ["Merge", "Deploy"] {
+        h.core.send(Intent::AddTodo {
+            flow,
+            when: String::new(),
+            what: what.into(),
+        });
+    }
+    let s = until(&h.core, "two to-dos", |s| s.todos.len() == 2).await;
+    let (first, before) = (s.todos[0].clone(), s.todos.to_vec());
+    h.core.send(Intent::SetTodoDone(first.id, true));
+    until(&h.core, "done", |s| s.todos[0].done).await;
+    h.core.send(Intent::RestoreTodo(first.clone()));
+    until(&h.core, "open again", |s| !s.todos[0].done).await;
+    h.core.send(Intent::RemoveTodo(first.id));
+    until(&h.core, "removed", |s| s.todos.len() == 1).await;
+    h.core.send(Intent::RestoreTodo(first));
+    let s = until(&h.core, "back", |s| s.todos.len() == 2).await;
+    assert_eq!(s.todos.to_vec(), before);
+    assert_eq!(h.storage.todos().unwrap(), before);
+}

@@ -537,6 +537,7 @@ impl Render for Workspace {
             .children(self.render_drawer(window, cx))
             .children(self.render_row_menu(cx))
             .children(self.render_flash())
+            .children(self.render_todo_undo(cx))
             .children(crate::clipboard::render_copied(cx))
     }
 }

@@ -1,9 +1,10 @@
 //! The flash message: an action's result ("#12 is a draft again"), shown
-//! once for a few seconds at the window's top right, under the header.
+//! once for a few seconds at the window's top right, under the header; the
+//! look of every such note.
 
 use std::time::Duration;
 
-use gpui::{AnyElement, Context, IntoElement, div, prelude::*};
+use gpui::{AnyElement, Context, Div, IntoElement, div, prelude::*};
 
 use crate::theme;
 use crate::widgets::HEADER_HEIGHT;
@@ -51,23 +52,29 @@ impl Workspace {
     pub(crate) fn render_flash(&self) -> Option<AnyElement> {
         let text = self.flash.text.clone()?;
         Some(
-            div()
-                .absolute()
+            toast()
                 .top(crate::theme::rem(HEADER_HEIGHT + 12.))
                 .right_4()
-                .max_w(crate::theme::rem(360.))
-                .px_3()
-                .py_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(theme::border_strong())
-                .bg(theme::surface())
-                .shadow_lg()
-                .text_size(crate::theme::rem(12.5))
                 .child(text)
                 .into_any_element(),
         )
     }
+}
+
+/// A note over the window, for a few seconds (the flash message, a to-do's
+/// undo): placed by the caller.
+pub(crate) fn toast() -> Div {
+    div()
+        .absolute()
+        .max_w(crate::theme::rem(360.))
+        .px_3()
+        .py_2()
+        .rounded_lg()
+        .border_1()
+        .border_color(theme::border_strong())
+        .bg(theme::surface())
+        .shadow_lg()
+        .text_size(crate::theme::rem(12.5))
 }
 
 #[cfg(test)]

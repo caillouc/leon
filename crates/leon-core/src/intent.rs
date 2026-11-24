@@ -123,6 +123,9 @@ pub enum Intent {
     SetTodoDone(leon_domain::TodoId, bool),
     /// Remove a to-do for good (TODO-1).
     RemoveTodo(leon_domain::TodoId),
+    /// Put a to-do back as it was before the user ticked or removed it: an
+    /// undo (TODO-1).
+    RestoreTodo(leon_domain::Todo),
     /// Change a to-do's when and what (TODO-1).
     EditTodo {
         /// The to-do.

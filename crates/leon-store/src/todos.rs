@@ -90,6 +90,25 @@ pub(crate) fn remove(conn: &Connection, id: TodoId) -> Result<(), PortError> {
         .map_err(err("removing a to-do"))
 }
 
+/// Puts a to-do back as it was, its id kept (TODO-1).
+pub(crate) fn restore(conn: &Connection, todo: &Todo) -> Result<(), PortError> {
+    conn.execute(
+        "INSERT OR REPLACE INTO todos (id, flow_id, waits_for, text, done, added_by, added_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            todo.id.0,
+            todo.flow.0,
+            todo.when,
+            todo.what,
+            todo.done,
+            todo.by.map(|c| c.0),
+            todo.added_at
+        ],
+    )
+    .map(|_| ())
+    .map_err(err("restoring a to-do"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
@@ -155,5 +174,25 @@ mod tests {
         assert_eq!(store.todos().unwrap().len(), 2);
         store.delete_flow(flow.id).unwrap();
         assert_eq!(store.todos().unwrap().len(), 1);
+    }
+
+    /// A to-do put back after its tick or removal is undone is as it was,
+    /// its id and place kept (TODO-1).
+    #[test]
+    fn a_restored_todo_is_as_it_was() {
+        let store = Store::open_in_memory().unwrap();
+        let project = store.add_project("api", Path::new("/code/api"), 1).unwrap();
+        let flow = store.create_flow(project.id, "Fix retry", 1).unwrap();
+        let first = store
+            .add_todo(flow.id, ("Monday", "Merge"), None, 5)
+            .unwrap();
+        store.add_todo(flow.id, ("", "Deploy"), None, 6).unwrap();
+        let before = store.todos().unwrap();
+        store.set_todo_done(first.id, true).unwrap();
+        store.restore_todo(&first).unwrap();
+        assert_eq!(store.todos().unwrap(), before);
+        store.remove_todo(first.id).unwrap();
+        store.restore_todo(&first).unwrap();
+        assert_eq!(store.todos().unwrap(), before);
     }
 }

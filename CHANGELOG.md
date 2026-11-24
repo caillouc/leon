@@ -3,6 +3,10 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.8.2
+
+- **To-dos**: ticking or removing one happens at once, with an Undo at the bottom right.
+
 ## v0.8.1
 
 - **Archive**: sending a message in an archived flow takes it out of the archive.

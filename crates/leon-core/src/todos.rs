@@ -91,6 +91,15 @@ impl Core {
         }
     }
 
+    /// Puts a to-do back as it was before the user ticked or removed it,
+    /// in its place: an undo, so the To do page's order stays (TODO-1).
+    pub(crate) fn restore_todo(&mut self, todo: Todo) {
+        let storage = Arc::clone(&self.ports.storage);
+        if Self::report(blocking(|| storage.restore_todo(&todo))).is_some() {
+            put_back(Arc::make_mut(&mut self.state.todos), todo);
+        }
+    }
+
     /// Marks a to-do done, or open again.
     pub(crate) fn set_todo_done(&mut self, id: TodoId, done: bool) {
         let Some(flow) = self.state.todos.iter().find(|t| t.id == id).map(|t| t.flow) else {
@@ -133,4 +142,12 @@ impl Core {
         order.push(flow);
         self.order_todo_flows(&order);
     }
+}
+
+/// Puts `todo` in `todos`, kept in the order added (by id), in place of the
+/// one with its id.
+pub(crate) fn put_back(todos: &mut Vec<Todo>, todo: Todo) {
+    todos.retain(|t| t.id != todo.id);
+    let at = todos.partition_point(|t| t.id < todo.id);
+    todos.insert(at, todo);
 }
