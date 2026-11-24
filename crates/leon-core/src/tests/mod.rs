@@ -269,6 +269,25 @@ impl Backends for FakeBackends {
     fn discard(&self, id: ConversationId, session: Option<crate::ports::CliSession>) {
         self.discarded.lock().unwrap().push((id, session));
     }
+    /// A pasted image is saved under its conversation; a dropped file named
+    /// `broken` cannot be read.
+    fn save_image(
+        &self,
+        id: ConversationId,
+        image: &crate::ports::Image,
+    ) -> Result<PathBuf, PortError> {
+        match image {
+            crate::ports::Image::Pasted { ext, .. } => {
+                Ok(PathBuf::from(format!("/data/images/{}/1.{ext}", id.0)))
+            }
+            crate::ports::Image::File(path) if path.ends_with("broken") => {
+                Err(PortError::new("saving an image", "no such file"))
+            }
+            crate::ports::Image::File(path) => {
+                Ok(PathBuf::from(format!("/data/images/{}", id.0)).join(path.file_name().unwrap()))
+            }
+        }
+    }
     fn held(&self) -> Vec<ConversationId> {
         self.held
             .lock()
@@ -496,6 +515,7 @@ async fn new_flow(h: &Harness, backend: BackendKind) -> ConversationId {
         project: ProjectId(1),
         settings: settings(backend),
         text: "Fix the retry bug".into(),
+        images: Vec::new(),
         issue: Some(leon_domain::GhRef::issue("acme/api", 12)),
     });
     let s = until(&h.core, "conversation", |s| !s.flows.is_empty()).await;

@@ -26,8 +26,8 @@ pub(crate) enum Internal {
     /// The pull request of a folder's branch, or none.
     Pr(PathBuf, Option<Box<PullRequest>>),
     /// The working tree holding a folder of a flow, `None` outside a
-    /// repository (CTX-2). `keep`: the folder joins the flow even
-    /// then (an agent said it works there).
+    /// repository, whether it is a repository's own checkout, and how the
+    /// conversation came there (CTX-2).
     WorkingTree {
         conversation: leon_domain::ConversationId,
         /// Which of its conversation's folders this is, in order.
@@ -35,7 +35,8 @@ pub(crate) enum Internal {
         flow: FlowId,
         dir: PathBuf,
         root: Option<PathBuf>,
-        keep: bool,
+        main: bool,
+        came: crate::folders::Came,
     },
     /// My issues and pull requests (GH-2, GH-3), or why they failed.
     Lists(Result<(Vec<Issue>, Vec<PullRequest>), String>),
@@ -385,8 +386,9 @@ impl Core {
                 flow,
                 dir,
                 root,
-                keep,
-            } => self.working_tree_found((conversation, seq), flow, dir, root, keep),
+                main,
+                came,
+            } => self.working_tree_found((conversation, seq), flow, dir, (root, main), came),
             Internal::Lists(Ok((issues, prs))) => self.lists_read(issues, prs),
             Internal::Lists(Err(error)) => self.state.github_error = Some(error),
             Internal::Done(item, acting, message) => {

@@ -17,6 +17,7 @@ mod conn;
 mod connectors;
 mod doctor;
 mod holder;
+mod images;
 mod limits;
 mod mcp;
 mod options;
@@ -47,6 +48,9 @@ pub struct Clis {
     /// The user's home, where the CLIs keep their sessions: a deleted
     /// conversation's goes with it (NAV-8); none in tests.
     home: Option<std::path::PathBuf>,
+    /// Where the images of messages are kept, a folder per conversation
+    /// (CONV-18, I27); none in tests.
+    images: Option<std::path::PathBuf>,
 }
 
 impl Clis {
@@ -57,7 +61,16 @@ impl Clis {
             skills: None,
             holders: None,
             home: None,
+            images: None,
         }
+    }
+
+    /// Keeps the images of messages in a folder of `root` per conversation
+    /// (CONV-18, I27).
+    #[must_use]
+    pub fn with_images(mut self, root: std::path::PathBuf) -> Self {
+        self.images = Some(root);
+        self
     }
 
     /// Hands Leon's generic skills to the CLIs through copies in `folder`,
@@ -194,6 +207,12 @@ impl Backends for Clis {
         if let Some(holders) = self.holders.as_ref() {
             conn::discard(holders, &id.0.to_string());
         }
+        if let Some(root) = self.images.as_deref()
+            && let Err(error) = std::fs::remove_dir_all(images::folder(root, id))
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(%error, conversation = id.0, "removing a conversation's images");
+        }
         // Codex and Copilot CLI index their sessions in databases of their
         // own too: theirs stay (sessions.rs).
         if let (Some(home), Some((BackendKind::ClaudeCode, session))) =
@@ -201,6 +220,18 @@ impl Backends for Clis {
         {
             sessions::discard_claude(&home.join(".claude").join("projects"), &session);
         }
+    }
+
+    fn save_image(
+        &self,
+        id: leon_domain::ConversationId,
+        image: &leon_core::ports::Image,
+    ) -> Result<std::path::PathBuf, PortError> {
+        let root = self
+            .images
+            .as_deref()
+            .ok_or_else(|| PortError::new("saving an image", "no folder for images"))?;
+        images::save(root, id, image)
     }
 
     fn title(&self, backend: BackendKind, message: &str) -> Result<String, PortError> {

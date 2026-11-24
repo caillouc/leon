@@ -1,6 +1,8 @@
 //! The folders a flow works in (CTX-2, D3): every working tree —
 //! a repository or one of its worktrees — its agents change files in or say
-//! they moved to, in the order Leon saw them.
+//! they moved to, in the order Leon saw them. A worktree an agent is merely
+//! started in joins too; a repository's own checkout does not: it is where
+//! the user keeps the repository, often on another flow's branch.
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -9,6 +11,17 @@ use leon_domain::{ConversationId, FlowId};
 
 use crate::app::Core;
 use crate::repo::Internal;
+
+/// How a conversation came to a folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Came {
+    /// It changed a file there.
+    Changed,
+    /// It said it works there (`set_working_directory`).
+    Said,
+    /// It was started there by another agent.
+    Started,
+}
 
 impl Core {
     /// Files an conversation changed: the working trees holding them join
@@ -34,33 +47,35 @@ impl Core {
                     let seq = self.next_lookup(conversation);
                     self.worked_in(conversation, flow, root, seq);
                 }
-                None => self.find_working_tree(conversation, flow, dir, false),
+                None => self.find_working_tree(conversation, flow, dir, Came::Changed),
             }
         }
     }
 
-    /// Looks for the working tree holding `dir`, where `conversation` works,
-    /// in the background. `keep`: `dir` joins the flow even outside a
-    /// repository.
+    /// Looks for the working tree holding `dir`, where `conversation`
+    /// `came`, in the background, and whether it is a repository's own
+    /// checkout.
     pub(crate) fn find_working_tree(
         &mut self,
         conversation: ConversationId,
         flow: FlowId,
         dir: PathBuf,
-        keep: bool,
+        came: Came,
     ) {
         let seq = self.next_lookup(conversation);
         let git = Arc::clone(&self.ports.git);
         let tx = self.internal_tx.clone();
         crate::jobs::spawn(move || {
             let root = git.working_tree(&dir);
+            let main = root.as_deref().is_some_and(|r| git.is_main_checkout(r));
             let _ = tx.send(Internal::WorkingTree {
                 conversation,
                 seq,
                 flow,
                 dir,
                 root,
-                keep,
+                main,
+                came,
             });
         });
     }
@@ -72,20 +87,26 @@ impl Core {
         self.lookups
     }
 
+    /// The working tree holding `dir` (`main`: a repository's own
+    /// checkout), where `conversation` came: it joins the flow, unless the
+    /// conversation was only started in a repository's own checkout.
     pub(crate) fn working_tree_found(
         &mut self,
         (conversation, seq): (ConversationId, u64),
         flow: FlowId,
         dir: PathBuf,
-        root: Option<PathBuf>,
-        keep: bool,
+        (root, main): (Option<PathBuf>, bool),
+        came: Came,
     ) {
         match root {
             Some(root) => {
                 self.working_trees.insert(dir, root.clone());
-                self.worked_in(conversation, flow, root, seq);
+                if !(main && came == Came::Started) {
+                    self.worked_in(conversation, flow, root, seq);
+                }
             }
-            None if keep => self.worked_in(conversation, flow, dir, seq),
+            // Outside a repository: only where it said or was started.
+            None if came != Came::Changed => self.worked_in(conversation, flow, dir, seq),
             None => {}
         }
     }

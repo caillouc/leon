@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use leon_core::ports::{BackendCommand, BackendEvent, SessionSpec};
+use leon_core::ports::{BackendCommand, BackendEvent, Prompt, SessionSpec};
 use serde_json::{Value, json};
 
 use super::permission::Permission;
@@ -37,7 +37,7 @@ pub(crate) struct Session {
     selecting: usize,
     /// `session/load` replays the history: not shown again.
     loading: bool,
-    queued: Vec<String>,
+    queued: Vec<Prompt>,
     /// The agent's instructions, sent with the first prompt when the CLI
     /// takes no system prompt.
     preamble: Option<String>,
@@ -99,13 +99,22 @@ impl Session {
         json!({ "jsonrpc": "2.0", "id": self.next_id, "method": method, "params": params })
     }
 
-    fn prompt(&mut self, session: &str, text: String) -> Value {
+    /// `session/prompt`: the text, after each image as an ACP `image` block,
+    /// base64 and its MIME type (CONV-18; ACP v1 schema, 2026-11-24).
+    fn prompt(&mut self, session: &str, prompt: Prompt) -> Value {
         let text = match self.preamble.take() {
-            Some(instructions) => format!("{instructions}\n\n{text}"),
-            None => text,
+            Some(instructions) => format!("{instructions}\n\n{}", prompt.text),
+            None => prompt.text,
         };
         self.prompts += 1;
-        let params = json!({ "sessionId": session, "prompt": [{ "type": "text", "text": text }] });
+        let mut blocks: Vec<Value> = prompt
+            .images
+            .iter()
+            .filter_map(|path| crate::images::encoded(path))
+            .map(|(mime, data)| json!({ "type": "image", "mimeType": mime, "data": data }))
+            .collect();
+        blocks.push(json!({ "type": "text", "text": text }));
+        let params = json!({ "sessionId": session, "prompt": blocks });
         self.request(Pending::Prompt, "session/prompt", &params)
     }
 
@@ -123,8 +132,8 @@ impl Session {
     /// A command from the core; returns the messages to send.
     pub(crate) fn command(&mut self, command: BackendCommand) -> Vec<Value> {
         match command {
-            BackendCommand::Send(text) => {
-                self.queued.push(text);
+            BackendCommand::Send(prompt) => {
+                self.queued.push(prompt);
                 self.send_queued()
             }
             BackendCommand::Interrupt => match &self.id {

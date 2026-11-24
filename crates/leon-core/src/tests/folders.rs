@@ -7,10 +7,10 @@ use super::*;
 async fn folders_join_a_flow_where_its_agents_change_files() {
     let h = harness();
     let conversation = new_flow(&h, BackendKind::Codex).await;
-    let s = until(&h.core, "the first folder", |s| {
-        s.flows[0].folders == [PathBuf::from("/code/api")]
-    })
-    .await;
+    // The repository's own checkout it starts in: no work there yet, not
+    // shown.
+    let s = h.core.snapshot();
+    assert_eq!(s.flows[0].folders, [] as [PathBuf; 0]);
     let id = s.flows[0].flow.id;
     // A worktree, then another repository (relative to the conversation's
     // folder, as some CLIs give paths); a file outside any repository adds
@@ -107,11 +107,8 @@ async fn each_agent_has_the_folder_it_works_in() {
     let h = harness();
     let planner = new_flow(&h, BackendKind::Codex).await;
     next_command(&h, 0).await;
-    // Before any change: the flow folder holding its working directory.
-    until(&h.core, "the planner's folder", |s| {
-        s.conversations[&planner].folder.as_deref() == Some(Path::new("/code/api"))
-    })
-    .await;
+    // Before any change, in the repository's own checkout: no folder yet.
+    assert_eq!(h.core.snapshot().conversations[&planner].folder, None);
     let start = crate::ports::AppToolCall::StartAgent {
         agent: "coder".into(),
         prompt: "Fix it in the worktree".into(),
@@ -162,35 +159,53 @@ async fn each_agent_has_the_folder_it_works_in() {
     );
 }
 
-/// A checkout on its repository's default branch is where worktrees start
-/// from: the flow keeps it, but the folders it shows and its agents' folders
-/// leave it out (CTX-2).
+/// A repository's own checkout shows once an agent works in it — changes a
+/// file there or says it works there — on any branch, its default one too;
+/// an agent merely started there adds nothing (CTX-2).
 #[tokio::test(flavor = "multi_thread")]
-async fn a_checkout_on_the_default_branch_is_not_shown() {
+async fn a_main_checkout_shows_once_an_agent_works_in_it() {
     let h = harness();
     let planner = new_flow(&h, BackendKind::Codex).await;
-    let docs = PathBuf::from("/code/docs");
-    let worktree = PathBuf::from("/code/api/.worktrees/fix");
+    next_command(&h, 0).await;
+    // A repository's own checkout on disk: start_agent wants a folder.
+    let (docs, web) = (PathBuf::from("/code/docs"), std::env::temp_dir());
+    // A coder started in the web checkout, by name: nothing joins.
+    let start = crate::ports::AppToolCall::StartAgent {
+        agent: "coder".into(),
+        prompt: "Look at the web app".into(),
+        working_directory: Some(web.clone()),
+        for_user: false,
+    };
+    agents::call(&h, planner, start).await.unwrap();
+    started(&h, 2).await;
+    // The planner edits the docs checkout, on its default branch.
     emit(
         &h,
         0,
-        BackendEvent::FilesChanged(vec![PathBuf::from("/code/docs/README.md")]),
+        BackendEvent::FilesChanged(vec![docs.join("README.md")]),
     );
-    until(&h.core, "the docs checkout read", |s| {
-        s.git.contains_key(&docs)
+    let s = until(&h.core, "the docs checkout", |s| {
+        s.flows[0].folders == [docs.clone()]
     })
     .await;
-    emit(
+    assert_eq!(s.conversations[&planner].folder, Some(docs.clone()));
+    assert_eq!(h.storage.flows.lock().unwrap()[0].folders, [docs]);
+    // Its pull request is none of the flow's: the web checkout's branch has
+    // one, not followed.
+    assert_eq!(s.prs_of(&s.flows[0]).len(), 0);
+    // The coder says it works in the web checkout: now it shows.
+    let said = agents::call(
         &h,
-        0,
-        BackendEvent::FilesChanged(vec![worktree.join("src/retry.rs")]),
-    );
-    let s = until(&h.core, "the worktree", |s| {
-        s.flows[0].folders == [worktree.clone()]
+        ConversationId(2),
+        crate::ports::AppToolCall::SetWorkingDirectory { path: web.clone() },
+    )
+    .await;
+    assert!(said.is_ok(), "{said:?}");
+    let s = until(&h.core, "the web checkout", |s| {
+        s.flows[0].folders.contains(&web)
     })
     .await;
-    assert_eq!(s.conversations[&planner].folder, Some(worktree));
-    assert!(h.storage.flows.lock().unwrap()[0].folders.contains(&docs));
+    assert_eq!(s.conversations[&ConversationId(2)].folder, Some(web));
 }
 
 #[tokio::test(flavor = "multi_thread")]

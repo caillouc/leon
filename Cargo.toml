@@ -5,7 +5,7 @@ members = ["crates/*", "xtask"]
 default-members = ["crates/leon"]
 
 [workspace.package]
-version = "0.5.1"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.100"
 license = "AGPL-3.0-only"
@@ -53,6 +53,9 @@ gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", default-fe
 
 # Everything else
 anyhow = "1.0.104"
+# Images in a message go to Claude Code and Copilot CLI in base64 (I27);
+# already in the tree through other crates.
+base64 = "0.23.1"
 dirs = "7.0.0"
 regex = "1.13.1"
 rusqlite = { version = "0.43.0", features = ["bundled"] }

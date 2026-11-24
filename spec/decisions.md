@@ -330,3 +330,15 @@ HTTP library, against P7). Each step checked by hand on the v0.4.2 release,
 doctor that an update is available and event better if the update could be
 downloaded and installed directly from Leon"; chosen by the maintainer on
 2026-11-23: "Yes, build it".
+
+**I27 — Images in a message (CONV-18).** Each image is saved in Leon's data
+folder, `images/<conversation id>/`, when the message is sent, and goes with
+the conversation when it is deleted (NAV-8). Each CLI gets it as it takes
+images: Claude Code an `image` block with the bytes in base64 in its
+stream-json user message (2.1.288, a real run, 2026-11-24); Codex a
+`localImage` input with the file's path (`turn/start`, app-server schema of
+0.160.0, 2026-11-24); Copilot CLI an ACP `image` content block, base64 data
+and its MIME type (ACP v1 schema; Copilot announces `promptCapabilities.image`,
+1.0.114). The text keeps "[Image #N]" where each was put. Proposed with
+thumbnails; chosen by the maintainer on 2026-11-24: "go without thumbnails
+for now".

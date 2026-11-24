@@ -244,20 +244,6 @@ pub struct GitView {
     pub error: Option<String>,
 }
 
-impl GitView {
-    /// Its checkout sits on its repository's default branch (`dev` when the
-    /// base is `origin/dev`): where worktrees start from, not where agents
-    /// work, so the right pane leaves it out (CTX-2).
-    pub fn on_default_branch(&self) -> bool {
-        match (&self.branch, &self.base) {
-            (Some(branch), Some(base)) => {
-                base.split_once('/').map_or(base.as_str(), |(_, name)| name) == branch
-            }
-            _ => false,
-        }
-    }
-}
-
 /// A pull request's changes as GitHub's "Files changed" shows them (GH-3).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrDiff {

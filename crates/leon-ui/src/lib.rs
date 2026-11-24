@@ -11,6 +11,7 @@
 )]
 
 mod agent_color;
+mod attach;
 mod clipboard;
 mod composer;
 mod diff_drawer;

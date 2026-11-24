@@ -366,20 +366,27 @@ impl Core {
                 project,
                 settings,
                 text,
+                images,
                 issue,
-            } => self.new_flow(project, settings, &text, issue),
+            } => self.new_flow(project, settings, (&text, &images), issue),
             Intent::NewConversation {
                 flow,
                 settings,
                 working_dir,
                 text,
-            } => self.new_conversation(flow, settings, working_dir, &text),
-            Intent::Send { conversation, text } => self.send(conversation, &text),
+                images,
+            } => self.new_conversation(flow, settings, working_dir, (&text, &images)),
+            Intent::Send {
+                conversation,
+                text,
+                images,
+            } => self.send(conversation, &text, &images),
             Intent::Rewind {
                 conversation,
                 entry,
                 text,
-            } => self.rewind(conversation, entry, &text),
+                images,
+            } => self.rewind(conversation, entry, (&text, &images)),
             Intent::Stop(conversation) => {
                 if let Some(commands) = self.live.get(&conversation) {
                     let _ = commands.send(BackendCommand::Interrupt);
@@ -432,10 +439,7 @@ impl Core {
                 self.fetch_bases(id);
             }
             Intent::RefreshGitHub => self.refresh_lists(),
-            Intent::RunDoctor => {
-                self.run_doctor();
-                self.check_update(true);
-            }
+            Intent::RunDoctor => self.run_doctor(),
             Intent::InstallUpdate => self.install_update(),
             Intent::RestartLeon => self.restart(),
             Intent::RefreshTools => self.refresh_tools(),
@@ -597,7 +601,7 @@ impl Core {
         &mut self,
         project: leon_domain::ProjectId,
         settings: ConversationSettings,
-        text: &str,
+        (text, images): (&str, &[crate::ports::Image]),
         issue: Option<leon_domain::GhRef>,
     ) {
         let Some(dir) = self.state.project(project).map(|p| p.path.clone()) else {
@@ -627,7 +631,7 @@ impl Core {
         };
         self.state.flows.push(flow.clone());
         self.viewing = Some(flow.id);
-        self.send(id, text);
+        self.send(id, text, images);
         self.write_title(flow.id, &flow.title, backend, text);
     }
 
@@ -638,7 +642,7 @@ impl Core {
         flow: FlowId,
         settings: ConversationSettings,
         working_dir: std::path::PathBuf,
-        text: &str,
+        (text, images): (&str, &[crate::ports::Image]),
     ) {
         if !self.state.flows.iter().any(|c| c.id == flow) {
             return;
@@ -650,7 +654,7 @@ impl Core {
             working_dir,
         };
         if let Some(id) = Self::report(self.add_conversation(&new)) {
-            self.send(id, text);
+            self.send(id, text, images);
         }
     }
 
@@ -691,23 +695,32 @@ impl Core {
         Some(self.state.conversations.get_mut(&id)?.push(timed))
     }
 
-    /// Sends the user's message (CONV-1).
-    fn send(&mut self, id: ConversationId, text: &str) {
+    /// Sends the user's message (CONV-1), with its images (CONV-18).
+    fn send(&mut self, id: ConversationId, text: &str, images: &[crate::ports::Image]) {
         // Replying means its answer was read.
         self.mark_read(id);
-        self.deliver(
-            id,
-            Entry::User {
-                text: text.to_owned(),
-            },
-            text,
-        );
+        let entry = Entry::User {
+            text: text.to_owned(),
+        };
+        self.deliver_with(id, entry, text, images);
     }
 
     /// Records `entry` in a conversation's transcript and sends `message` to its
     /// CLI, starting it if needed. `false` when nothing was sent: the conversation
     /// is busy, the message empty, or the CLI could not start.
     pub(crate) fn deliver(&mut self, id: ConversationId, entry: Entry, message: &str) -> bool {
+        self.deliver_with(id, entry, message, &[])
+    }
+
+    /// [`Self::deliver`], with the images put in the message: saved with the
+    /// conversation's files, then sent (CONV-18, I27).
+    fn deliver_with(
+        &mut self,
+        id: ConversationId,
+        entry: Entry,
+        message: &str,
+        images: &[crate::ports::Image],
+    ) -> bool {
         let Some(s) = self.state.conversations.get(&id) else {
             return false;
         };
@@ -731,8 +744,16 @@ impl Core {
             s.questions.clear();
             s.suggestions.clear();
         }
+        let backends = Arc::clone(&self.ports.backends);
+        let images = images
+            .iter()
+            .filter_map(|image| Self::report(blocking(|| backends.save_image(id, image))))
+            .collect();
         if let Some(commands) = self.live.get(&id) {
-            let _ = commands.send(BackendCommand::Send(message));
+            let _ = commands.send(BackendCommand::Send(crate::ports::Prompt {
+                text: message,
+                images,
+            }));
         }
         self.idle_since.remove(&id);
         self.touch(flow, false);
@@ -828,7 +849,12 @@ impl Core {
     /// Goes back to before entry `entry`, a message of the user, and sends
     /// `text` (CONV-7, CONV-8). Works the same on every CLI: the next message
     /// starts a new CLI session that carries the flow so far.
-    fn rewind(&mut self, id: ConversationId, entry: usize, text: &str) {
+    fn rewind(
+        &mut self,
+        id: ConversationId,
+        entry: usize,
+        (text, images): (&str, &[crate::ports::Image]),
+    ) {
         self.load_transcript(id);
         let Some(s) = self.state.conversations.get_mut(&id) else {
             return;
@@ -862,7 +888,7 @@ impl Core {
                 ),
             },
         );
-        self.send(id, text);
+        self.send(id, text, images);
     }
 
     fn answer(&mut self, id: ConversationId, question: String, answer: &str) {

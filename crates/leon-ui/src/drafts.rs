@@ -1,25 +1,27 @@
 //! What the user was writing, kept per conversation (CONV-1): the message
-//! box is one for every conversation, so on leaving one its text and the
-//! long pastes it refers to (CONV-12) are put aside, and given back when it
-//! is shown again; another conversation gets its own, or an empty box.
+//! box is one for every conversation, so on leaving one its text, and the
+//! long pastes (CONV-12) and images (CONV-18) it refers to, are put aside,
+//! and given back when it is shown again; another conversation gets its
+//! own, or an empty box.
 
 use std::collections::HashMap;
 
 use gpui::{Context, Window};
 use leon_domain::ConversationId;
 
+use crate::attach::Put;
 use crate::workspace::Workspace;
 
-/// A message being written: its text, and the pastes its tokens stand for.
+/// A message being written: its text, and what its tokens stand for.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Draft {
     pub text: String,
-    pub pasted: Vec<String>,
+    pub put: Put,
 }
 
 /// The drafts put aside, by conversation. `None` is the forms starting a
 /// flow or a conversation: their text stays in their own box, only their
-/// pastes are kept here.
+/// pastes and images are kept here.
 #[derive(Debug, Default)]
 pub(crate) struct Drafts(HashMap<Option<ConversationId>, Draft>);
 
@@ -32,7 +34,7 @@ impl Drafts {
         leaving: Draft,
         to: Option<ConversationId>,
     ) -> Draft {
-        if leaving.text.trim().is_empty() && leaving.pasted.is_empty() {
+        if leaving.text.trim().is_empty() && leaving.put.is_empty() {
             self.0.remove(&from);
         } else {
             self.0.insert(from, leaving);
@@ -42,8 +44,8 @@ impl Drafts {
 }
 
 impl Workspace {
-    /// The conversation shown changed from `from` to `to`: the message box
-    /// and the pastes become `to`'s draft.
+    /// The conversation shown changed from `from` to `to`: the message box,
+    /// its pastes and images become `to`'s draft.
     pub(crate) fn switch_draft(
         &mut self,
         from: Option<ConversationId>,
@@ -56,10 +58,10 @@ impl Workspace {
             text: from.map_or_else(String::new, |_| {
                 crate::workspace::text_of(&self.composer, cx)
             }),
-            pasted: std::mem::take(&mut self.pasted),
+            put: std::mem::take(&mut self.put),
         };
         let coming = self.drafts.switch(from, leaving, to);
-        self.pasted = coming.pasted;
+        self.put = coming.put;
         self.composer
             .update(cx, |state, cx| state.set_value(coming.text, window, cx));
     }
@@ -67,14 +69,19 @@ impl Workspace {
 
 #[cfg(test)]
 mod tests {
+    use leon_core::ports::Image;
     use leon_domain::ConversationId;
 
     use super::{Draft, Drafts};
+    use crate::attach::Put;
 
     fn draft(text: &str, pasted: &[&str]) -> Draft {
         Draft {
             text: text.into(),
-            pasted: pasted.iter().map(|p| (*p).to_owned()).collect(),
+            put: Put {
+                pasted: pasted.iter().map(|p| (*p).to_owned()).collect(),
+                images: Vec::new(),
+            },
         }
     }
 
@@ -96,6 +103,16 @@ mod tests {
         );
         // a's empty draft was forgotten.
         assert_eq!(drafts.switch(b, Draft::default(), a), Draft::default());
+        // An image alone keeps a draft.
+        let shot = Draft {
+            text: "[Image #1]".into(),
+            put: Put {
+                pasted: Vec::new(),
+                images: vec![Image::File("/shot.png".into())],
+            },
+        };
+        assert_eq!(drafts.switch(a, shot.clone(), b), Draft::default());
+        assert_eq!(drafts.switch(b, Draft::default(), a), shot);
         // A form's pastes come back to the form.
         assert_eq!(
             drafts.switch(None, draft("", &["diff"]), a),

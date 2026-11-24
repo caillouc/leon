@@ -334,3 +334,29 @@ fn copilot_flags() {
         Some("--plugin-dir=/data/skills/copilot/ab")
     );
 }
+
+/// An image of the message goes first as an ACP `image` block, base64 with
+/// its MIME type, then the text (CONV-18).
+#[test]
+fn images_go_before_the_text_in_the_prompt() {
+    let dir = tempfile::tempdir().unwrap();
+    let image = dir.path().join("1.png");
+    std::fs::write(&image, b"png bytes").unwrap();
+    let prompt = BackendCommand::Send(leon_core::ports::Prompt {
+        text: "What is [Image #1]?".into(),
+        images: vec![image],
+    });
+    let lines = include_str!("../../fixtures/acp/1.32.0/new-only.jsonl");
+    let (_, sent) = replay(&spec(None), lines, vec![(0, prompt)]);
+    let prompt = sent
+        .iter()
+        .find(|m| m["method"] == "session/prompt")
+        .map(|m| m["params"]["prompt"].clone());
+    assert_eq!(
+        prompt,
+        Some(json!([
+            { "type": "image", "mimeType": "image/png", "data": "cG5nIGJ5dGVz" },
+            { "type": "text", "text": "What is [Image #1]?" }
+        ]))
+    );
+}

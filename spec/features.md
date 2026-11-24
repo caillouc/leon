@@ -159,6 +159,12 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   own agent tools (starting an agent, linking a PR) do not work while Leon
   is closed. Conversations between turns stop with Leon and resume on the
   next message.
+- **CONV-18** Images in a message: paste one, or drop image files (PNG,
+  JPEG, GIF, WebP) on the message box, in a conversation or on the new-flow
+  page. Each reads "[Image #1]" where it was put, as the Claude CLI shows it
+  (no thumbnail for now); removing that text removes the image. The images
+  go to the agent with the message; they stay with the draft (CONV-1) until
+  it is sent.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the
@@ -275,9 +281,12 @@ flow**: one item in the left pane (D5).
   creates or works on, and the flow keeps them all. Several agents can
   work in several folders at once: on an agent's tab the right pane shows
   that agent's folder unless another is picked on that tab. The right pane
-  offers only the worktrees an agent works in now; a checkout on its
-  repository's default branch (the main checkout worktrees start from)
-  never shows there.
+  offers only the worktrees an agent works in now. A repository's own
+  checkout (the main checkout worktrees start from) shows, with its pull
+  request, only once an agent works in it — changes a file there or says it
+  works there — on any branch; an agent merely started there, or working in
+  a worktree of it, leaves it hidden, so a diff or PR of other work never
+  shows.
 - **CTX-3** Leon tells every agent conversation, in every CLI, to keep it up to
   date with its tools each time it is needed (moving to another folder,
   naming the flow, linking an issue or PR it creates or works on), so the

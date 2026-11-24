@@ -1,9 +1,9 @@
 //! What the composer and the new-flow form share: long pasted text
-//! kept as a folded chip (CONV-12) and the `/` list of skills and commands
-//! (CONV-11).
+//! kept as a folded chip (CONV-12), images pasted or dropped (CONV-18,
+//! `attach.rs`) and the `/` list of skills and commands (CONV-11).
 
 use gpui::{
-    AnyElement, App, ClipboardItem, ContentMask, Context, Entity, Focusable, IntoElement,
+    AnyElement, App, ContentMask, Context, Entity, ExternalPaths, Focusable, IntoElement,
     SharedString, TextAlign, TextRun, Window, canvas, deferred, div, point, prelude::*,
 };
 use gpui_component::input::{InlineToken, InputContent, Paste, TextareaState};
@@ -69,18 +69,24 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(text) = cx
-            .read_from_clipboard()
-            .and_then(|c: ClipboardItem| c.text())
-            .filter(|text| folds(text))
-        else {
+        let Some(clipboard) = cx.read_from_clipboard() else {
             return;
         };
-        let token = paste_token(self.pasted.len(), &text);
+        // An image, or image files copied, go in as images (CONV-18).
+        let images = crate::attach::clipboard_images(clipboard.entries());
+        if !images.is_empty() {
+            self.put_images(input, images, window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        let Some(text) = clipboard.text().filter(|text| folds(text)) else {
+            return;
+        };
+        let token = paste_token(self.put.pasted.len(), &text);
         let folded = input.update(cx, |state, cx| state.replace_with_token(token, window, cx));
         match folded {
             Ok(()) => {
-                self.pasted.push(text);
+                self.put.pasted.push(text);
                 cx.stop_propagation();
                 cx.notify();
             }
@@ -89,16 +95,22 @@ impl Workspace {
         }
     }
 
-    /// Wraps `input`'s box so that long pastes fold.
+    /// Wraps `input`'s box so that long pastes fold and images go in.
     pub(crate) fn paste_aware(
         input_box: gpui::Div,
         input: &Entity<TextareaState>,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
-        let input = input.clone();
-        input_box.capture_action(
-            cx.listener(move |this, _: &Paste, window, cx| this.on_paste(&input, window, cx)),
-        )
+        let (pasted, dropped) = (input.clone(), input.clone());
+        input_box
+            .capture_action(
+                cx.listener(move |this, _: &Paste, window, cx| this.on_paste(&pasted, window, cx)),
+            )
+            // Image files dropped on it go in the message (CONV-18).
+            .drag_over::<ExternalPaths>(|style, _, _, _| style.border_color(theme::accent()))
+            .on_drop(cx.listener(move |this, paths: &ExternalPaths, window, cx| {
+                this.on_drop(&dropped, paths, window, cx);
+            }))
     }
 
     /// The `/` list while the input holds only `/` and a name prefix: click

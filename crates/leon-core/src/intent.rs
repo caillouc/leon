@@ -33,6 +33,8 @@ pub enum Intent {
         settings: ConversationSettings,
         /// First message.
         text: String,
+        /// Images put in it, in order (CONV-18).
+        images: Vec<crate::ports::Image>,
         /// The issue it is started for (GH-2), if any.
         issue: Option<leon_domain::GhRef>,
     },
@@ -47,6 +49,8 @@ pub enum Intent {
         working_dir: std::path::PathBuf,
         /// First message.
         text: String,
+        /// Images put in it, in order (CONV-18).
+        images: Vec<crate::ports::Image>,
     },
     /// Send a message to an conversation (CONV-1).
     Send {
@@ -54,6 +58,8 @@ pub enum Intent {
         conversation: ConversationId,
         /// Message text.
         text: String,
+        /// Images put in it, in order (CONV-18).
+        images: Vec<crate::ports::Image>,
     },
     /// Go back to before a message of the user and send `text` instead
     /// (CONV-7, CONV-8): later entries are dropped, the CLI starts a new
@@ -65,6 +71,8 @@ pub enum Intent {
         entry: usize,
         /// What to send instead.
         text: String,
+        /// Images put in it, in order (CONV-18).
+        images: Vec<crate::ports::Image>,
     },
     /// Stop the running answer (CONV-6).
     Stop(ConversationId),

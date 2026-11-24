@@ -87,7 +87,7 @@ pub struct Workspace {
     /// Tool calls and long messages the user unfolded.
     pub(crate) expanded: HashSet<(ConversationId, usize)>,
     /// Long pastes waiting in the message box (CONV-12).
-    pub(crate) pasted: Vec<String>,
+    pub(crate) put: crate::attach::Put,
     /// What was being written in the conversations not shown (CONV-1).
     pub(crate) drafts: crate::drafts::Drafts,
     /// The user's message being edited: sending goes back to before it
@@ -229,7 +229,7 @@ impl Workspace {
             open_picker: None,
             show_archived: false,
             expanded: HashSet::new(),
-            pasted: Vec::new(),
+            put: crate::attach::Put::default(),
             drafts: crate::drafts::Drafts::default(),
             rewind: None,
             lists: HashMap::new(),

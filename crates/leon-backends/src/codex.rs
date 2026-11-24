@@ -8,7 +8,9 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::Path;
 
-use leon_core::ports::{BackendChannel, BackendCommand, BackendEvent, PortError, SessionSpec};
+use leon_core::ports::{
+    BackendChannel, BackendCommand, BackendEvent, PortError, Prompt, SessionSpec,
+};
 use leon_domain::{Capability, PlanStep, StepStatus, Usage};
 use serde_json::{Value, json};
 
@@ -38,7 +40,7 @@ pub(crate) struct Session {
     thread_request: (String, Value),
     thread: Option<String>,
     turn: Option<String>,
-    queued: Vec<String>,
+    queued: Vec<Prompt>,
     model: Option<String>,
     effort: Option<String>,
     usage: Option<Usage>,
@@ -144,8 +146,16 @@ impl Session {
         json!({ "jsonrpc": "2.0", "id": self.next_id, "method": method, "params": params })
     }
 
-    fn turn_start(&mut self, thread: &str, text: &str) -> Value {
-        let mut params = json!({ "threadId": thread, "input": [{ "type": "text", "text": text }] });
+    /// `turn/start` with the text, after each image as a `localImage` input
+    /// (CONV-18; app-server schema of 0.160.0, 2026-11-24).
+    fn turn_start(&mut self, thread: &str, prompt: &Prompt) -> Value {
+        let mut input: Vec<Value> = prompt
+            .images
+            .iter()
+            .map(|path| json!({ "type": "localImage", "path": path }))
+            .collect();
+        input.push(json!({ "type": "text", "text": prompt.text }));
+        let mut params = json!({ "threadId": thread, "input": input });
         if let Some(model) = &self.model {
             params["model"] = json!(model);
         }
@@ -158,11 +168,11 @@ impl Session {
     /// A command from the core; returns the messages to send.
     pub(crate) fn command(&mut self, command: BackendCommand) -> Vec<Value> {
         match command {
-            BackendCommand::Send(text) => {
+            BackendCommand::Send(prompt) => {
                 if let Some(thread) = self.thread.clone() {
-                    vec![self.turn_start(&thread, &text)]
+                    vec![self.turn_start(&thread, &prompt)]
                 } else {
-                    self.queued.push(text);
+                    self.queued.push(prompt);
                     Vec::new()
                 }
             }
@@ -703,6 +713,26 @@ mod tests {
                     })
                 },
             ]
+        );
+    }
+
+    /// Each image of the message goes as a `localImage` input, its path,
+    /// before the text (CONV-18).
+    #[test]
+    fn images_go_as_local_images() {
+        let (mut session, _) = Session::new(&spec(None), None);
+        session.handle(&json!({ "id": 1, "result": {} }));
+        session.handle(&json!({ "id": 2, "result": { "thread": { "id": "t-9" } } }));
+        let sent = session.command(BackendCommand::Send(super::Prompt {
+            text: "What is [Image #1]?".into(),
+            images: vec!["/data/images/3/1.png".into()],
+        }));
+        assert_eq!(
+            sent[0]["params"]["input"],
+            json!([
+                { "type": "localImage", "path": "/data/images/3/1.png" },
+                { "type": "text", "text": "What is [Image #1]?" }
+            ])
         );
     }
 

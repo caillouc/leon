@@ -414,6 +414,7 @@ impl Workspace {
         self.core.send(Intent::Send {
             conversation,
             text: review_message(&comments),
+            images: Vec::new(),
         });
         cx.notify();
     }

@@ -17,7 +17,12 @@ How the code is organised. Owned by agents; must follow
   own process group so it outlives the app (`leon-backends`: `holder.rs`
   runs in the holder, `conn.rs` is the app's side; a deleted conversation's
   holder is stopped and its folder removed, `conn::discard`, and its Claude
-  Code session files go, `sessions.rs`). The holder keeps the
+  Code session files go, `sessions.rs`, and its images, `images.rs`). The
+  images of a message (CONV-18, I27) are saved by `Backends::save_image` in
+  `<data>/images/<conversation>/` when it is sent, then each adapter gives
+  them to its CLI (base64 for Claude Code and Copilot CLI, the path for
+  Codex); the message box holds them meanwhile (`leon-ui/src/attach.rs`).
+  The holder keeps the
   CLI's stdin open, appends its stdout to `out` and stderr to `err`, takes
   the app's lines on the Unix socket `sock` (`>line` to stdin, `!stop`),
   and writes `exit` once the CLI has ended and its output is whole. The app
@@ -108,11 +113,14 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    (`BackendEvent::FilesChanged`): the core asks git for the working tree
    holding the file (`Git::working_tree`, a repository or one of its
    worktrees) and adds it once; a conversation started with a
-   `working_directory` brings it at once. Each conversation keeps the folder
+   `working_directory` brings it at once, unless that is a repository's own
+   checkout (`folders::Came`: a main checkout joins when an agent changes a
+   file there or says it works there). Each conversation keeps the folder
    it last worked in (`ConversationView::folder`), which the right pane shows
    on its tab, saved in `conversations.folder` (I20). The right pane shows
-   only the worktrees a conversation works in, never a checkout on its
-   default branch (`GitView::on_default_branch`). The folder the calling CLI
+   only the folders a conversation works in; the folder a flow started in,
+   before any joined, only when it is not a repository's own checkout
+   (`GitView::main`). The folder the calling CLI
    was started in never changes (its resume depends on it).
 7. Git state (`GitView`) and pull requests are kept per folder. A flow's
    links (`Flow::links`, SQLite `flow_links`, I19) are the issue it was

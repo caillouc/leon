@@ -49,9 +49,13 @@ impl Git for FakeGit {
     fn is_main_checkout(&self, dir: &Path) -> bool {
         !dir.components().any(|c| c.as_os_str() == ".worktrees")
     }
-    /// `/code/api` and `/code/web` are repositories, `/code/api/.worktrees/fix`
-    /// a worktree of the first.
+    /// `/code/api`, `/code/web`, `/code/docs` and the temporary folder are
+    /// repositories, `/code/api/.worktrees/fix` a worktree of the first.
     fn working_tree(&self, path: &Path) -> Option<PathBuf> {
+        let temp = std::env::temp_dir();
+        if path.starts_with(&temp) {
+            return Some(temp);
+        }
         [
             "/code/api/.worktrees/fix",
             "/code/api",

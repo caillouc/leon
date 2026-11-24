@@ -255,6 +255,7 @@ async fn only_the_agent_that_answered_you_is_to_review() {
     h.core.send(Intent::Send {
         conversation: coder,
         text: "Also step 2".into(),
+        images: Vec::new(),
     });
     next_command(&h, 1).await;
     end_turn(&h, 1, "Step 2 done.");
@@ -389,7 +390,8 @@ async fn an_agent_started_for_the_user_answers_the_user() {
         "{reply}"
     );
     started(&h, 2).await;
-    let BackendCommand::Send(first) = next_command(&h, 1).await else {
+    let BackendCommand::Send(crate::ports::Prompt { text: first, .. }) = next_command(&h, 1).await
+    else {
         panic!("no first message");
     };
     assert!(
@@ -533,6 +535,7 @@ async fn the_user_starts_another_flow_in_a_flow() {
         settings: settings(BackendKind::Codex),
         working_dir: PathBuf::from("/code/api/.worktrees/fix"),
         text: "Review the branch".into(),
+        images: Vec::new(),
     });
     started(&h, 2).await;
     assert_eq!(

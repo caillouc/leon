@@ -327,11 +327,69 @@ pub enum BackendEvent {
     Limits(Vec<leon_domain::LimitWindow>),
 }
 
+/// The image files Leon sends (CONV-18): extension, MIME type.
+const IMAGE_TYPES: [(&str, &str); 5] = [
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("gif", "image/gif"),
+    ("webp", "image/webp"),
+];
+
+/// An image file's MIME type by its extension, in any case; `None` for any
+/// other file (CONV-18).
+pub fn image_mime(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?;
+    IMAGE_TYPES
+        .iter()
+        .find(|(e, _)| e.eq_ignore_ascii_case(ext))
+        .map(|(_, mime)| *mime)
+}
+
+/// An image the user put in a message (CONV-18).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Image {
+    /// Pasted: its bytes and its file extension (`png`, `jpg`, `gif`, `webp`).
+    Pasted {
+        /// The image file's bytes.
+        bytes: std::sync::Arc<[u8]>,
+        /// Its file extension.
+        ext: &'static str,
+    },
+    /// A file dropped on the message box.
+    File(PathBuf),
+}
+
+/// A message to a CLI: its text, and the images saved for it, in order
+/// (CONV-18, I27).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Prompt {
+    /// The text, "[Image #N]" where each image was put.
+    pub text: String,
+    /// Each image's file in Leon's data folder.
+    pub images: Vec<PathBuf>,
+}
+
+impl From<String> for Prompt {
+    fn from(text: String) -> Self {
+        Self {
+            text,
+            images: Vec::new(),
+        }
+    }
+}
+
+impl From<&str> for Prompt {
+    fn from(text: &str) -> Self {
+        text.to_owned().into()
+    }
+}
+
 /// Something the core asks a running CLI session to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendCommand {
     /// Send a user message (starts a turn).
-    Send(String),
+    Send(Prompt),
     /// Answer a [`BackendEvent::Question`].
     Answer {
         /// Question id.
@@ -433,6 +491,16 @@ pub trait Backends: Send + Sync + 'static {
     /// briefly.
     fn discard(&self, id: ConversationId, session: Option<CliSession>) {
         let _ = (id, session);
+    }
+    /// Saves an image of a message to conversation `id` with the
+    /// conversation's files, and returns its path (CONV-18, I27). Blocks
+    /// briefly.
+    fn save_image(&self, id: ConversationId, image: &Image) -> Result<PathBuf, PortError> {
+        let _ = (id, image);
+        Err(PortError::new(
+            "saving an image",
+            "images are not kept here",
+        ))
     }
     /// The conversations whose CLI may still run from before Leon started
     /// (I24).

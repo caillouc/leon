@@ -367,7 +367,9 @@ impl Workspace {
 
     /// Starts another conversation in `flow`; its tab opens once it exists.
     fn start_in_flow(&mut self, flow: FlowId, window: &mut Window, cx: &mut Context<Self>) {
-        let text = crate::message_input::message(&self.form_text.read(cx).content(), &self.pasted);
+        let content = self.form_text.read(cx).content();
+        let text = crate::message_input::message(&content, &self.put.pasted);
+        let images = crate::attach::images_in(&content, &self.put.images);
         let (Some(working_dir), Some(view)) = (self.form_folder(flow), self.snapshot.flow(flow))
         else {
             return;
@@ -376,12 +378,13 @@ impl Workspace {
             return;
         }
         let before = view.conversations.len();
-        self.pasted.clear();
+        self.put = crate::attach::Put::default();
         self.core.send(Intent::NewConversation {
             flow,
             settings: self.form.settings.clone(),
             working_dir,
             text,
+            images,
         });
         self.form_text
             .update(cx, |state, cx| state.set_value("", window, cx));
@@ -391,7 +394,9 @@ impl Workspace {
     }
 
     pub(crate) fn start_flow(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = crate::message_input::message(&self.form_text.read(cx).content(), &self.pasted);
+        let content = self.form_text.read(cx).content();
+        let text = crate::message_input::message(&content, &self.put.pasted);
+        let images = crate::attach::images_in(&content, &self.put.images);
         let project = self
             .form
             .project
@@ -400,11 +405,12 @@ impl Workspace {
         if text.is_empty() {
             return;
         }
-        self.pasted.clear();
+        self.put = crate::attach::Put::default();
         self.core.send(Intent::NewFlow {
             project,
             settings: self.form.settings.clone(),
             text,
+            images,
             issue: self.form.issue.take(),
         });
         self.form_text

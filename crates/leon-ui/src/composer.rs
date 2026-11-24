@@ -272,20 +272,27 @@ impl Workspace {
         {
             return;
         }
-        let text = crate::message_input::message(&self.composer.read(cx).content(), &self.pasted);
+        let content = self.composer.read(cx).content();
+        let text = crate::message_input::message(&content, &self.put.pasted);
         if text.is_empty() {
             return;
         }
-        self.pasted.clear();
+        let images = crate::attach::images_in(&content, &self.put.images);
+        self.put = crate::attach::Put::default();
         match self.rewind.take() {
             Some((id, entry)) if id == conversation => {
                 self.core.send(Intent::Rewind {
                     conversation,
                     entry,
                     text,
+                    images,
                 });
             }
-            _ => self.core.send(Intent::Send { conversation, text }),
+            _ => self.core.send(Intent::Send {
+                conversation,
+                text,
+                images,
+            }),
         }
         self.composer
             .update(cx, |state, cx| state.set_value("", window, cx));

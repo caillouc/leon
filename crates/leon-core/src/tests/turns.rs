@@ -238,12 +238,15 @@ async fn switching_backend_restarts_with_the_flow_so_far() {
     h.core.send(Intent::Send {
         conversation: id,
         text: "Go ahead".into(),
+        images: Vec::new(),
     });
     started(&h, 2).await;
     let spec = h.backends.started.lock().unwrap()[1].spec.clone();
     assert_eq!(spec.settings.backend, BackendKind::ClaudeCode);
     assert_eq!(spec.resume, None);
-    let BackendCommand::Send(message) = next_command(&h, 1).await else {
+    let BackendCommand::Send(crate::ports::Prompt { text: message, .. }) =
+        next_command(&h, 1).await
+    else {
         panic!("expected a message")
     };
     assert!(
@@ -291,6 +294,7 @@ async fn a_cli_that_cannot_start_shows_an_error() {
         project: ProjectId(1),
         settings: settings(BackendKind::Codex),
         text: "hi".into(),
+        images: Vec::new(),
         issue: None,
     });
     let s = until(&core, "error", |s| {
@@ -415,4 +419,45 @@ async fn folded_groups_are_saved() {
     assert_eq!(s.folded_groups.len(), 1);
     h.core.send(Intent::FoldGroup("In review".into(), false));
     until(&h.core, "unfolded", |s| s.folded_groups.is_empty()).await;
+}
+
+/// Images put in a message are saved with the conversation's files and go
+/// to the CLI with the text; one that cannot be saved is left out (CONV-18).
+#[tokio::test(flavor = "multi_thread")]
+async fn images_go_with_the_message() {
+    use crate::ports::{Image, Prompt};
+    let h = harness();
+    let id = new_flow(&h, BackendKind::Codex).await;
+    next_command(&h, 0).await;
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: false,
+            usage: None,
+        },
+    );
+    until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
+    h.core.send(Intent::Send {
+        conversation: id,
+        text: "Why does [Image #1] differ from [Image #2]?".into(),
+        images: vec![
+            Image::Pasted {
+                bytes: std::sync::Arc::from(&b"png"[..]),
+                ext: "png",
+            },
+            Image::File(PathBuf::from("/tmp/broken")),
+            Image::File(PathBuf::from("/Users/me/shot.jpg")),
+        ],
+    });
+    assert_eq!(
+        next_command(&h, 0).await,
+        BackendCommand::Send(Prompt {
+            text: "Why does [Image #1] differ from [Image #2]?".into(),
+            images: vec![
+                PathBuf::from(format!("/data/images/{}/1.png", id.0)),
+                PathBuf::from(format!("/data/images/{}/shot.jpg", id.0)),
+            ],
+        })
+    );
 }

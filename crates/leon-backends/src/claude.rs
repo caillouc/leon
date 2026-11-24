@@ -207,13 +207,10 @@ async fn run(
             command = commands.recv() => {
                 let (new, line) = match command {
                     // A message typed while a card shows answers it.
-                    Some(BackendCommand::Send(text)) if parser.asks.waiting() => {
-                        parser.asks.answer(None, &text)
+                    Some(BackendCommand::Send(prompt)) if parser.asks.waiting() => {
+                        parser.asks.answer(None, &prompt.text)
                     }
-                    Some(BackendCommand::Send(text)) => {
-                        let message = json!({ "type": "user", "message": { "role": "user", "content": text } });
-                        (Vec::new(), Some(message.to_string()))
-                    }
+                    Some(BackendCommand::Send(prompt)) => (Vec::new(), Some(user_message(&prompt).to_string())),
                     Some(BackendCommand::Answer { id, answer }) => parser.asks.answer(Some(&id), &answer),
                     Some(BackendCommand::Interrupt) => {
                         let _ = events.send(BackendEvent::TurnEnded { stopped: true, usage: None });
@@ -440,8 +437,51 @@ fn usage(v: &Value) -> Option<Usage> {
     })
 }
 
+/// A user message in stream-json: its text, after its images as base64
+/// `image` blocks (CONV-18; Claude Code 2.1.288, a real run, 2026-11-24).
+fn user_message(prompt: &leon_core::ports::Prompt) -> Value {
+    let images: Vec<Value> = prompt
+        .images
+        .iter()
+        .filter_map(|path| crate::images::encoded(path))
+        .map(|(mime, data)| {
+            json!({ "type": "image", "source": { "type": "base64", "media_type": mime, "data": data } })
+        })
+        .collect();
+    let content = if images.is_empty() {
+        json!(prompt.text)
+    } else {
+        let mut blocks = images;
+        blocks.push(json!({ "type": "text", "text": prompt.text }));
+        Value::Array(blocks)
+    };
+    json!({ "type": "user", "message": { "role": "user", "content": content } })
+}
+
 #[cfg(test)]
 mod tests {
+    /// A message with images: base64 `image` blocks, then the text; without,
+    /// the text alone (CONV-18).
+    #[test]
+    fn images_go_as_base64_blocks_before_the_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("1.png");
+        std::fs::write(&image, b"png bytes").unwrap();
+        let with = super::user_message(&leon_core::ports::Prompt {
+            text: "What is [Image #1]?".into(),
+            images: vec![image],
+        });
+        assert_eq!(
+            with["message"]["content"],
+            serde_json::json!([
+                { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "cG5nIGJ5dGVz" } },
+                { "type": "text", "text": "What is [Image #1]?" }
+            ])
+        );
+        let without = super::user_message(&"hi".into());
+        assert_eq!(without["message"]["content"], "hi");
+    }
+
     use std::path::PathBuf;
 
     use leon_core::ports::{AgentDefinition, BackendEvent, SessionSpec};

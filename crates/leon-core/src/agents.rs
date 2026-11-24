@@ -71,7 +71,7 @@ impl Core {
             AppToolCall::SetWorkingDirectory { path } => {
                 check_dir(&path)?;
                 let shown = path.display().to_string();
-                self.find_working_tree(caller, flow, path, true);
+                self.find_working_tree(caller, flow, path, crate::folders::Came::Said);
                 Ok(format!("Leon now shows the changes in {shown}."))
             }
             AppToolCall::LinkGithub { url } => {
@@ -175,7 +175,12 @@ impl Core {
         let id = self.add_conversation(&new).map_err(|e| e.to_string())?;
         // Started in a folder of its own: the folder joins the flow at once.
         if given {
-            self.find_working_tree(id, flow, new.working_dir.clone(), true);
+            self.find_working_tree(
+                id,
+                flow,
+                new.working_dir.clone(),
+                crate::folders::Came::Started,
+            );
         }
         self.message(caller, id, prompt.to_owned(), sent);
         let name = self.state.conversation_name(id);

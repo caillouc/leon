@@ -11,7 +11,7 @@ use leon_domain::{
 
 use crate::ports::{AgentDefinition, BackendOptions};
 use crate::snapshot::{
-    ConversationView, FlowView, GitView, Notification, Question, Snapshot, TranscriptView,
+    ConversationView, FlowView, Notification, Question, Snapshot, TranscriptView,
 };
 
 /// Live state of one conversation.
@@ -189,12 +189,16 @@ impl State {
             .find(|c| Some(*c) == id || self.conversation_name(*c).eq_ignore_ascii_case(to))
     }
 
-    /// A flow's worktrees: its folders but a checkout on its repository's
-    /// default branch (CTX-2).
+    /// A flow's worktrees: the folders its agents worked in, and before
+    /// any, the folder it started in unless that is a repository's own
+    /// checkout, which shows only once an agent works there (CTX-2).
     fn worktrees(&self, flow: FlowId) -> Vec<PathBuf> {
+        let joined = self.flows.iter().find(|c| c.id == flow).map(|c| &c.folders);
         self.folders_of(flow)
             .into_iter()
-            .filter(|f| !self.git.get(f).is_some_and(GitView::on_default_branch))
+            .filter(|f| {
+                joined.is_some_and(|j| j.contains(f)) || self.git.get(f).is_some_and(|g| !g.main)
+            })
             .collect()
     }
 
@@ -334,7 +338,7 @@ impl State {
                     flow: c.clone(),
                     status,
                     conversations,
-                    issues: self.issues_of(c, &self.folders_of(c.id)),
+                    issues: self.issues_of(c, &self.worktrees(c.id)),
                     folders: self.shown_folders(c.id),
                 }
             })

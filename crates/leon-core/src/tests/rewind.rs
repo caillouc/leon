@@ -35,6 +35,7 @@ async fn going_back_drops_later_entries_and_restarts_with_context() {
     h.core.send(Intent::Send {
         conversation: id,
         text: "Second try".into(),
+        images: Vec::new(),
     });
     next_command(&h, 0).await;
     answer(&h, 0, "Second answer");
@@ -50,11 +51,14 @@ async fn going_back_drops_later_entries_and_restarts_with_context() {
         conversation: id,
         entry: 3,
         text: "Other idea".into(),
+        images: Vec::new(),
     });
     started(&h, 2).await;
     let restarted = h.backends.started.lock().unwrap()[1].spec.clone();
     assert_eq!(restarted.resume, None);
-    let BackendCommand::Send(message) = next_command(&h, 1).await else {
+    let BackendCommand::Send(crate::ports::Prompt { text: message, .. }) =
+        next_command(&h, 1).await
+    else {
         panic!("expected a message");
     };
     assert!(
@@ -97,6 +101,7 @@ async fn suggestions_show_until_the_next_message() {
     h.core.send(Intent::Send {
         conversation: id,
         text: "Go ahead".into(),
+        images: Vec::new(),
     });
     until(&h.core, "cleared", |s| {
         s.conversations[&id].suggestions.is_empty()

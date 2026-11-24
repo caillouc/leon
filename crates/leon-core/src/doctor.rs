@@ -13,8 +13,10 @@ use crate::repo::Internal;
 pub type About = Arc<dyn Fn() -> Vec<DoctorCheck> + Send + Sync>;
 
 impl Core {
-    /// Runs every check in the background; a run already going is enough.
+    /// Runs every check in the background, and looks for a newer Leon
+    /// (DOCTOR-3); a run already going is enough.
     pub(crate) fn run_doctor(&mut self) {
+        self.check_update(true);
         if self.state.doctor_running {
             return;
         }
