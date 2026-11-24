@@ -3,6 +3,11 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.8.1
+
+- **Archive**: sending a message in an archived flow takes it out of the archive.
+- **Projects**: a project without flows shows folded.
+
 ## v0.8.0
 
 - **Mark as unread**: one click in a flow's title bar, for the conversation shown or the whole flow.

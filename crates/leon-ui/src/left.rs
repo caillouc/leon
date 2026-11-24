@@ -80,8 +80,11 @@ impl Workspace {
                 .map(|c| Attention::of(c.status, c.flow.unread))
                 .max()
                 .and_then(crate::flow_row::attention_color);
+            // A project without flows shows folded: nothing to unfold.
+            let no_flows = !has_flows(&snapshot.flows, project.id);
             body = body.child(Self::project_header(
                 project,
+                no_flows,
                 (std::rc::Rc::clone(&before), dragged),
                 rows.len(),
                 attention,
@@ -91,7 +94,7 @@ impl Workspace {
             if dragged {
                 continue;
             }
-            if project.collapsed && query.is_empty() {
+            if (project.collapsed || no_flows) && query.is_empty() {
                 let open = rows
                     .into_iter()
                     .filter(|c| self.screen == Screen::Flow(c.flow.id));
@@ -99,11 +102,7 @@ impl Workspace {
                 continue;
             }
             if rows.is_empty() {
-                body = body.child(empty(if query.is_empty() {
-                    "No flows"
-                } else {
-                    "No match"
-                }));
+                body = body.child(empty("No match"));
             }
             body = body.children(rows.into_iter().map(|c| self.row(c, false, cx)));
         }
@@ -221,18 +220,20 @@ impl Workspace {
     /// count, a dot when a folded flow needs you, + (on hover) to start one
     /// in it (NAV-10); right-click to remove it; drag it among the others:
     /// its line, folded, follows the mouse up and down while the others
-    /// make room, and stays where let go (`order`: the projects' as it was
-    /// before the drag; `dragged`: it is the one moving, its place left
+    /// make room, and stays where let go (`no_flows`: it has none, so it
+    /// shows folded, with nothing to unfold; `order`: the projects' as it
+    /// was before the drag; `dragged`: it is the one moving, its place left
     /// empty; `pane`: the left pane's width).
     fn project_header(
         project: &leon_domain::Project,
+        no_flows: bool,
         (order, dragged): (std::rc::Rc<[ProjectId]>, bool),
         count: usize,
         attention: Option<gpui::Rgba>,
         pane: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (id, collapsed) = (project.id, project.collapsed);
+        let (id, collapsed) = (project.id, project.collapsed || no_flows);
         let group = SharedString::from(format!("project-{}", id.0));
         let name = SharedString::from(project.name.clone());
         div()
@@ -274,7 +275,9 @@ impl Workspace {
             .cursor_pointer()
             .hover(|s| s.bg(theme::surface_2()))
             .on_click(cx.listener(move |this, _, _, _| {
-                this.core.send(Intent::CollapseProject(id, !collapsed));
+                if !no_flows {
+                    this.core.send(Intent::CollapseProject(id, !collapsed));
+                }
             }))
             .on_mouse_down(
                 gpui::MouseButton::Right,
@@ -292,7 +295,9 @@ impl Workspace {
                         div()
                             .absolute()
                             .inset_0()
-                            .group_hover(group.clone(), |s| s.opacity(0.))
+                            .when(!no_flows, |d| {
+                                d.group_hover(group.clone(), |s| s.opacity(0.))
+                            })
                             .child(crate::icons::folder(!collapsed, theme::fg_muted(), 15.)),
                     )
                     .child(
@@ -303,7 +308,9 @@ impl Workspace {
                             .items_center()
                             .justify_center()
                             .opacity(0.)
-                            .group_hover(group.clone(), |s| s.opacity(1.))
+                            .when(!no_flows, |d| {
+                                d.group_hover(group.clone(), |s| s.opacity(1.))
+                            })
                             .child(chevron(!collapsed, theme::fg_muted(), 14.)),
                     ),
             )
@@ -382,7 +389,53 @@ fn is_pinned(c: &FlowView) -> bool {
     c.flow.pinned && c.flow.archived.is_none()
 }
 
+/// Whether `project` has flows to show under it; without, it shows folded
+/// (NAV-2).
+fn has_flows(flows: &[FlowView], project: ProjectId) -> bool {
+    flows.iter().any(|c| in_project(c, project))
+}
+
 /// Shown under its project.
 fn in_project(c: &FlowView, project: leon_domain::ProjectId) -> bool {
     c.flow.project == project && !c.flow.pinned && c.flow.archived.is_none()
+}
+
+#[cfg(test)]
+mod tests {
+    use leon_domain::{FlowId, ProjectId};
+
+    use super::has_flows;
+    use crate::test_data::flow_view;
+
+    /// A project whose flows are all pinned or archived has none under it,
+    /// so it shows folded (NAV-2).
+    #[test]
+    fn a_project_without_flows_under_it_shows_folded() {
+        let (pinned, archived) = (true, Some(1));
+        let cases = [
+            ("none", vec![], false),
+            ("one", vec![(false, None)], true),
+            ("pinned", vec![(pinned, None)], false),
+            ("archived", vec![(false, archived)], false),
+            (
+                "one of two archived",
+                vec![(false, archived), (false, None)],
+                true,
+            ),
+        ];
+        for (name, flows, expected) in cases {
+            let flows: Vec<_> = flows
+                .into_iter()
+                .zip(1..)
+                .map(|((pinned, archived), id)| {
+                    let mut flow = flow_view(FlowId(id), ProjectId(1));
+                    flow.flow.pinned = pinned;
+                    flow.flow.archived = archived;
+                    flow
+                })
+                .collect();
+            assert_eq!(has_flows(&flows, ProjectId(1)), expected, "{name}");
+            assert!(!has_flows(&flows, ProjectId(2)), "{name}: another project");
+        }
+    }
 }

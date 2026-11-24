@@ -60,6 +60,8 @@ mod sound;
 mod spinner;
 mod sprints;
 mod syntax;
+#[cfg(test)]
+mod test_data;
 mod theme;
 mod todos_view;
 mod tools_view;

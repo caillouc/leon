@@ -106,3 +106,38 @@ async fn a_deleted_flow_leaves_nothing_behind() {
         [(ConversationId(99), None)]
     );
 }
+
+/// A message the user sends in an archived flow brings it back from the
+/// archive (NAV-8).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_message_sent_in_an_archived_flow_takes_it_out() {
+    let h = harness();
+    let id = new_flow(&h, BackendKind::ClaudeCode).await;
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: false,
+            usage: None,
+        },
+    );
+    let s = until(&h.core, "idle", |s| {
+        s.conversations[&id].status == Status::Idle
+    })
+    .await;
+    let flow = s.flows[0].flow.id;
+    h.core.send(Intent::Archive(flow, true));
+    until(&h.core, "archived", |s| {
+        s.flow(flow).is_some_and(|f| f.flow.archived.is_some())
+    })
+    .await;
+    h.core.send(Intent::Send {
+        conversation: id,
+        text: "Go on".into(),
+        images: Vec::new(),
+    });
+    until(&h.core, "back", |s| {
+        s.flow(flow).is_some_and(|f| f.flow.archived.is_none())
+    })
+    .await;
+}

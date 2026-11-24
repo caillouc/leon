@@ -705,8 +705,20 @@ impl Core {
     /// the agent answers, it waits for the end, joined to any already
     /// waiting (CONV-19).
     pub(crate) fn send(&mut self, id: ConversationId, text: &str, images: &[crate::ports::Image]) {
-        // Replying means its answer was read.
+        // Replying means its answer was read, and brings its flow back from
+        // the archive (NAV-8).
         self.mark_read(id);
+        let flow = self
+            .state
+            .conversations
+            .get(&id)
+            .map(|s| s.conversation.flow);
+        if let Some(flow) = flow.filter(|f| {
+            let archived = |c: &leon_domain::Flow| c.id == *f && c.archived.is_some();
+            self.state.flows.iter().any(archived)
+        }) {
+            self.edit(flow, |c| c.archived = None);
+        }
         if let Some(s) = self
             .state
             .conversations

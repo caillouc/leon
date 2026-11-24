@@ -96,32 +96,16 @@ impl<T: PartialEq + Clone> History<T> {
 
 #[cfg(test)]
 mod tests {
-    use leon_core::{FlowView, Snapshot};
-    use leon_domain::{ConversationId, Flow, FlowId, ProjectId, Status};
+    use leon_core::Snapshot;
+    use leon_domain::{ConversationId, FlowId, ProjectId};
 
     use super::{History, Place};
     use crate::workspace::Screen;
 
     #[test]
     fn a_page_is_a_place_and_gone_places_are_skipped() {
-        let flow = FlowView {
-            flow: Flow {
-                id: FlowId(1),
-                project: ProjectId(1),
-                title: "Flow".into(),
-                pinned: false,
-                archived: None,
-                unread: false,
-                updated_at: 0,
-                folders: Vec::new(),
-                links: Vec::new(),
-                todo_position: 0,
-            },
-            status: Status::Idle,
-            conversations: vec![ConversationId(10)],
-            folders: Vec::new(),
-            issues: Vec::new(),
-        };
+        let mut flow = crate::test_data::flow_view(FlowId(1), ProjectId(1));
+        flow.conversations = vec![ConversationId(10)];
         let snapshot = Snapshot {
             flows: vec![flow].into(),
             ..Snapshot::default()

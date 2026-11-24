@@ -38,7 +38,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   enough; the same button in the flow's header opens it again.
 - **NAV-2** Flows grouped by project/folder. Click a project to fold or
   unfold its flows; the choice is kept; its folder icon shows open or
-  closed. Drag a project among the others to move it: its line, folded,
+  closed. A project without flows (none, or all pinned or archived) shows
+  folded. Drag a project among the others to move it: its line, folded,
   follows the mouse up and down in the pane's column, tilting a little with
   its speed like a card held where it was taken (`/` going down, `\` going
   up), and rocking back level when the mouse stops, while the others make
@@ -79,15 +80,16 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **NAV-8** Rename, pin, mark as unread, archive and delete a flow from its
   right-click menu in the left pane; search flows. Rename edits the title in
   place, its text selected: typing replaces it, a click places the caret or
-  selects text; Enter or a click elsewhere saves it. A flow in the archive
-  for more than a month (30 days) is deleted by Leon, looked for at launch
-  and once a day while it runs; one archived before this rule counts from
-  the update that brought it. A deleted flow leaves nothing of Leon's: its
-  agents are stopped, even mid-turn, Leon's logs of them go (and at launch,
-  any left from an earlier delete), and so do their Claude Code sessions
-  (`~/.claude/projects`). Codex and Copilot CLI keep their sessions: they
-  index them in databases of their own. Worktrees and branches stay: they
-  can hold work not pushed.
+  selects text; Enter or a click elsewhere saves it. A message the user
+  sends in an archived flow takes it out of the archive. A flow in the
+  archive for more than a month (30 days) is deleted by Leon, looked for at
+  launch and once a day while it runs; one archived before this rule counts
+  from the update that brought it. A deleted flow leaves nothing of Leon's:
+  its agents are stopped, even mid-turn, Leon's logs of them go (and at
+  launch, any left from an earlier delete), and so do their Claude Code
+  sessions (`~/.claude/projects`). Codex and Copilot CLI keep their
+  sessions: they index them in databases of their own. Worktrees and
+  branches stay: they can hold work not pushed.
 - **NAV-9** Titles are generated automatically, as in Claude Code.
 - **NAV-10** A + next to each project starts a flow in it.
 - **NAV-11** A flow's row shows no issue: its issues are in the right

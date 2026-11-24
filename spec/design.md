@@ -217,7 +217,9 @@ Use these; do not restyle them in place.
 - A new icon is a Lucide SVG in `assets/icons/`, added to `Icon` and its
   `ALL` list. Colour comes from a token, never from the file.
 - A project is a folder: `folder-open` while its flows show, `folder` when
-  folded; hovered, the fold arrow (chevron) takes its place. A repository or
+  folded; hovered, the fold arrow (chevron) takes its place. A project
+  without flows shows folded and keeps its `folder` on hover: nothing to
+  unfold. A repository or
   worktree (the right pane's repository line, an agent box's place) is a
   `folder` too; the branch icon is only for branches (a PR's "branch →
   base"). Leon's own logo, the bicorne of its app icon (`assets/leon.svg`) alone
