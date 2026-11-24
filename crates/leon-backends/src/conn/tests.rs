@@ -129,3 +129,41 @@ async fn a_discarded_conversation_stops_and_leaves_no_folder() {
     // Nothing left to discard: nothing happens.
     discard(&holders, "8");
 }
+
+/// Deleting waits for the holder to end — its exit mark, written last —
+/// before removing its folder: a holder still writing there would leave it
+/// behind (seen on macOS CI under load).
+#[tokio::test(flavor = "multi_thread")]
+async fn discarding_waits_for_the_holder_to_end() {
+    use std::io::BufRead as _;
+    let runs = tempfile::tempdir().unwrap();
+    let holders = Holders {
+        exe: std::path::PathBuf::from("leon"),
+        runs: runs.path().to_owned(),
+    };
+    let dir = holders.dir("9");
+    std::fs::create_dir_all(&dir).unwrap();
+    // A holder that ends 100 ms after it is told to stop.
+    let listener = std::os::unix::net::UnixListener::bind(dir.join(super::SOCK)).unwrap();
+    let ended = std::thread::spawn({
+        let dir = dir.clone();
+        move || {
+            let (socket, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            std::io::BufReader::new(socket)
+                .read_line(&mut line)
+                .unwrap();
+            assert_eq!(line, "!stop\n");
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            std::fs::write(dir.join(EXIT), "0")
+        }
+    });
+    tokio::task::spawn_blocking(move || discard(&holders, "9"))
+        .await
+        .unwrap();
+    assert!(
+        ended.join().unwrap().is_ok(),
+        "the holder ended in its folder"
+    );
+    assert!(!dir.exists());
+}

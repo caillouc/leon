@@ -51,7 +51,9 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   projects.
 - **NAV-4** Unread indicator per flow; the user can also mark one as
   unread, from its row's right-click menu, or mark one agent as unread, from
-  its Flow box's right-click menu, which makes its flow unread too. An answer that arrives while the user is not looking — another
+  its Flow box's right-click menu, which makes its flow unread too; or in one
+  click with "Mark as unread" at the right of the flow's title bar: the agent
+  whose tab is shown, else the flow. An answer that arrives while the user is not looking — another
   flow shown, its Flow or another agent's tab, or Leon behind
   another app — is unread until the user opens that agent's tab, comes back
   to Leon on it, or replies to it; the flow stays unread while one of its agents' answers is, and its

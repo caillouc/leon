@@ -3,6 +3,10 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.8.0
+
+- **Mark as unread**: one click in a flow's title bar, for the conversation shown or the whole flow.
+
 ## v0.7.1
 
 - **CI checks**: a pull request's checks count each job once, as GitHub shows them.

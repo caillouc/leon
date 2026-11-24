@@ -103,19 +103,33 @@ pub(crate) fn open(
 }
 
 /// Conversation `key` is gone (NAV-8): its holder, if it runs, ends its CLI
-/// (`!stop`, even mid-turn), and its folder goes.
+/// (`!stop`, even mid-turn), and its folder goes once the holder has ended —
+/// its exit mark, written last, or 3 s — so nothing it still writes there
+/// leaves the folder behind. Blocks that long at most.
 pub(crate) fn discard(holders: &Holders, key: &str) {
+    const WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+    const STEP: std::time::Duration = std::time::Duration::from_millis(20);
     let dir = holders.dir(key);
     if dir.join(SOCK).exists()
         && !dir.join(EXIT).exists()
         && let Ok(mut socket) = std::os::unix::net::UnixStream::connect(dir.join(SOCK))
     {
         let _ = std::io::Write::write_all(&mut socket, b"!stop\n");
+        let started = std::time::Instant::now();
+        while !dir.join(EXIT).exists() && started.elapsed() < WAIT {
+            std::thread::sleep(STEP);
+        }
     }
-    if let Err(error) = std::fs::remove_dir_all(&dir)
-        && error.kind() != std::io::ErrorKind::NotFound
-    {
-        tracing::warn!(%error, conversation = key, "removing a conversation's run folder");
+    // A file written while it is removed fails the removal: once more.
+    for again in [true, false] {
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => return,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(_) if again => std::thread::sleep(STEP),
+            Err(error) => {
+                tracing::warn!(%error, conversation = key, "removing a conversation's run folder");
+            }
+        }
     }
 }
 

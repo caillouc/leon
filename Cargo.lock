@@ -3617,7 +3617,7 @@ checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
 name = "leon"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "dirs 7.0.0",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "leon-app-tools"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "leon-core",
  "leon-domain",
@@ -3652,7 +3652,7 @@ dependencies = [
 
 [[package]]
 name = "leon-backends"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.23.1",
  "leon-core",
@@ -3665,7 +3665,7 @@ dependencies = [
 
 [[package]]
 name = "leon-catalog"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "leon-core",
  "leon-domain",
@@ -3676,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "leon-config"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "dirs 7.0.0",
  "leon-core",
@@ -3689,7 +3689,7 @@ dependencies = [
 
 [[package]]
 name = "leon-core"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "leon-domain",
  "thiserror 2.0.21",
@@ -3699,7 +3699,7 @@ dependencies = [
 
 [[package]]
 name = "leon-domain"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "regex",
  "serde",
@@ -3708,7 +3708,7 @@ dependencies = [
 
 [[package]]
 name = "leon-git"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "leon-core",
  "leon-domain",
@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "leon-github"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "leon-core",
  "leon-domain",
@@ -3726,7 +3726,7 @@ dependencies = [
 
 [[package]]
 name = "leon-store"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "leon-core",
  "leon-domain",
@@ -3738,7 +3738,7 @@ dependencies = [
 
 [[package]]
 name = "leon-ui"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "gpui-component",
  "gpui-pre",
@@ -8904,7 +8904,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "serde_json",
 ]

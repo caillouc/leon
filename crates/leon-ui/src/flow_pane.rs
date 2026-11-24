@@ -2,7 +2,7 @@
 //! each conversation), transcript and composer.
 
 use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude::*};
-use leon_core::ConversationView;
+use leon_core::{ConversationView, Intent};
 use leon_domain::{ConversationId, FlowId, Status};
 
 use crate::spinner::status_mark;
@@ -113,6 +113,26 @@ impl Workspace {
             }
         }
         let _ = window;
+        // One click to come back to it later (NAV-4): the conversation shown,
+        // else the flow; not when it already is.
+        let unread = match current {
+            Some(sid) => {
+                let read = self
+                    .snapshot
+                    .conversations
+                    .get(&sid)
+                    .is_some_and(|s| !s.conversation.unread);
+                read.then_some(Intent::MarkConversationUnread(sid))
+            }
+            None => (!view.flow.unread).then_some(Intent::MarkUnread(id)),
+        };
+        let mark_unread = unread.map(|intent| {
+            crate::widgets::text_action(
+                "mark-unread",
+                "Mark as unread",
+                cx.listener(move |this, _, _, _| this.core.send(intent.clone())),
+            )
+        });
         div()
             .flex_none()
             .flex()
@@ -132,7 +152,8 @@ impl Workspace {
                     .gap_3()
                     .border_b_1()
                     .border_color(theme::border())
-                    .child(div().flex_1().min_w_0().child(title)),
+                    .child(div().flex_1().min_w_0().child(title))
+                    .children(mark_unread),
             )
             .child(
                 div()
