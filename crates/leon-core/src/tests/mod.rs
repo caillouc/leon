@@ -202,6 +202,7 @@ impl Storage for FakeStorage {
             cli_session: None,
             unread: false,
             folder: None,
+            tab_closed: false,
         };
         list.push(s.clone());
         Ok(s)

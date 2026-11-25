@@ -116,6 +116,7 @@ fn conversation(
             // The reviewer's answer to the user is not read yet.
             unread: id == 4,
             folder: None,
+            tab_closed: false,
         },
         status,
         subagents: if id == 1 { (2, 1) } else { (0, 0) },

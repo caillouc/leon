@@ -52,7 +52,7 @@ pub use sprint::{Iteration, current_sprint};
 pub use todo::{Todo, TodoId, open_todos, todo_flows};
 pub use transcript::{
     Entry, NO_RESULT, RunningTool, TimedEntry, Usage, activity, answers_to, end_unfinished,
-    running_tools,
+    running_tools, talks_with_user,
 };
 pub use unified_diff::parse_diff;
 pub use update::{Release, Update, is_newer};

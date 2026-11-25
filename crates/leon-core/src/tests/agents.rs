@@ -495,6 +495,26 @@ async fn coming_back_to_the_tab_reads_its_answer() {
     assert!(!s.flows[0].flow.unread);
 }
 
+/// The user closes an agent's tab: it stays closed, saved for the next
+/// start, until they read that conversation again (FLOW-3).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_closed_tab_stays_closed_until_read_again() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    h.core.send(Intent::CloseTab(planner));
+    until(&h.core, "tab closed", |s| {
+        s.conversations[&planner].conversation.tab_closed
+    })
+    .await;
+    assert!(h.storage.conversations.lock().unwrap()[0].tab_closed);
+    h.core.send(Intent::Read(Some(planner)));
+    until(&h.core, "tab open again", |s| {
+        !s.conversations[&planner].conversation.tab_closed
+    })
+    .await;
+    assert!(!h.storage.conversations.lock().unwrap()[0].tab_closed);
+}
+
 /// The user marks one agent unread: it is to review, and so is its flow,
 /// until they open its tab (NAV-4).
 #[tokio::test(flavor = "multi_thread")]

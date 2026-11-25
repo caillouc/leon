@@ -425,12 +425,10 @@ impl Core {
             Intent::FoldGroup(key, folded) => self.fold_group(key, folded),
             Intent::Rename(id, title) => self.edit(id, |c| title.trim().clone_into(&mut c.title)),
             Intent::Pin(id, pinned) => self.edit(id, |c| c.pinned = pinned),
-            Intent::Archive(id, archived) => {
-                let now = self.now();
-                self.edit(id, |c| c.archived = archived.then_some(now));
-            }
+            Intent::Archive(id, archived) => self.archive(id, archived),
             Intent::MarkUnread(id) => self.edit(id, |c| c.unread = true),
             Intent::MarkConversationUnread(id) => self.mark_unread(id),
+            Intent::CloseTab(id) => self.close_tab(id, true),
             Intent::WindowActive(active) => self.window_active(active),
             Intent::Read(id) => self.read(id),
             Intent::Delete(id) => self.delete(id),
@@ -496,11 +494,30 @@ impl Core {
         }
     }
 
-    /// The user reads conversation `id`'s messages.
+    /// The user reads conversation `id`'s messages: its tab is open.
     fn read(&mut self, id: Option<ConversationId>) {
         self.reading = id;
         if let Some(id) = id {
             self.mark_read(id);
+            self.close_tab(id, false);
+        }
+    }
+
+    /// The user archives flow `id` (`true`) or takes it out (NAV-8).
+    fn archive(&mut self, id: FlowId, archived: bool) {
+        let now = self.now();
+        self.edit(id, |c| c.archived = archived.then_some(now));
+    }
+
+    /// The user closed conversation `id`'s tab (`true`), or opened it again
+    /// (FLOW-3); kept across restarts.
+    fn close_tab(&mut self, id: ConversationId, closed: bool) {
+        let Some(s) = self.state.conversations.get_mut(&id) else {
+            return;
+        };
+        if s.conversation.tab_closed != closed {
+            s.conversation.tab_closed = closed;
+            self.save_conversation(id);
         }
     }
 

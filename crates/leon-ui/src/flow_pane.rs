@@ -5,6 +5,8 @@ use gpui::{AnyElement, Context, IntoElement, SharedString, Window, div, prelude:
 use leon_core::{ConversationView, Intent};
 use leon_domain::{ConversationId, FlowId, Status};
 
+use crate::flow_tabs::FlowTabs;
+use crate::icons::{Icon, icon};
 use crate::spinner::status_mark;
 use crate::theme;
 use crate::widgets::{HEADER_HEIGHT, empty};
@@ -93,13 +95,13 @@ impl Workspace {
                 Tab::Flow,
                 cx,
             ));
-        let recent = self.recent.get(&id).map_or(&[][..], Vec::as_slice);
-        for sid in &tab_order(&view.conversations, recent) {
-            if let Some(s) = self.snapshot.conversations.get(sid).cloned() {
-                let selected = current == Some(*sid);
+        for sid in self.agent_tabs(id, &view.conversations) {
+            if let Some(s) = self.snapshot.conversations.get(&sid) {
+                let selected = current == Some(sid);
+                let name = format!("tab-{}", sid.0);
                 // Its name alone: the CLI shows in its message box.
-                tabs = tabs.child(Self::tab_button(
-                    &format!("tab-{}", sid.0),
+                let tab = Self::tab_button(
+                    &name,
                     s.name.clone().into(),
                     Some(status_mark(
                         SharedString::from(format!("spin-tab-{}", sid.0)),
@@ -107,9 +109,10 @@ impl Workspace {
                     )),
                     selected,
                     id,
-                    Tab::Conversation(*sid),
+                    Tab::Conversation(sid),
                     cx,
-                ));
+                );
+                tabs = tabs.child(tab.child(close_tab(id, sid, name.into(), selected, cx)));
             }
         }
         let _ = window;
@@ -175,9 +178,10 @@ impl Workspace {
         flow: FlowId,
         tab: Tab,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> gpui::Stateful<gpui::Div> {
         div()
             .id(SharedString::from(id.to_owned()))
+            .group(SharedString::from(id.to_owned()))
             .flex_none()
             .whitespace_nowrap()
             .px_2()
@@ -205,7 +209,28 @@ impl Workspace {
                 this.tabs.insert(flow, tab);
                 cx.notify();
             }))
-            .into_any_element()
+    }
+
+    /// The agent tabs of flow `flow` after Flow (FLOW-3): those opened and
+    /// those the user talks with, less those they closed.
+    fn agent_tabs(&self, flow: FlowId, all: &[ConversationId]) -> Vec<ConversationId> {
+        let listed = |c: ConversationId| {
+            let Some(s) = self.snapshot.conversations.get(&c) else {
+                return false;
+            };
+            !s.conversation.tab_closed
+                && (s.conversation.started_by.is_none()
+                    || self
+                        .snapshot
+                        .transcripts
+                        .get(&c)
+                        .is_some_and(|t| leon_domain::talks_with_user(&t.entries)))
+        };
+        let none = FlowTabs::default();
+        self.flow_tabs
+            .get(&flow)
+            .unwrap_or(&none)
+            .order(all, listed)
     }
 
     pub(crate) fn status_line(s: &ConversationView) -> Option<String> {
@@ -224,33 +249,36 @@ impl Workspace {
     }
 }
 
-/// The agent tabs' order after Flow (FLOW-3): those opened, the last one
-/// (the one shown) first, then the others in start order.
-fn tab_order(all: &[ConversationId], recent: &[ConversationId]) -> Vec<ConversationId> {
-    let mut order: Vec<ConversationId> =
-        recent.iter().filter(|c| all.contains(c)).copied().collect();
-    order.extend(all.iter().filter(|c| !recent.contains(c)));
-    order
-}
-
-#[cfg(test)]
-mod tests {
-    use leon_domain::ConversationId;
-
-    use super::tab_order;
-
-    #[test]
-    fn the_tab_shown_comes_first_then_the_last_opened() {
-        let ids = |list: &[i64]| list.iter().map(|i| ConversationId(*i)).collect::<Vec<_>>();
-        let all = ids(&[1, 2, 3, 4]);
-        let cases: [(&[i64], &[i64]); 3] = [
-            (&[], &[1, 2, 3, 4]),
-            (&[3, 1], &[3, 1, 2, 4]),
-            // One no longer in the flow is skipped.
-            (&[9, 4], &[4, 1, 2, 3]),
-        ];
-        for (recent, expected) in cases {
-            assert_eq!(tab_order(&all, &ids(recent)), ids(expected), "{recent:?}");
-        }
-    }
+/// The cross closing a conversation's tab (FLOW-3): on the tab shown, and
+/// on the others when hovered. The conversation stays in the flow; the
+/// Flow tab shows when it was the one shown. Closed stays closed across
+/// restarts, until the conversation is opened again.
+fn close_tab(
+    flow: FlowId,
+    conversation: ConversationId,
+    group: SharedString,
+    shown: bool,
+    cx: &mut Context<Workspace>,
+) -> AnyElement {
+    div()
+        .id(SharedString::from(format!("tab-close-{}", conversation.0)))
+        .flex_none()
+        .rounded(crate::theme::rem(4.))
+        .p(crate::theme::rem(2.))
+        .cursor_pointer()
+        .when(!shown, |d| {
+            d.opacity(0.).group_hover(group, |s| s.opacity(1.))
+        })
+        .hover(|s| s.bg(theme::surface_2()))
+        .child(icon(Icon::Close, theme::fg_faint(), 12.))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.flow_tabs.entry(flow).or_default().close(conversation);
+            this.core.send(Intent::CloseTab(conversation));
+            if this.tabs.get(&flow) == Some(&Tab::Conversation(conversation)) {
+                this.tabs.insert(flow, Tab::Flow);
+            }
+            cx.notify();
+        }))
+        .into_any_element()
 }

@@ -128,6 +128,14 @@ pub fn answers_to(before: Option<ConversationId>, entry: &Entry) -> Option<Conve
     }
 }
 
+/// Whether the user talks with a conversation (FLOW-3): they wrote to it,
+/// or an agent started it for them.
+pub fn talks_with_user(entries: &[TimedEntry]) -> bool {
+    entries
+        .iter()
+        .any(|e| matches!(e.entry, Entry::User { .. } | Entry::ForYou { .. }))
+}
+
 /// What a transcript holds, as the flow diagram counts it (FLOW-4): its
 /// messages (the user's, the agent's, other agents') and its tool calls.
 pub fn activity(entries: &[TimedEntry]) -> (usize, usize) {
@@ -279,6 +287,40 @@ mod tests {
         ];
         for (before, entry, expected) in cases {
             assert_eq!(answers_to(before, &entry), expected, "{entry:?}");
+        }
+    }
+
+    #[test]
+    fn the_user_talks_with_a_conversation_they_wrote_to_or_got_from_an_agent() {
+        use super::talks_with_user;
+        use crate::ConversationId;
+        let at = |entry| TimedEntry { at: 0, entry };
+        let text = String::new;
+        let cases = [
+            (vec![], false),
+            (
+                vec![Entry::FromAgent {
+                    from: ConversationId(1),
+                    text: text(),
+                    answer: false,
+                }],
+                false,
+            ),
+            (
+                vec![Entry::Agent { text: text() }, Entry::User { text: text() }],
+                true,
+            ),
+            (
+                vec![Entry::ForYou {
+                    from: ConversationId(1),
+                    text: text(),
+                }],
+                true,
+            ),
+        ];
+        for (entries, expected) in cases {
+            let entries: Vec<TimedEntry> = entries.into_iter().map(at).collect();
+            assert_eq!(talks_with_user(&entries), expected, "{entries:?}");
         }
     }
 

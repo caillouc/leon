@@ -155,6 +155,9 @@ pub struct Conversation {
     /// The folder of its flow it last worked in: changed a file in, said it
     /// moved to, or was started in (CTX-2, I20).
     pub folder: Option<PathBuf>,
+    /// The user closed its tab: none in its flow until they open it again
+    /// (FLOW-3).
+    pub tab_closed: bool,
 }
 
 #[cfg(test)]

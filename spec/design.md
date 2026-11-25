@@ -206,6 +206,7 @@ Use these; do not restyle them in place.
 | A flow's PRs in its row | `flow_prs::flow_prs` | the leading state's PR icon 13 and how many, in that state's colour; in `warn` amber (the running CI indicator's) while an open one's checks run; in `err` red when an open one is blocked (a failed check, a conflict), red first; no separate mark |
 | Menu | right-click (`row_menu`) | `surface`, `border_strong`, at the click |
 | Flash | `flash.rs` | an action's result, top right under the header, 4 s, once |
+| Agent tab | `Workspace::tab_button`, `flow_pane::close_tab` | the flow's tab row under its title: its status mark, its name, then a cross (`x` 12, faint, padding 2, radius 4, hover `surface_2`) on the tab shown and on a hovered one, its room kept on the others; the tab shown underlined in `accent`. The Flow tab has no cross |
 | Undo note | `todo_undo.rs` | the flash's box (`flash::toast`) at the window's bottom right, 6 s: "To-do done" or "To-do removed", then "Undo" (12.5, accent); a newer tick or removal takes its place |
 | Icon button | `widgets::icon_button` | an icon 13 muted, its words 11.5 muted after it when given, 3 around, radius 4, hover `surface_2`: the copy button (`clipboard::copy_button`: a code block, the right pane's branch), "Open in Zed" on the right pane's worktree line |
 | Copied | `clipboard::copy` | "✓ Copied" just above the click, 1.2 s |

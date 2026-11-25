@@ -145,6 +145,9 @@ pub enum Intent {
     MarkUnread(FlowId),
     /// Mark one conversation as unread, and so its flow (NAV-4).
     MarkConversationUnread(ConversationId),
+    /// Close a conversation's tab; it stays in its flow, and its tab comes
+    /// back when it is read again (FLOW-3).
+    CloseTab(ConversationId),
     /// Delete a flow (NAV-8).
     Delete(FlowId),
     /// Re-read a flow's git state now, its bases fetched if they were not in

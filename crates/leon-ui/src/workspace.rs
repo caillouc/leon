@@ -115,9 +115,8 @@ pub struct Workspace {
     pub(crate) open_at_mine: Option<ConversationId>,
     /// The flows and tabs visited, for back and forward (NAV-12).
     pub(crate) history: crate::history::History<crate::history::Place>,
-    /// Each flow's agent tabs opened, the last one first: the tabs' order
-    /// (FLOW-3).
-    pub(crate) recent: HashMap<FlowId, Vec<ConversationId>>,
+    /// Each flow's agent tabs opened and closed (FLOW-3).
+    pub(crate) flow_tabs: HashMap<FlowId, crate::flow_tabs::FlowTabs>,
     /// The tab row's scroll, back to its start when another tab opens.
     pub(crate) tab_scroll: gpui::ScrollHandle,
     shown_notifications: u64,
@@ -246,7 +245,7 @@ impl Workspace {
             reading: None,
             open_at_mine: None,
             history: crate::history::History::default(),
-            recent: HashMap::new(),
+            flow_tabs: HashMap::new(),
             tab_scroll: gpui::ScrollHandle::new(),
             shown_notifications: 0,
             started: Some(started),
@@ -477,9 +476,7 @@ impl Render for Workspace {
             });
             // The tab opened goes first after Flow, in view.
             if let (Screen::Flow(id), Some(c)) = (self.screen, reading) {
-                let recent = self.recent.entry(id).or_default();
-                recent.retain(|r| *r != c);
-                recent.insert(0, c);
+                self.flow_tabs.entry(id).or_default().open(c);
                 self.tab_scroll.set_offset(gpui::point(px(0.), px(0.)));
             }
         }

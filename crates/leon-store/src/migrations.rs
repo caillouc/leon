@@ -126,6 +126,8 @@ const MIGRATIONS: &[&str] = &[
         credits TEXT,
         at INTEGER NOT NULL
     ) STRICT;",
+    // 18: the conversations whose tab the user closed (FLOW-3).
+    "ALTER TABLE conversations ADD COLUMN tab_closed INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Latest schema version this build knows.

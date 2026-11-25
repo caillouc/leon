@@ -27,6 +27,7 @@ fn conversation(id: i64, started_by: Option<i64>) -> ConversationView {
             cli_session: None,
             unread: false,
             folder: None,
+            tab_closed: false,
         },
         status: Status::Idle,
         subagents: (0, 0),

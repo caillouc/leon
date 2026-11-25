@@ -200,6 +200,9 @@ flow**: one item in the left pane (D5).
   when the user names one, the agent reaches it by that name.
 - **FLOW-3** Switch between the conversations of a flow and talk to any of
   them directly. A conversation's tab shows its name alone, not its CLI.
+  Only the conversations the user talks with (wrote to, or started for
+  them) and those they opened have a tab; a cross on the tab closes it,
+  and the conversation stays in the flow and its diagram.
 - **FLOW-4** A flow diagram is the flow's main tab: one box per conversation
   (plus a "You" box), each box saying the repository and branch its agent
   works in (CTX-2), a green "You" at the bottom right of the boxes of the
@@ -566,9 +569,13 @@ flow**: one item in the left pane (D5).
 - **PR badge** (NAV-6): draft · open + checks (pending / passing / failing) ·
   merged · closed. One per folder of the flow (CTX-2): the PR whose
   head is that folder's branch, or one bound explicitly.
-- **Tabs** (FLOW-3, FLOW-4): Flow first, then one tab per conversation: the
-  one shown, then the others from the one opened last, then those never
-  opened in start order; opening a tab brings the row back to its start.
+- **Tabs** (FLOW-3, FLOW-4): Flow first, then one tab per conversation the
+  user talks with or opened: the one shown, then the others from the one
+  opened last, then those never opened in start order; opening a tab brings
+  the row back to its start. The cross shows on the tab shown and on a
+  hovered one; closing the tab shown shows the Flow tab. A closed tab stays
+  closed across restarts, and comes back when its conversation is opened
+  again (its box, a notification).
   A flow opens on its Flow tab, or on its main conversation (SETTINGS-3).
 - **Flow diagram** (FLOW-4, FLOW-6): laid out by forces from columns of who
   started whom; straight arrows, bundled by pair of boxes. One line per kind between two boxes, both ways sharing it,

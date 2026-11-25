@@ -3,6 +3,10 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.8.3
+
+- **Tabs**: a flow shows tabs only for the agents you talk with or opened, each with a cross to close it.
+
 ## v0.8.2
 
 - **To-dos**: ticking or removing one happens at once, with an Undo at the bottom right.

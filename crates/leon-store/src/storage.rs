@@ -95,7 +95,7 @@ fn flow_row(row: &Row<'_>) -> rusqlite::Result<Flow> {
     })
 }
 
-const CONVERSATION_COLUMNS: &str = "id, flow_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session, unread, folder";
+const CONVERSATION_COLUMNS: &str = "id, flow_id, started_by, backend, agent, model, effort, permission, working_dir, cli_session, unread, folder, tab_closed";
 
 fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
     let backend: String = row.get(3)?;
@@ -114,6 +114,7 @@ fn conversation_row(row: &Row<'_>) -> rusqlite::Result<Conversation> {
         cli_session: row.get(9)?,
         unread: row.get(10)?,
         folder: row.get::<_, Option<String>>(11)?.map(PathBuf::from),
+        tab_closed: row.get(12)?,
     })
 }
 
@@ -378,6 +379,7 @@ impl Storage for Store {
             cli_session: None,
             unread: false,
             folder: None,
+            tab_closed: false,
         })
     }
 
@@ -386,7 +388,8 @@ impl Storage for Store {
         self.lock()
             .execute(
                 "UPDATE conversations SET backend = ?2, agent = ?3, model = ?4, effort = ?5, permission = ?6,
-                 working_dir = ?7, cli_session = ?8, unread = ?9, folder = ?10 WHERE id = ?1",
+                 working_dir = ?7, cli_session = ?8, unread = ?9, folder = ?10, tab_closed = ?11
+                 WHERE id = ?1",
                 params![
                     a.id.0,
                     s.backend.id(),
@@ -397,7 +400,8 @@ impl Storage for Store {
                     path_text(&a.working_dir),
                     a.cli_session,
                     a.unread,
-                    a.folder.as_deref().map(path_text)
+                    a.folder.as_deref().map(path_text),
+                    a.tab_closed
                 ],
             )
             .map(drop)
@@ -551,6 +555,7 @@ mod tests {
         conversation.cli_session = Some("thread-1".into());
         conversation.unread = true;
         conversation.folder = Some(PathBuf::from("/code/api/.worktrees/fix"));
+        conversation.tab_closed = true;
         store.update_conversation(&conversation).unwrap();
         conv.pinned = true;
         conv.folders = vec![
