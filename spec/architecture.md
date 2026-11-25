@@ -92,7 +92,8 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
    `config.mcp_servers.leon` with `default_tools_approval_mode = "approve"`
    (checked live with Codex 0.160.0 and Claude Code 2.1.288 on 2026-11-17:
    both call Leon's tools without a prompt).
-2. The planner calls `start_agent(agent, prompt, working_directory?)`. The core
+2. The planner calls `start_agent(agent?, prompt, working_directory?)`; without
+   `agent`, the CLI's own agent, without an agent file. The core
    (`crates/leon-core/src/agents.rs`) creates the coder's conversation in the
    same flow with the planner's CLI, model, effort and permission, sends the
    prompt as `[From planner · conversation N]` and answers the tool at once.

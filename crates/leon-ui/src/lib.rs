@@ -39,6 +39,7 @@ mod icons;
 mod info_refs;
 mod left;
 mod limits_view;
+mod links;
 mod live_lines;
 mod markdown;
 mod message_input;

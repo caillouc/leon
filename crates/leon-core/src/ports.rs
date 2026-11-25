@@ -675,8 +675,9 @@ pub enum AppToolCall {
     /// Start another agent in a new conversation of the same flow
     /// (FLOW-1). Returns at once; the answer comes back as a message.
     StartAgent {
-        /// Agent name, as in its agent file.
-        agent: String,
+        /// Agent name, as in its agent file; `None`: the CLI's own agent,
+        /// without an agent file.
+        agent: Option<String>,
         /// First message to it.
         prompt: String,
         /// Where it runs; the caller's working directory when `None`.

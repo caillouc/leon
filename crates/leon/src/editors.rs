@@ -1,8 +1,13 @@
 //! The user's editors (GIT-7): VS Code and Zed, found by their command-line
 //! tool on the login shell's `PATH`, or on macOS inside their app, and
 //! opened on a folder with a file in it: `code <folder> -g <file>` (VS Code
-//! 1.140.0) and `zed <folder> <file>` (Zed 1.29.3), both from their
-//! `--help`, 2026-11-24.
+//! 1.140.0, its `--help`, 2026-11-24); `zed <folder>`, then once it ends
+//! `zed <file>` (Zed 1.29.3). Zed puts a file in an open project that holds
+//! it, so a worktree inside the main checkout would open there; a folder
+//! inside an open project opens as a workspace of its own, and the file
+//! then goes to it, the workspace just shown. The CLI ends once Zed opened
+//! the paths. From Zed 1.29.3's source (`open_paths`,
+//! `visibility_for_path`, `handle_cli_connection`), 2026-11-25.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -67,16 +72,33 @@ fn runnable(path: &Path) -> bool {
     std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
-/// The arguments opening `folder`, and `file` in it.
-fn args(editor: Editor, folder: &Path, file: Option<&Path>) -> Vec<OsString> {
-    let mut args = vec![folder.as_os_str().to_owned()];
-    if let Some(file) = file {
-        if editor == Editor::VsCode {
-            args.push("-g".into());
+/// The commands' arguments opening `folder`, and `file` in it, run one
+/// after the other.
+fn commands(editor: Editor, folder: &Path, file: Option<&Path>) -> Vec<Vec<OsString>> {
+    let folder = folder.as_os_str().to_owned();
+    match (editor, file) {
+        (_, None) => vec![vec![folder]],
+        (Editor::VsCode, Some(file)) => {
+            vec![vec![folder, "-g".into(), file.as_os_str().to_owned()]]
         }
-        args.push(file.as_os_str().to_owned());
+        (Editor::Zed, Some(file)) => vec![vec![folder], vec![file.as_os_str().to_owned()]],
     }
-    args
+}
+
+impl LocalEditors {
+    /// The editor's tool with `args`, quiet, on the login shell's `PATH`.
+    fn command(&self, program: &Path, args: &[OsString]) -> Command {
+        let mut command = Command::new(program);
+        command
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(path) = (self.path)() {
+            command.env("PATH", path);
+        }
+        command
+    }
 }
 
 impl Editors for LocalEditors {
@@ -95,18 +117,20 @@ impl Editors for LocalEditors {
                 format!("{} is not installed", editor.display_name()),
             )
         })?;
-        let mut command = Command::new(&program);
-        command
-            .args(args(editor, folder, file))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        if let Some(path) = (self.path)() {
-            command.env("PATH", path);
+        let name = editor.display_name();
+        let failed = |e: std::io::Error| PortError::new(CONTEXT, format!("{name}: {e}"));
+        let commands = commands(editor, folder, file);
+        let Some((last, first)) = commands.split_last() else {
+            return Ok(());
+        };
+        // Waited for: the next one opens in what this one opened.
+        for args in first {
+            let status = self.command(&program, args).status().map_err(failed)?;
+            if !status.success() {
+                return Err(PortError::new(CONTEXT, format!("{name}: {status}")));
+            }
         }
-        let mut child = command
-            .spawn()
-            .map_err(|e| PortError::new(CONTEXT, format!("{}: {e}", editor.display_name())))?;
+        let mut child = self.command(&program, last).spawn().map_err(failed)?;
         // The tool hands over to the editor and ends: reaped meanwhile.
         std::thread::spawn(move || child.wait());
         Ok(())
@@ -120,28 +144,44 @@ mod tests {
 
     use leon_domain::Editor;
 
-    use super::{args, on_path};
+    use super::{commands, on_path};
 
+    /// Zed opens the folder first, then the file, so the file goes to the
+    /// folder's workspace, not to an open project holding the folder.
     #[test]
     fn a_folder_opens_with_its_file() {
-        let (folder, file) = (Path::new("/code/api"), Path::new("/code/api/src/a.rs"));
+        let (folder, file) = (
+            Path::new("/code/api/.worktrees/fix"),
+            Path::new("/code/api/.worktrees/fix/src/a.rs"),
+        );
         let os = |items: &[&str]| items.iter().map(OsString::from).collect::<Vec<_>>();
         let cases = [
             (
                 Editor::VsCode,
                 Some(file),
-                os(&["/code/api", "-g", "/code/api/src/a.rs"]),
+                vec![os(&[
+                    "/code/api/.worktrees/fix",
+                    "-g",
+                    "/code/api/.worktrees/fix/src/a.rs",
+                ])],
             ),
             (
                 Editor::Zed,
                 Some(file),
-                os(&["/code/api", "/code/api/src/a.rs"]),
+                vec![
+                    os(&["/code/api/.worktrees/fix"]),
+                    os(&["/code/api/.worktrees/fix/src/a.rs"]),
+                ],
             ),
-            (Editor::Zed, None, os(&["/code/api"])),
-            (Editor::VsCode, None, os(&["/code/api"])),
+            (Editor::Zed, None, vec![os(&["/code/api/.worktrees/fix"])]),
+            (
+                Editor::VsCode,
+                None,
+                vec![os(&["/code/api/.worktrees/fix"])],
+            ),
         ];
         for (editor, file, expected) in cases {
-            assert_eq!(args(editor, folder, file), expected, "{editor:?}");
+            assert_eq!(commands(editor, folder, file), expected, "{editor:?}");
         }
     }
 

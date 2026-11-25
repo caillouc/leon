@@ -179,7 +179,8 @@ fn start_agent_tool() -> Value {
             "properties": {
                 "agent": {
                     "type": "string",
-                    "description": "Name of the agent to start, as in its agent file.",
+                    "description": "Name of the agent to start, as in its agent file. \
+                        Leave it out to start the CLI's own agent, without an agent file.",
                 },
                 "prompt": {
                     "type": "string",
@@ -199,7 +200,7 @@ fn start_agent_tool() -> Value {
                         to you. Defaults to false: its answer comes back to you.",
                 },
             },
-            "required": ["agent", "prompt"],
+            "required": ["prompt"],
         },
     })
 }
@@ -208,11 +209,9 @@ fn start_agent_tool() -> Value {
 pub(crate) fn parse(name: &str, arguments: &Value) -> Result<AppToolCall, ToolError> {
     Ok(match name {
         START_AGENT => AppToolCall::StartAgent {
-            agent: text(arguments, "agent")?,
+            agent: optional_text(arguments, "agent")?,
             prompt: text(arguments, "prompt")?,
-            working_directory: arguments
-                .get("working_directory")
-                .filter(|value| !value.is_null() && *value != "")
+            working_directory: optional_text(arguments, "working_directory")?
                 .map(|_| path(arguments, "working_directory"))
                 .transpose()?,
             for_user: arguments
@@ -253,6 +252,16 @@ fn text(arguments: &Value, key: &str) -> Result<String, ToolError> {
         _ => Err(ToolError::Arguments(format!(
             "`{key}` is required: a non-empty string"
         ))),
+    }
+}
+
+/// An optional string argument: left out, null or blank is `None`.
+fn optional_text(arguments: &Value, key: &str) -> Result<Option<String>, ToolError> {
+    match arguments.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) if value.trim().is_empty() => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(_) => Err(ToolError::Arguments(format!("`{key}` must be a string"))),
     }
 }
 
@@ -300,13 +309,8 @@ mod tests {
         let cases: &[(&str, Value, &str)] = &[
             (
                 "start_agent",
-                json!({ "prompt": "p" }),
-                "`agent` is required",
-            ),
-            (
-                "start_agent",
-                json!({ "agent": " ", "prompt": "p" }),
-                "`agent` is required",
+                json!({ "agent": 3, "prompt": "p" }),
+                "`agent` must be a string",
             ),
             (
                 "start_agent",
@@ -348,19 +352,22 @@ mod tests {
     }
 
     #[test]
-    fn null_or_empty_working_directory_means_none() {
-        for directory in [Value::Null, json!("")] {
+    fn a_left_out_null_or_blank_agent_or_working_directory_means_none() {
+        for value in [None, Some(Value::Null), Some(json!("")), Some(json!(" "))] {
+            let mut arguments = json!({ "prompt": "p" });
+            if let Some(value) = value {
+                arguments["agent"] = value.clone();
+                arguments["working_directory"] = value;
+            }
             assert_eq!(
-                parse(
-                    "start_agent",
-                    &json!({ "agent": "a", "prompt": "p", "working_directory": directory })
-                ),
+                parse("start_agent", &arguments),
                 Ok(leon_core::ports::AppToolCall::StartAgent {
-                    agent: "a".to_owned(),
+                    agent: None,
                     prompt: "p".to_owned(),
                     working_directory: None,
                     for_user: false,
-                })
+                }),
+                "{arguments}"
             );
         }
     }

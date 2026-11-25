@@ -187,7 +187,8 @@ conversations that come from the user's first message belong to the **same
 flow**: one item in the left pane (D5).
 
 - **FLOW-1** An agent starts another agent in a new conversation, with a
-  prompt, and gets its answer back — also from a turn that agent's CLI
+  prompt — one of the project's agent files, or, as the user can, the CLI's
+  own agent without an agent file — and gets its answer back — also from a turn that agent's CLI
   starts by itself (a background command it waited for has finished), or
   once it got an answer from an agent of its own — until the user writes
   to that conversation. Only then, or when started for the user, do its

@@ -109,21 +109,12 @@ pub(crate) struct Core(pub leon_core::CoreHandle);
 
 impl gpui::Global for Core {}
 
-/// A link: a GitHub issue or pull request opens Leon's view of it (GH-2,
-/// GH-3), anything else the browser.
-pub(crate) fn open_link(url: &str, cx: &mut gpui::App) {
-    match (leon_domain::GhRef::from_url(url), cx.try_global::<Core>()) {
-        (Some(item), Some(core)) => core.0.send(leon_core::Intent::ShowDetail(Some(item))),
-        _ => cx.open_url(url),
-    }
-}
-
 /// Markdown, selectable, its code blocks with a small corner, its GitHub
 /// links opening Leon's view.
 pub(crate) fn markdown(id: impl Into<ElementId>, text: &str) -> AnyElement {
     TextView::markdown(id.into(), SharedString::from(text.to_owned()))
         .selectable(true)
-        .on_link_click(|url, _, _, cx| open_link(url, cx))
+        .on_link_click(|url, _, _, cx| crate::links::open_link(url, cx))
         // A small corner (language, copy) instead of the library's label,
         // which pushes the code down by a whole line.
         .code_block_actions(|code, _, _| code_corner(code.lang(), code.code()))

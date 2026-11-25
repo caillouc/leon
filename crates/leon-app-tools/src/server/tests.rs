@@ -88,7 +88,7 @@ async fn each_tool_call_reaches_the_core_with_the_conversation() {
                 "for_user": true,
             }),
             AppToolCall::StartAgent {
-                agent: "coder".to_owned(),
+                agent: Some("coder".to_owned()),
                 prompt: "Fix it".to_owned(),
                 working_directory: Some(PathBuf::from("/w/tree")),
                 for_user: true,

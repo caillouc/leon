@@ -3,6 +3,12 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.8.4
+
+- **Agents**: an agent can start a conversation without an agent file, as you can from the new-conversation form.
+- **Zed**: a file opens in its worktree's own workspace, not in the main checkout's window.
+- **Links**: a link to a file on your Mac, like a page an agent made, opens it.
+
 ## v0.8.3
 
 - **Tabs**: a flow shows tabs only for the agents you talk with or opened, each with a cross to close it.

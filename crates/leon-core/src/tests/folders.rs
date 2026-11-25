@@ -110,7 +110,7 @@ async fn each_agent_has_the_folder_it_works_in() {
     // Before any change, in the repository's own checkout: no folder yet.
     assert_eq!(h.core.snapshot().conversations[&planner].folder, None);
     let start = crate::ports::AppToolCall::StartAgent {
-        agent: "coder".into(),
+        agent: Some("coder".into()),
         prompt: "Fix it in the worktree".into(),
         working_directory: None,
         for_user: false,
@@ -171,7 +171,7 @@ async fn a_main_checkout_shows_once_an_agent_works_in_it() {
     let (docs, web) = (PathBuf::from("/code/docs"), repo::real_repo());
     // A coder started in the web checkout, by name: nothing joins.
     let start = crate::ports::AppToolCall::StartAgent {
-        agent: "coder".into(),
+        agent: Some("coder".into()),
         prompt: "Look at the web app".into(),
         working_directory: Some(web.clone()),
         for_user: false,

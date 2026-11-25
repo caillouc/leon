@@ -70,7 +70,7 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     );
 
     let start = AppToolCall::StartAgent {
-        agent: "coder".into(),
+        agent: Some("coder".into()),
         prompt: "Implement step 1".into(),
         working_directory: None,
         for_user: false,
@@ -119,6 +119,30 @@ async fn a_started_agent_answers_back_to_the_agent_that_asked() {
     assert_eq!(s.flows[0].status, Status::Running);
 }
 
+/// An agent starts the CLI's own agent, without an agent file, as the user
+/// can in the new-conversation form (FLOW-1): on the caller's CLI (I7).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_agent_starts_one_without_an_agent_file() {
+    let h = harness();
+    let planner = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    let start = AppToolCall::StartAgent {
+        agent: None,
+        prompt: "Look into it".into(),
+        working_directory: None,
+        for_user: false,
+    };
+    let reply = call(&h, planner, start).await.unwrap();
+    assert!(
+        reply.starts_with("Started Claude Code (conversation 2)."),
+        "{reply}"
+    );
+    started(&h, 2).await;
+    let spec = h.backends.started.lock().unwrap()[1].spec.clone();
+    assert_eq!(spec.settings.agent, None);
+    assert_eq!(spec.settings.backend, BackendKind::ClaudeCode);
+}
+
 /// A turn the CLI starts by itself — a background command it waited for
 /// has finished — still answers the agent that asked, not the user: the
 /// asker gets the real report and the conversation is not to review
@@ -129,7 +153,7 @@ async fn a_turn_the_cli_starts_itself_answers_the_agent_that_asked() {
     let planner = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
     let start = AppToolCall::StartAgent {
-        agent: "coder".into(),
+        agent: Some("coder".into()),
         prompt: "Implement step 1".into(),
         working_directory: None,
         for_user: false,
@@ -172,16 +196,17 @@ async fn bad_tool_calls_explain_what_is_wrong() {
     let cases = [
         (
             AppToolCall::StartAgent {
-                agent: "reviewer".into(),
+                agent: Some("reviewer".into()),
                 prompt: "Review".into(),
                 working_directory: None,
                 for_user: false,
             },
-            "No agent named \"reviewer\". Agents: planner, coder.",
+            "No agent named \"reviewer\". Agents: planner, coder; or leave `agent` out to \
+             start the CLI's own agent, without an agent file.",
         ),
         (
             AppToolCall::StartAgent {
-                agent: "coder".into(),
+                agent: Some("coder".into()),
                 prompt: "Go".into(),
                 working_directory: Some(PathBuf::from("relative/dir")),
                 for_user: false,
@@ -233,7 +258,7 @@ async fn only_the_agent_that_answered_you_is_to_review() {
     let planner = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
     let start = AppToolCall::StartAgent {
-        agent: "coder".into(),
+        agent: Some("coder".into()),
         prompt: "Implement step 1".into(),
         working_directory: None,
         for_user: false,
@@ -280,7 +305,7 @@ async fn an_agent_is_to_review_once_every_report_is_back() {
     next_command(&h, 0).await;
     for (count, prompt) in [(2, "Implement step 1"), (3, "Implement step 2")] {
         let start = AppToolCall::StartAgent {
-            agent: "coder".into(),
+            agent: Some("coder".into()),
             prompt: prompt.into(),
             working_directory: None,
             for_user: false,
@@ -341,7 +366,7 @@ async fn agents_use_the_names_the_user_sees() {
     let planner = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
     let start = || AppToolCall::StartAgent {
-        agent: "coder".into(),
+        agent: Some("coder".into()),
         prompt: "Implement a step".into(),
         working_directory: None,
         for_user: false,
@@ -379,7 +404,7 @@ async fn an_agent_started_for_the_user_answers_the_user() {
     let planner = new_flow(&h, BackendKind::ClaudeCode).await;
     next_command(&h, 0).await;
     let start = AppToolCall::StartAgent {
-        agent: "planner".into(),
+        agent: Some("planner".into()),
         prompt: "Plan task B".into(),
         working_directory: None,
         for_user: true,

@@ -45,7 +45,14 @@ impl Core {
                 } else {
                     Sent::Request
                 };
-                self.start_agent(caller, flow, &agent, &prompt, working_directory, sent)
+                self.start_agent(
+                    caller,
+                    flow,
+                    agent.as_deref(),
+                    &prompt,
+                    working_directory,
+                    sent,
+                )
             }
             AppToolCall::MessageAgent { conversation, text } => {
                 let target = self
@@ -104,7 +111,7 @@ impl Core {
         &mut self,
         caller: ConversationId,
         flow: FlowId,
-        agent: &str,
+        agent: Option<&str>,
         prompt: &str,
         working_directory: Option<PathBuf>,
         sent: Sent,
@@ -119,18 +126,11 @@ impl Core {
             .find(|c| c.id == flow)
             .map(|c| c.project)
             .ok_or_else(|| "This flow no longer exists.".to_owned())?;
-        let names: Vec<String> = self
-            .state
-            .agents
-            .get(&project)
-            .map_or_default(|list| list.iter().map(|a| a.name.clone()).collect());
-        if !names.iter().any(|n| n == agent) {
-            return Err(if names.is_empty() {
-                format!("No agent named \"{agent}\": this project has no agent files.")
-            } else {
-                format!("No agent named \"{agent}\". Agents: {}.", names.join(", "))
-            });
-        }
+        // Without a name, the CLI's own agent, as the user can pick it.
+        let model = match agent {
+            Some(agent) => self.agent_model(project, agent)?,
+            None => None,
+        };
         let given = working_directory.is_some();
         let working_dir = match working_directory {
             Some(path) => {
@@ -150,14 +150,8 @@ impl Core {
             .get(&caller)
             .map(|s| s.conversation.settings.clone())
             .ok_or_else(|| "Leon does not know this conversation.".to_owned())?;
-        settings.agent = Some(agent.to_owned());
+        settings.agent = agent.map(ToOwned::to_owned);
         // Its file's model picks its CLI (EXT-6); else the caller's (I7).
-        let model = self
-            .state
-            .agents
-            .get(&project)
-            .and_then(|list| list.iter().find(|a| a.name == agent))
-            .and_then(|a| a.model.clone());
         if let Some(next) = crate::settings_for_agent(
             &settings,
             model.as_deref(),
@@ -200,6 +194,33 @@ impl Core {
             n = id.0,
             all = self.state.roll_call(flow)
         ))
+    }
+
+    /// The model the agent file named `agent` of project `project` picks,
+    /// or why there is no such file.
+    fn agent_model(
+        &self,
+        project: leon_domain::ProjectId,
+        agent: &str,
+    ) -> Result<Option<String>, String> {
+        let list = self
+            .state
+            .agents
+            .get(&project)
+            .map_or(&[][..], Vec::as_slice);
+        if let Some(file) = list.iter().find(|a| a.name == agent) {
+            return Ok(file.model.clone());
+        }
+        let names: Vec<&str> = list.iter().map(|a| a.name.as_str()).collect();
+        let without = "or leave `agent` out to start the CLI's own agent, without an agent file";
+        Err(if names.is_empty() {
+            format!("No agent named \"{agent}\": this project has no agent files; {without}.")
+        } else {
+            format!(
+                "No agent named \"{agent}\". Agents: {}; {without}.",
+                names.join(", ")
+            )
+        })
     }
 
     fn message_agent(

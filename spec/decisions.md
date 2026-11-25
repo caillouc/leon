@@ -159,9 +159,10 @@ an online service, must publish their changes under the same licence.
 
 **P14 — Name:** `leon` (binary and config folder).
 
-**P15 — How one agent starts another (FLOW-1, FLOW-2).**
+**P15 — How one agent starts another (FLOW-1, FLOW-2).** (changed 2026-11-25)
 The app's local MCP server (P10) gives every agent session two tools:
-`start_agent(agent, prompt, working_directory?)` and
+`start_agent(agent?, prompt, working_directory?)` (without `agent`, the CLI's
+own agent, without an agent file) and
 `message_agent(session, text)`. Both return at once. When the other session
 finishes its answer, the app sends that answer as a new message to the session
 that asked. The app records each call (who, to whom, prompt, answer) and draws
@@ -367,11 +368,14 @@ Codex is also asked when Doctor runs, by a short `codex app-server`
 maintainer on 2026-11-24: "ok for both (can you show from when the display
 usage come from)".
 
-**I29 — The user's editor (GIT-7, SETTINGS-4).** Leon finds VS Code and
-Zed by their command-line tool on the login shell's `PATH` (`code`; `zed` or
-`zeditor`), or on macOS inside their app, and opens a worktree with a file
-in it with `code <folder> -g <file>` (1.140.0) or `zed <folder> <file>`
-(1.29.3), both from their `--help` on 2026-11-24 (⚠️ the folder and file
-together not tried). Settings keeps the choice in `ui.editor`; without it,
-the first installed. Chosen by the maintainer on 2026-11-24: "Setting,
-auto-detected".
+**I29 — The user's editor (GIT-7, SETTINGS-4).** (changed 2026-11-25) Leon
+finds VS Code and Zed by their command-line tool on the login shell's `PATH`
+(`code`; `zed` or `zeditor`), or on macOS inside their app, and opens a
+worktree with a file in it with `code <folder> -g <file>` (1.140.0, its
+`--help` on 2026-11-24) or, for Zed, `zed <folder>` then, once it ends,
+`zed <file>`: Zed puts a file in an open project that holds it, so a
+worktree inside the main checkout opened in the main checkout's window
+(Zed 1.29.3's source, 2026-11-25). Settings keeps the choice in
+`ui.editor`; without it, the first installed. Chosen by the maintainer on
+2026-11-24: "Setting, auto-detected"; on 2026-11-25: "Worktree first, then
+file".
