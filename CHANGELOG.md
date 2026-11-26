@@ -3,6 +3,10 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.9.2
+
+- **Commands**: an MCP server's tools count as one in an answer's folded line ("Slack ×3").
+
 ## v0.9.1
 
 - **Models**: each CLI's models come from the CLI itself, so a new one (like Fable 5.2) shows without a Leon update.

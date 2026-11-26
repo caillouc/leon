@@ -84,9 +84,10 @@ pub fn run_summary(entries: &[TimedEntry]) -> RunSummary {
         else {
             continue;
         };
-        match kinds.iter_mut().find(|(n, _)| *n == name) {
+        let kind = group(name);
+        match kinds.iter_mut().find(|(n, _)| *n == kind) {
             Some((_, count)) => *count += 1,
-            None => kinds.push((name, 1)),
+            None => kinds.push((kind, 1)),
         }
         failed += usize::from(*f);
         running |= output.is_none();
@@ -103,6 +104,27 @@ pub fn run_summary(entries: &[TimedEntry]) -> RunSummary {
         text,
         failed,
         running,
+    }
+}
+
+/// What a tool call counts as in a summary: an MCP tool as its server
+/// ("Slack" for Claude Code's `mcp__claude_ai_Slack__slack_read_channel`,
+/// `metabase` for Codex's `metabase.search`), any other as its name.
+fn group(name: &str) -> &str {
+    if let Some(rest) = name.strip_prefix("mcp__")
+        && let Some((server, _)) = rest.split_once("__")
+    {
+        // claude.ai's connectors, as Claude Code names them.
+        return server.strip_prefix("claude_ai_").unwrap_or(server);
+    }
+    let word = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    };
+    match name.split_once('.') {
+        Some((server, tool)) if word(server) && word(tool) => server,
+        _ => name,
     }
 }
 
@@ -176,6 +198,29 @@ mod tests {
         for (entries, expected) in cases {
             assert_eq!(fold_turns(&entries), expected, "{entries:?}");
         }
+    }
+
+    /// MCP tools count as their server: one entry, not one per tool.
+    #[test]
+    fn mcp_tools_count_as_their_server() {
+        let run = [
+            tool("Skill", Some(""), false),
+            tool(
+                "mcp__claude_ai_Slack__slack_search_channels",
+                Some(""),
+                false,
+            ),
+            tool("mcp__claude_ai_Slack__slack_read_channel", Some(""), false),
+            tool("mcp__leon__rename_flow", Some(""), false),
+            tool("metabase.search", Some(""), false),
+            tool("metabase.query", Some(""), false),
+            ran(),
+            tool("Viewing src/a.rs", Some(""), false),
+        ];
+        assert_eq!(
+            run_summary(&run).text,
+            "Skill · Slack ×2 · leon · metabase ×2 · Ran · Viewing src/a.rs"
+        );
     }
 
     #[test]

@@ -186,8 +186,8 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **CONV-20** The tool calls of an answer (commands, reads, edits…), wherever
   they came in it, gather at its top, above its text: one alone keeps its
   row, more fold into one grey line saying what they did ("Ran ×6 · Read
-  ×2"); a click lists them, each opening on its own. A call's row says what
-  it was for, when the agent said it ("Run the retry tests"), else what it
+  ×2 · Slack ×3", an MCP server's tools counted as one); a click lists
+  them, each opening on its own. A call's row says what it was for, when the agent said it ("Run the retry tests"), else what it
   did ("Ran"), then the start of its command. An open tool call shows its
   whole command (or input), not cut to the line, then its output.
 - **CONV-21** A "TLDR" (or "TL;DR") starting a line of a message stands out:
