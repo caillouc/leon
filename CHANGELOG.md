@@ -3,6 +3,10 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.8.6
+
+- **Projects**: a project's flow count ends its row; on hover it moves left of the +.
+
 ## v0.8.5
 
 - **To-dos**: the To do page is lighter: no "Added by" line, no "Open flow" link (a flow's title opens it).

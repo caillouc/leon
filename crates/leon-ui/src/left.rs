@@ -217,7 +217,7 @@ impl Workspace {
 
     /// A project's row: click to fold or unfold its flows (NAV-2); its
     /// folder, open or closed, turning into the fold arrow on hover; name,
-    /// count, a dot when a folded flow needs you, + (on hover) to start one
+    /// a dot when a folded flow needs you, count, + (on hover) to start one
     /// in it (NAV-10); right-click to remove it; drag it among the others:
     /// its line, folded, follows the mouse up and down while the others
     /// make room, and stays where let go (`no_flows`: it has none, so it
@@ -339,19 +339,28 @@ impl Workspace {
                     .text_color(theme::fg_faint())
                     .child(count.to_string()),
             )
+            // No room until hovered: the count ends the row, then moves
+            // left of the +.
             .child(
                 div()
-                    .id(SharedString::from(format!("new-in-{}", id.0)))
-                    .p(crate::theme::rem(3.))
-                    .rounded_md()
-                    .opacity(0.)
-                    .group_hover(group, |s| s.opacity(1.))
-                    .hover(|s| s.bg(theme::surface()))
-                    .child(icon(Icon::Plus, theme::fg_muted(), 14.))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.open_new_flow(Some(id), None, window, cx);
-                    })),
+                    .id(SharedString::from(format!("new-in-room-{}", id.0)))
+                    .flex_none()
+                    .w_0()
+                    .ml(crate::theme::rem(-8.))
+                    .overflow_hidden()
+                    .group_hover(group, |s| s.w(crate::theme::rem(20.)).ml_0())
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("new-in-{}", id.0)))
+                            .p(crate::theme::rem(3.))
+                            .rounded_md()
+                            .hover(|s| s.bg(theme::surface()))
+                            .child(icon(Icon::Plus, theme::fg_muted(), 14.))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.open_new_flow(Some(id), None, window, cx);
+                            })),
+                    ),
             )
             .into_any_element()
     }
