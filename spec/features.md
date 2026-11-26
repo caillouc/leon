@@ -342,9 +342,9 @@ flow**: one item in the left pane (D5).
   adds one with Leon's `add_todo` tool, which needs both, and refuses a
   to-do that waits for nothing (a step the user can take now belongs in the
   agent's answer); it is told a to-do is not for a ticket's routine
-  (merging, deploying, reviewing, checking it worked) either. The to-do
-  says which agent added it. An agent reads the
-  flow's to-dos with `list_todos`, open then done, each with who added it.
+  (merging, deploying, reviewing, checking it worked) either. An agent
+  reads the flow's to-dos with `list_todos`, open then done, each with the
+  agent that added it.
   The user ticks one with its box: it is done at once; a done one opens
   again with its box. The small red bin its row shows on hover removes it
   for good. Either way, a note at the window's bottom right offers "Undo"
@@ -359,10 +359,9 @@ flow**: one item in the left pane (D5).
 - **TODO-3** A button at the top right of the main pane, just left of the
   right pane, says how many to-dos are open in every flow; it opens the To
   do page in the main pane: one foldable group per flow with open to-dos
-  (the flow's title and project, marked in the project's colour, with
-  "Open flow" to go to it), its open to-dos, each marked done there, and its
-  done ones folded. The agent that added a to-do shows in its colour. The
-  user drags a group by its header to move it among the others, as a
+  (the flow's title, which opens it, and project, marked in the project's
+  colour), its open to-dos, each marked done there, and its done ones
+  folded. The user drags a group by its header to move it among the others, as a
   project in the left pane (NAV-2); the order is kept across restarts, and
   a flow given its first open to-do comes last.
 - **TODO-4** A flow's row in the left pane shows how many of its to-dos

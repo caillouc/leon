@@ -226,23 +226,12 @@ impl Workspace {
         )
     }
 
-    /// One to-do: its box, which marks it done or open again, its text,
-    /// the agent that added it, and on hover a red bin that removes it.
+    /// One to-do: its box, which marks it done or open again, its text, and
+    /// on hover a red bin that removes it.
     fn todo_row(&self, todo: &Todo, place: &str, cx: &mut Context<Self>) -> AnyElement {
         let (id, done) = (todo.id, todo.done);
-        // The agent that added it, in its colour in the flow.
-        let by = todo
-            .by
-            .and_then(|c| self.snapshot.conversations.get(&c))
-            .map(|s| {
-                let all = self
-                    .snapshot
-                    .flow(todo.flow)
-                    .map_or_else(Vec::new, |f| self.snapshot.conversations_of(f));
-                (s.name.clone(), crate::agent_color::agent_color(&all, s))
-            });
         let group = SharedString::from(format!("todo-{place}-{}", id.0));
-        let row = div()
+        div()
             .id(group.clone())
             .group(group.clone())
             .px_3()
@@ -253,35 +242,18 @@ impl Workspace {
             .gap_3()
             .hover(|s| s.bg(theme::surface()))
             .child(check(id, done, place, cx))
-            .child(
+            // When → what, side by side; done: struck out.
+            .child(div().flex_1().min_w_0().child(if done {
                 div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(rem(2.))
-                    // When → what, side by side; done: struck out.
-                    .child(if done {
-                        div()
-                            .line_through()
-                            .text_color(theme::fg_muted())
-                            .child(todo.line())
-                            .into_any_element()
-                    } else {
-                        self.when_what(todo, place, cx)
-                    })
-                    .children(by.map(|(name, color)| {
-                        div()
-                            .flex()
-                            .gap(rem(4.))
-                            .text_size(rem(11.5))
-                            .text_color(theme::fg_faint())
-                            .child("Added by")
-                            .child(div().text_color(color).child(name))
-                    })),
-            )
-            .child(remove(id, group, place, cx));
-        row.into_any_element()
+                    .line_through()
+                    .text_color(theme::fg_muted())
+                    .child(todo.line())
+                    .into_any_element()
+            } else {
+                self.when_what(todo, place, cx)
+            }))
+            .child(remove(id, group, place, cx))
+            .into_any_element()
     }
 
     /// An open to-do as it reads: what it waits for, muted, an arrow, then
@@ -505,10 +477,7 @@ impl Workspace {
             .size_full()
             .flex()
             .flex_col()
-            .child(pane_header(
-                "To do",
-                Some(format!("{count} open · what is left for you, by flow")),
-            ))
+            .child(pane_header("To do", Some(format!("{count} open"))))
             .child(
                 div()
                     .id("todos-page")
@@ -565,12 +534,11 @@ impl Workspace {
                 .get(&view.flow.project)
                 .map_or_else(|| project.as_deref().unwrap_or_default(), String::as_str),
         );
+        // Its title opens it.
         let title = div()
             .id(SharedString::from(format!("todos-flow-{}", flow.0)))
             .flex()
-            // Centred: "Open flow" leads with an icon, which has no
-            // baseline to line up on.
-            .items_center()
+            .items_baseline()
             .gap_2()
             .min_w_0()
             .cursor_pointer()
@@ -587,16 +555,6 @@ impl Workspace {
                     .text_color(theme::fg_faint())
                     .child(name)
             }))
-            .child(
-                div()
-                    .ml_2()
-                    .text_size(rem(12.))
-                    .child(crate::gh_rows::flow_link(
-                        &format!("todos-{}", flow.0),
-                        flow,
-                        cx,
-                    )),
-            )
             .on_click(cx.listener(move |this, _, _, cx| {
                 // Not also a fold of the group.
                 cx.stop_propagation();
