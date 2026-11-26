@@ -541,7 +541,9 @@ impl Workspace {
                     .gap(px(6. * s))
                     .text_size(px(12. * s))
                     .text_color(match conversation.status {
+                        // Still at work, through the agents it waits for.
                         leon_domain::Status::Running => theme::accent(),
+                        leon_domain::Status::Idle if !waiting_for.is_empty() => theme::accent(),
                         leon_domain::Status::NeedsInput => theme::warn(),
                         leon_domain::Status::Error => theme::err(),
                         leon_domain::Status::Idle => theme::fg_muted(),

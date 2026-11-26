@@ -40,6 +40,9 @@ pub enum Shot {
     NewFlowWith(&'static str),
     /// A flow with its form for another conversation open (FLOW-7).
     NewInFlow(FlowId),
+    /// A flow's first conversation, its first answer's tool calls unfolded
+    /// and the second of them open (CONV-20).
+    ToolCalls(FlowId),
     /// A flow with the right pane closed.
     RightClosed(FlowId),
     /// A flow with this text typed in its message box.
@@ -121,6 +124,24 @@ impl Workspace {
                 self.open_first_conversation(*id);
                 self.open_picker = Some((*picker).into());
             }
+            Shot::ToolCalls(id) => {
+                self.select(*id, cx);
+                self.open_first_conversation(*id);
+                if let Some(Tab::Conversation(c)) = self.tabs.get(id).copied() {
+                    self.open_runs.insert((c, 1));
+                    self.expanded.insert((c, 3));
+                    // From the transcript's start, where they are.
+                    let count = self
+                        .snapshot
+                        .transcripts
+                        .get(&c)
+                        .map_or(0, |t| t.entries.len());
+                    self.list_for(c, count, false).scroll_to(gpui::ListOffset {
+                        item_ix: 0,
+                        offset_in_item: px(0.),
+                    });
+                }
+            }
             Shot::RightClosed(id) => {
                 self.select(*id, cx);
                 self.open_first_conversation(*id);
@@ -136,13 +157,13 @@ impl Workspace {
                 self.select(*id, cx);
                 self.tabs.remove(id);
             }
-            Shot::NewFlow => self.show_new_flow(cx),
+            Shot::NewFlow => self.show_new_flow(None, cx),
             Shot::NewInFlow(id) => {
                 self.select(*id, cx);
                 self.open_new_in_flow(*id, cx);
             }
             Shot::NewFlowWith(agent) => {
-                self.show_new_flow(cx);
+                self.show_new_flow(None, cx);
                 self.form.settings.agent = Some((*agent).to_owned());
             }
             Shot::Drawer(id, path, split) => {

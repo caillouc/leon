@@ -198,9 +198,12 @@ Use these; do not restyle them in place.
 | Picker | `picker_look(Look::Inline / Field / Title / Branch)` | inline: 12 muted text + caret, in a message box or under it, opens upwards; field: boxed, full width, opens downwards; title: 13 semibold + faint caret, opens downwards; branch: 11.5 mono muted + caret, beside a title. A choice's second line (after `\n`) is faint mono. The list is at least 160 wide, but a title or branch picker's list hugs its choices, no wider than they are |
 | File row | `file_rows` (diff_view) | status letter, mono path, folded / comments tags, lines |
 | Link in a row | e.g. a check's "Failing ↗" in the PR view, a failed job's name in a row | only the text is clickable, brighter on hover |
+| Tool call row | `tool_rows::tool_row` | chevron 12, what it was for (else its name) in `fg`, at most 60 % of the row, the detail's first line muted, cut with an ellipsis, "running" in `accent`; all 12, `err` red when it failed. Open: a `surface` box, `border`, radius 6, mono 11.5, 16 in: the whole detail in `fg`, wrapping, a `border` line, then the output |
+| An answer's tool calls | `tool_rows::turn_tools` | at the answer's top, above its text, wherever they came in it: one alone keeps its row; more, one line like a tool row's but all muted, so it never reads as the agent's words: "Ran ×6 · Read ×2" (each name and count, in first-call order), "N failed" in `err`, "running" in `accent`; open, their tool rows under it, 20 in (past its chevron and gap) |
+| TLDR | `tldr::tldr_view` | "TLDR" or "TL;DR" starting a line of markdown, outside code: the word bold in `ok` (the "To review" green), as written, its paragraph's text beside it (the markdown has no text colour, so the word is drawn apart) |
 | Notice in a conversation | `transcript` (`Entry::Notice`) | "You answered: …", "Stopped by you", a setting changed: 12 faint, left, where a tool row's name starts (20 in, past its chevron and gap), so an answer reads under the tool it allowed; never centred |
 | Update card | `update_view::update_card` | Doctor's first card while there is something to say about Leon's own update (none when up to date): a Doctor card, `info` icon 16 in `accent`, the title says the state ("Leon 0.5.0 is available", "Updating to…", "…is installed", "…could not be installed"); one row: what it means, muted (the error in `err` red), then its buttons on the right — Update (primary, macOS app only) and Release notes; "Updating…" at 60 %; Restart Leon (primary); Try again and Release notes |
-| Queued message | `composer::queued_line` | above the message box while a message waits for the answer to end: "Queued" in `accent`, its first line 12 muted, cut with an ellipsis, then "Remove" (small text action) |
+| Queued message | `queued::queued_lines` | above the message box, one line per message waiting for the answer to end: "Queued" in `accent`, its first line 12 muted, cut with an ellipsis, then "Edit" (none while one is edited) and "Remove" (small text actions). While the agent answers and the box holds text, "Queue" (primary) shows beside Stop |
 | Question card | composer | amber edge, "QUESTION" label, title, detail (mono 12.5 on `surface_2`, wrapping, one line each: `$ <command>`, then each path), one button per option (first primary) |
 | Hover list | e.g. a flow's PRs (`flow_prs`) | `overlay`, `border_strong`, shadow, 340 wide, body text 13 set on it (it is drawn outside the window's root); PR rows folded to one line |
 | A flow's PRs in its row | `flow_prs::flow_prs` | the leading state's PR icon 13 and how many, in that state's colour; in `warn` amber (the running CI indicator's) while an open one's checks run; in `err` red when an open one is blocked (a failed check, a conflict), red first; no separate mark |
@@ -237,7 +240,9 @@ Only what shows work going on moves:
 - **Dragged project**: its line leans with the mouse's speed and swings
   back once into place when the mouse stops.
 - **Flow box**: a working agent's colour goes round its box's border.
-  With reduced motion, the loader shows instead.
+  With reduced motion, the loader shows instead. Its status line is in
+  `accent` while it works and while it waits for another agent ("Waiting
+  for coder 1").
 - Nothing else animates: no fades, no slides.
 
 ## Words

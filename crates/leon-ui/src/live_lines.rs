@@ -127,7 +127,7 @@ fn running_line(key: &str, tool: &RunningTool) -> Div {
                 .font_family(theme::MONO)
                 .text_size(crate::theme::rem(11.5))
                 .text_color(theme::fg_muted())
-                .child(tool.detail.clone()),
+                .child(crate::tool_rows::one_line(&tool.detail)),
         )
         .child(
             div()

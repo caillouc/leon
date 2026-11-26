@@ -101,6 +101,7 @@ async fn a_tool_without_a_result_ends_with_its_turn() {
             id: "t1".into(),
             name: "Read".into(),
             detail: "Searching for secrets".into(),
+            purpose: None,
         },
     );
     emit(
@@ -116,6 +117,7 @@ async fn a_tool_without_a_result_ends_with_its_turn() {
         id: "t1".into(),
         name: "Read".into(),
         detail: "Searching for secrets".into(),
+        purpose: None,
         output: Some(leon_domain::NO_RESULT.into()),
         failed: false,
     };

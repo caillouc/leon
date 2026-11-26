@@ -166,9 +166,7 @@ impl Workspace {
         } else {
             self.waiting_lines(&s)
         };
-        if let Some(text) = &s.queued {
-            column = column.child(queued_line(conversation, text, cx));
-        }
+        column = column.children(self.queued_lines(&s, cx));
         if !live.is_empty() {
             column = column.child(
                 div()
@@ -201,17 +199,34 @@ impl Workspace {
         );
         let agent = s.name.clone();
         let action = if running {
-            button(
+            let stop = button(
                 "stop",
                 "Stop",
                 cx.listener(move |this, _, _, _| this.core.send(Intent::Stop(conversation))),
-            )
+            );
+            // Something written: it can wait for the answer's end (CONV-19).
+            let written = !crate::workspace::text_of(&self.composer, cx)
+                .trim()
+                .is_empty();
+            div()
+                .flex()
+                .gap_1()
+                .child(stop)
+                .when(written, |d| {
+                    d.child(primary(
+                        "queue",
+                        "Queue",
+                        cx.listener(|this, _, window, cx| this.send_composer(window, cx)),
+                    ))
+                })
+                .into_any_element()
         } else {
             primary(
                 "send",
                 "Send",
                 cx.listener(|this, _, window, cx| this.send_composer(window, cx)),
             )
+            .into_any_element()
         };
         let project = self
             .snapshot
@@ -275,6 +290,9 @@ impl Workspace {
         }
         let images = crate::attach::images_in(&content, &self.put.images);
         self.put = crate::attach::Put::default();
+        if self.requeue(conversation, text.clone(), images.clone(), window, cx) {
+            return;
+        }
         match self.rewind.take() {
             Some((id, entry)) if id == conversation => {
                 self.core.send(Intent::Rewind {
@@ -379,36 +397,4 @@ fn plan_card(plan: &[leon_domain::PlanStep]) -> AnyElement {
         )
         .children(steps)
         .into_any_element()
-}
-
-/// The user's message waiting for the answer to end (CONV-19): "Queued",
-/// its first line, and "Remove".
-fn queued_line(conversation: ConversationId, text: &str, cx: &mut Context<Workspace>) -> Div {
-    let first = text.lines().next().unwrap_or_default().to_owned();
-    div()
-        .flex()
-        .items_center()
-        .gap_2()
-        .text_size(crate::theme::rem(12.))
-        .text_color(theme::fg_muted())
-        .child(
-            div()
-                .flex_none()
-                .text_color(theme::accent())
-                .child("Queued"),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(first),
-        )
-        .child(crate::widgets::text_action(
-            "unqueue",
-            "Remove",
-            cx.listener(move |this, _, _, _| this.core.send(Intent::Unqueue(conversation))),
-        ))
 }

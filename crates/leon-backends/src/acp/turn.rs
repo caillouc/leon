@@ -7,9 +7,7 @@ use leon_domain::Usage;
 use serde_json::Value;
 
 use crate::process::clip;
-use crate::summary::{OUTPUT_MAX, files_changed, result_text};
-
-const DETAIL_MAX: usize = 200;
+use crate::summary::{DETAIL_MAX, OUTPUT_MAX, files_changed, result_text};
 
 /// A tool call that has not finished.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -100,11 +98,12 @@ impl Turn {
             kind: update["kind"].as_str().unwrap_or("other").to_owned(),
             command: command(update),
         };
-        let (name, detail) = describe(&tool);
+        let (name, detail, purpose) = describe(&tool);
         out.push(BackendEvent::Tool {
             id: id.to_owned(),
             name,
             detail,
+            purpose,
         });
         self.tools.insert(id.to_owned(), tool);
         out.extend(self.tool_update(update));
@@ -190,16 +189,25 @@ pub(super) fn command(call: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn describe(tool: &OpenTool) -> (String, String) {
+fn describe(tool: &OpenTool) -> (String, String, Option<String>) {
     let verb = match tool.kind.as_str() {
         "read" => "Read",
         "edit" | "delete" | "move" => "Edited",
         "search" => "Searched",
         "execute" => "Ran",
         "fetch" => "Fetched",
-        _ => return (clip(&tool.title, DETAIL_MAX), String::new()),
+        _ => return (clip(&tool.title, DETAIL_MAX), String::new(), None),
     };
-    (verb.to_owned(), clip(&tool.title, DETAIL_MAX))
+    // A command's title says what it is for (Copilot CLI 1.0.114: "Create
+    // worktree and sync deps"); the command itself is the detail.
+    match tool.command.as_deref().filter(|c| *c != tool.title) {
+        Some(command) if !tool.title.is_empty() => (
+            verb.to_owned(),
+            clip(command, DETAIL_MAX),
+            Some(clip(&tool.title, DETAIL_MAX)),
+        ),
+        _ => (verb.to_owned(), clip(&tool.title, DETAIL_MAX), None),
+    }
 }
 
 /// Token usage from the `session/prompt` response. The field is marked
@@ -210,4 +218,37 @@ fn usage(usage: &Value) -> Option<Usage> {
         output_tokens: usage["outputTokens"].as_u64()?,
         cost_usd: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OpenTool, describe};
+
+    /// A command's title says what it is for; the row shows the command.
+    #[test]
+    fn a_command_keeps_its_title_as_its_purpose() {
+        let tool = |title: &str, kind: &str, command: Option<&str>| OpenTool {
+            title: title.into(),
+            kind: kind.into(),
+            command: command.map(Into::into),
+        };
+        let cases = [
+            (
+                tool("Create worktree", "execute", Some("git worktree add x")),
+                ("Ran", "git worktree add x", Some("Create worktree")),
+            ),
+            (
+                tool("cargo test", "execute", Some("cargo test")),
+                ("Ran", "cargo test", None),
+            ),
+            (tool("src/a.rs", "read", None), ("Read", "src/a.rs", None)),
+        ];
+        for (tool, (verb, detail, purpose)) in cases {
+            let (v, d, p) = describe(&tool);
+            assert_eq!(
+                (v.as_str(), d.as_str(), p.as_deref()),
+                (verb, detail, purpose)
+            );
+        }
+    }
 }

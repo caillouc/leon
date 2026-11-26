@@ -222,6 +222,7 @@ impl Core {
     ) {
         self.load();
         self.reattach();
+        self.send_waiting();
         self.publish();
         self.refresh_all_git();
         self.refresh_links();
@@ -292,6 +293,7 @@ impl Core {
                 .conversations
                 .insert(conversation.id, ConversationState::new(conversation));
         }
+        self.load_waiting();
         let options = BackendKind::ALL
             .into_iter()
             .map(|b| (b, self.ports.backends.options(b)))
@@ -391,7 +393,13 @@ impl Core {
                 text,
                 images,
             } => self.rewind(conversation, entry, (&text, &images)),
-            Intent::Unqueue(conversation) => self.unqueue(conversation),
+            Intent::Unqueue(conversation, ix) => self.unqueue(conversation, ix),
+            Intent::Requeue {
+                conversation,
+                at,
+                text,
+                images,
+            } => self.send_at(conversation, &text, &images, Some(at)),
             Intent::OpenInEditor { folder, file } => self.open_in_editor(folder, file),
             Intent::Stop(conversation) => {
                 if let Some(commands) = self.live.get(&conversation) {
@@ -716,6 +724,18 @@ impl Core {
     /// the agent answers, it waits for the end, joined to any already
     /// waiting (CONV-19).
     pub(crate) fn send(&mut self, id: ConversationId, text: &str, images: &[crate::ports::Image]) {
+        self.send_at(id, text, images, None);
+    }
+
+    /// Sends the user's message, or, while the agent answers, queues it at
+    /// place `at`, else after those waiting (CONV-19).
+    fn send_at(
+        &mut self,
+        id: ConversationId,
+        text: &str,
+        images: &[crate::ports::Image],
+        at: Option<usize>,
+    ) {
         // Replying means its answer was read, and brings its flow back from
         // the archive (NAV-8).
         self.mark_read(id);
@@ -730,18 +750,13 @@ impl Core {
         }) {
             self.edit(flow, |c| c.archived = None);
         }
-        if let Some(s) = self
+        if self
             .state
             .conversations
-            .get_mut(&id)
-            .filter(|s| s.status == Status::Running)
+            .get(&id)
+            .is_some_and(|s| s.status == Status::Running)
         {
-            let (queued, waiting) = s.queued.get_or_insert_default();
-            if !queued.is_empty() {
-                queued.push_str("\n\n");
-            }
-            queued.push_str(text.trim());
-            waiting.extend_from_slice(images);
+            self.queue(id, at, text, images);
             return;
         }
         let entry = Entry::User {
@@ -759,10 +774,13 @@ impl Core {
         }
     }
 
-    /// Drops the message waiting for the answer to end (CONV-19).
-    fn unqueue(&mut self, id: ConversationId) {
-        if let Some(s) = self.state.conversations.get_mut(&id) {
-            s.queued = None;
+    /// Drops message `ix` of those waiting for the answer to end (CONV-19).
+    fn unqueue(&mut self, id: ConversationId, ix: usize) {
+        if let Some(s) = self.state.conversations.get_mut(&id)
+            && ix < s.queued.len()
+        {
+            s.queued.remove(ix);
+            self.save_waiting(id);
         }
     }
 

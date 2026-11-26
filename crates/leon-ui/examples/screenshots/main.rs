@@ -165,7 +165,15 @@ fn conversation(
         } else {
             Vec::new()
         },
-        queued: None,
+        // Two messages the user wrote while the planner works (CONV-19).
+        queued: if id == 1 {
+            vec![
+                ("Also check the retry tests".into(), Vec::new()),
+                ("and update the docs once done".into(), Vec::new()),
+            ]
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -218,10 +226,11 @@ fn timed(entry: Entry) -> TimedEntry {
 fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
     let transcript = vec![
         timed(Entry::User { text: "/ticket 398 webhook retries give up after 30 seconds".into() }),
-        timed(Entry::Tool { id: "1".into(), name: "Read".into(), detail: "src/webhooks/retry.rs".into(), output: Some("…".into()), failed: false }),
-        timed(Entry::Tool { id: "2".into(), name: "Ran".into(), detail: "cargo test webhook".into(), output: Some("test result: ok. 6 passed".into()), failed: false }),
+        timed(Entry::Tool { id: "1".into(), name: "Read".into(), detail: "src/webhooks/retry.rs".into(), purpose: None, output: Some("…".into()), failed: false }),
+        timed(Entry::Agent { text: "The window is a constant: checking the tests that pin it.".into() }),
+        timed(Entry::Tool { id: "2".into(), name: "Ran".into(), detail: "cargo test -p webhooks --test webhook_retry -- --nocapture delay_sequence attempt_zero 2>&1 | tail -20 && git -C ~/src/webhooks diff --stat origin/main".into(), purpose: Some("Run the retry tests".into()), output: Some("test result: ok. 6 passed".into()), failed: false }),
         timed(Entry::Agent {
-            text: "**Recap.** Deliveries stop retrying after 30 s (`MAX_ELAPSED` in `src/webhooks/retry.rs:13`).\n\n**Plan**\n1. Raise the retry window to 15 minutes.\n2. Cap each delay at 2 minutes.\n3. Test the delay sequence.\n\n| File | Change | Risk |\n|---|---|---|\n| `src/webhooks/retry.rs` | cap each delay at 2 minutes | low |\n| `src/webhooks/mod.rs` | retry for 15 minutes | medium |\n| `tests/webhook_retry.rs` | delay sequence, attempt 0 | none |\n\n```rust\nconst MAX_DELAY: Duration = Duration::from_secs(120);\n```".into(),
+            text: "**Recap.** Deliveries stop retrying after 30 s (`MAX_ELAPSED` in `src/webhooks/retry.rs:13`).\n\n**Plan**\n1. Raise the retry window to 15 minutes.\n2. Cap each delay at 2 minutes.\n3. Test the delay sequence.\n\n| File | Change | Risk |\n|---|---|---|\n| `src/webhooks/retry.rs` | cap each delay at 2 minutes | low |\n| `src/webhooks/mod.rs` | retry for 15 minutes | medium |\n| `tests/webhook_retry.rs` | delay sequence, attempt 0 | none |\n\n```rust\nconst MAX_DELAY: Duration = Duration::from_secs(120);\n```\n\n**TLDR:** retries stop at 30 s; the plan raises the window to 15 minutes. Approve it to start.".into(),
         }),
         timed(Entry::TurnEnd { usage: Some(Usage { input_tokens: 41_200, output_tokens: 1_830, cost_usd: Some(0.42) }) }),
         timed(Entry::User { text: "Go ahead".into() }),
@@ -236,7 +245,7 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
             answer: true,
         }),
         timed(Entry::Notice { text: "From your next message: model sonnet.".into() }),
-        timed(Entry::Tool { id: "3".into(), name: "Edited".into(), detail: "src/webhooks/retry.rs".into(), output: None, failed: false }),
+        timed(Entry::Tool { id: "3".into(), name: "Edited".into(), detail: "src/webhooks/retry.rs".into(), purpose: None, output: None, failed: false }),
     ];
     let mut transcripts = HashMap::new();
     transcripts.insert(
@@ -260,6 +269,7 @@ fn transcripts() -> HashMap<ConversationId, Arc<TranscriptView>> {
                     id: "c1".into(),
                     name: "Edited".into(),
                     detail: "src/webhooks/retry.rs".into(),
+                    purpose: None,
                     output: Some(String::new()),
                     failed: false,
                 }),
@@ -291,6 +301,7 @@ fn review() -> Arc<TranscriptView> {
             id: id.into(),
             name: "Read".into(),
             detail: path.into(),
+            purpose: None,
             output: Some("…".into()),
             failed: false,
         })
@@ -314,6 +325,7 @@ fn review() -> Arc<TranscriptView> {
                 id: "r2".into(),
                 name: "Ran".into(),
                 detail: "cargo test webhook".into(),
+                purpose: None,
                 output: Some("test result: ok. 6 passed".into()),
                 failed: false,
             }),
@@ -569,7 +581,15 @@ fn main() {
     );
     let _ = std::fs::create_dir_all(&out);
     let (core, _detached) = leon_core::detached(sample());
-    let shots = vec![
+    let shots = shots();
+    gpui_platform::application()
+        .with_assets(leon_ui::Assets)
+        .run(move |cx| capture(&core, shots, out, cx));
+}
+
+/// Each screenshot: its file name and the UI state it shows.
+fn shots() -> Vec<(String, Shot)> {
+    vec![
         ("empty".to_owned(), Shot::Empty),
         ("conversation".to_owned(), Shot::Conversation(FlowId(1))),
         // The README's conversation: you and the first reviewer.
@@ -578,6 +598,7 @@ fn main() {
             Shot::Agent(FlowId(1), ConversationId(4)),
         ),
         ("question".to_owned(), Shot::Conversation(FlowId(2))),
+        ("tool-calls".to_owned(), Shot::ToolCalls(FlowId(1))),
         ("right-closed".to_owned(), Shot::RightClosed(FlowId(1))),
         ("slash-list".to_owned(), Shot::Typed(FlowId(1), "/dep")),
         (
@@ -659,8 +680,5 @@ fn main() {
             "drawer-split".to_owned(),
             Shot::Drawer(FlowId(1), "src/webhooks/retry.rs", true),
         ),
-    ];
-    gpui_platform::application()
-        .with_assets(leon_ui::Assets)
-        .run(move |cx| capture(&core, shots, out, cx));
+    ]
 }

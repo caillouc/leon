@@ -6,10 +6,7 @@ use serde_json::{Value, json};
 
 use super::turn::{OpenTool, command};
 use crate::process::clip;
-
-/// The most of a request's detail shown: a long command whole, a script
-/// cut.
-const DETAIL_MAX: usize = 2000;
+use crate::summary::DETAIL_MAX;
 
 /// A permission request waiting for the user's answer.
 #[derive(Debug, Clone, PartialEq, Eq)]

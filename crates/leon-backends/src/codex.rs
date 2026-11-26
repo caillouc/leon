@@ -18,7 +18,7 @@ use crate::conn::{Holders, Launch, Opening};
 use crate::options::codex_policy;
 use crate::process::clip;
 use crate::rpc::{self, Protocol};
-use crate::summary::{OUTPUT_MAX, compact, files_changed};
+use crate::summary::{DETAIL_MAX, OUTPUT_MAX, compact, files_changed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
@@ -377,6 +377,7 @@ impl Session {
                 id: id.clone(),
                 name: name.to_owned(),
                 detail,
+                purpose: None,
             }]
         };
         match item["type"].as_str() {
@@ -402,6 +403,7 @@ impl Session {
                     id,
                     name,
                     detail: compact(&item["arguments"]),
+                    purpose: None,
                 }]
             }
             Some("webSearch") => tool(
@@ -459,14 +461,14 @@ impl Session {
 
 fn command_text(command: &Value) -> String {
     match command {
-        Value::String(s) => clip(s, 200),
+        Value::String(s) => clip(s, DETAIL_MAX),
         Value::Array(parts) => clip(
             &parts
                 .iter()
                 .filter_map(Value::as_str)
                 .collect::<Vec<_>>()
                 .join(" "),
-            200,
+            DETAIL_MAX,
         ),
         _ => String::new(),
     }
@@ -479,7 +481,7 @@ fn changed_paths(changes: &Value) -> String {
         .iter()
         .filter_map(|c| c["path"].as_str())
         .collect();
-    clip(&paths.join(", "), 200)
+    clip(&paths.join(", "), DETAIL_MAX)
 }
 
 /// Turns off what an agent file's `tools` leaves out (EXT-7), in the
@@ -799,7 +801,8 @@ mod tests {
             [BackendEvent::Tool {
                 id: "c1".into(),
                 name: "Ran".into(),
-                detail: "cargo test".into()
+                detail: "cargo test".into(),
+                purpose: None,
             }]
         );
         assert_eq!(
@@ -835,7 +838,8 @@ mod tests {
                 BackendEvent::Tool {
                     id: "f1".into(),
                     name: "Edited".into(),
-                    detail: "/r/a.rs, /r/b.rs".into()
+                    detail: "/r/a.rs, /r/b.rs".into(),
+                    purpose: None,
                 },
                 BackendEvent::FilesChanged(vec![
                     PathBuf::from("/r/a.rs"),

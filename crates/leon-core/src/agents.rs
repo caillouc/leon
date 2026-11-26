@@ -262,7 +262,13 @@ impl Core {
     /// Sends `text` from conversation `from` to conversation `to`: now if `to` is ready,
     /// else after its current turn. For a request, `to`'s answer goes back to
     /// `from`.
-    fn message(&mut self, from: ConversationId, to: ConversationId, text: String, sent: Sent) {
+    pub(crate) fn message(
+        &mut self,
+        from: ConversationId,
+        to: ConversationId,
+        text: String,
+        sent: Sent,
+    ) {
         let name = self.state.conversation_name(from);
         let header = match sent {
             Sent::ForUser => format!(
@@ -277,6 +283,7 @@ impl Core {
         };
         if !ready(s.status) {
             s.inbox.push_back(Waiting { from, text, sent });
+            self.save_waiting(to);
             return;
         }
         if sent == Sent::Request {
@@ -309,21 +316,11 @@ impl Core {
         // works on: a turn its CLI started by itself answers there too.
         let reply_to = s.reply_to.take().or_else(|| works_for(s));
         let answer = reply_to.map(|_| last_answer(s, failed));
-        // The user's waiting message first, then other agents' (CONV-19).
-        let queued = s.queued.take();
-        let next = if queued.is_none() {
-            s.inbox.pop_front()
-        } else {
-            None
-        };
         if let (Some(to), Some(answer)) = (reply_to, answer) {
             self.message(id, to, answer, Sent::Answer);
         }
-        if let Some((text, images)) = queued {
-            self.send(id, &text, &images);
-        } else if let Some(w) = next {
-            self.message(w.from, id, w.text, w.sent);
-        }
+        // The user's waiting message first, then other agents' (CONV-19).
+        self.send_next(id);
         reply_to.is_some()
     }
 
@@ -340,7 +337,7 @@ impl Core {
 
 /// The conversation whose request `s` works on, by its transcript
 /// ([`leon_domain::answers_to`]); `None` when it works for the user.
-fn works_for(s: &ConversationState) -> Option<ConversationId> {
+pub(crate) fn works_for(s: &ConversationState) -> Option<ConversationId> {
     s.transcript.as_ref().map_or_default(|t| {
         t.entries
             .iter()
@@ -349,7 +346,7 @@ fn works_for(s: &ConversationState) -> Option<ConversationId> {
 }
 
 /// A conversation can take a message now: it is not in a turn.
-fn ready(status: Status) -> bool {
+pub(crate) fn ready(status: Status) -> bool {
     matches!(status, Status::Idle | Status::Error)
 }
 

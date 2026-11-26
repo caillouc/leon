@@ -37,7 +37,7 @@ fn conversation(id: i64, started_by: Option<i64>) -> ConversationView {
         waiting_for: Vec::new(),
         name: format!("conversation {id}"),
         folder: None,
-        queued: None,
+        queued: Vec::new(),
     }
 }
 

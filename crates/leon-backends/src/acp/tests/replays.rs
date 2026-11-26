@@ -9,6 +9,7 @@ fn read_tool() -> BackendEvent {
         id: "call_001".into(),
         name: "Read".into(),
         detail: "Reading configuration file".into(),
+        purpose: None,
     }
 }
 
@@ -48,6 +49,7 @@ fn cases() -> Vec<Case> {
                     id: "call_001".into(),
                     name: "Analyzing Python code".into(),
                     detail: String::new(),
+                    purpose: None,
                 },
                 BackendEvent::ToolDone {
                     id: "call_001".into(),

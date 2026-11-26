@@ -3,6 +3,15 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.9.0
+
+- **Commands**: an answer's commands gather in one grey line at its top; opened, each says what it was for.
+- **Full commands**: opening a command shows it whole, not cut to the line.
+- **Queued messages**: a Queue button beside Stop; each queued message shows on its own line, can be edited in place, and all go as one.
+- **Restarts**: queued messages and agents waiting for each other are kept when Leon restarts.
+- **New conversation**: the agent, CLI and model you pick stay while you look at another conversation.
+- **TLDR**: a line starting with TLDR stands out in green.
+
 ## v0.8.6
 
 - **Projects**: a project's flow count ends its row; on hover it moves left of the +.

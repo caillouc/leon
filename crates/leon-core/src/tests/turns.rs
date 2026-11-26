@@ -41,6 +41,7 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
             id: "t1".into(),
             name: "Ran".into(),
             detail: "cargo test".into(),
+            purpose: None,
         },
     );
     emit(
@@ -72,6 +73,7 @@ async fn a_turn_streams_then_lands_in_the_transcript() {
                 id: "t1".into(),
                 name: "Ran".into(),
                 detail: "cargo test".into(),
+                purpose: None,
                 output: Some("ok".into()),
                 failed: false
             },
@@ -501,9 +503,73 @@ async fn images_go_with_the_message() {
     );
 }
 
-/// A message sent while the agent answers waits, shows as queued, and goes
-/// when the answer ends; a second one joins it; removed, nothing goes
-/// (CONV-19).
+/// A queued message edited goes back to its place; edited after the
+/// answer ended, it is sent at once (CONV-19).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edited_queued_message_goes_back_to_its_place() {
+    let h = harness();
+    let id = new_flow(&h, BackendKind::Codex).await;
+    next_command(&h, 0).await;
+    for text in ["first", "second", "third"] {
+        h.core.send(Intent::Send {
+            conversation: id,
+            text: text.into(),
+            images: Vec::new(),
+        });
+    }
+    let queued = |s: &crate::Snapshot| -> Vec<String> {
+        s.conversations[&id]
+            .queued
+            .iter()
+            .map(|(text, _)| text.clone())
+            .collect()
+    };
+    until(&h.core, "queued", |s| queued(s).len() == 3).await;
+    h.core.send(Intent::Unqueue(id, 1));
+    until(&h.core, "out to edit", |s| queued(s).len() == 2).await;
+    let requeue = |text: &str| {
+        h.core.send(Intent::Requeue {
+            conversation: id,
+            at: 1,
+            text: text.into(),
+            images: Vec::new(),
+        });
+    };
+    requeue("second, edited");
+    let s = until(&h.core, "back", |s| queued(s).len() == 3).await;
+    assert_eq!(queued(&s), ["first", "second, edited", "third"]);
+    h.core.send(Intent::Unqueue(id, 1));
+    until(&h.core, "out again", |s| queued(s).len() == 2).await;
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: false,
+            usage: None,
+        },
+    );
+    assert_eq!(
+        next_command(&h, 0).await,
+        BackendCommand::Send("first\n\nthird".into())
+    );
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: false,
+            usage: None,
+        },
+    );
+    until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
+    requeue("second, at last");
+    assert_eq!(
+        next_command(&h, 0).await,
+        BackendCommand::Send("second, at last".into())
+    );
+}
+
+/// Messages sent while the agent answers wait, each shown queued, and go
+/// as one when the answer ends; one removed does not go (CONV-19).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_message_sent_while_the_agent_answers_goes_when_it_ends() {
     let h = harness();
@@ -518,11 +584,18 @@ async fn a_message_sent_while_the_agent_answers_goes_when_it_ends() {
     };
     send("Also check the tests");
     send("and the docs");
-    let s = until(&h.core, "queued", |s| {
-        s.conversations[&id].queued.as_deref() == Some("Also check the tests\n\nand the docs")
-    })
-    .await;
+    let queued = |s: &crate::Snapshot| -> Vec<String> {
+        s.conversations[&id]
+            .queued
+            .iter()
+            .map(|(text, _)| text.clone())
+            .collect()
+    };
+    let s = until(&h.core, "queued", |s| queued(s).len() == 2).await;
+    assert_eq!(queued(&s), ["Also check the tests", "and the docs"]);
     assert_eq!(s.flows[0].status, Status::Running);
+    // Saved, so a restart keeps them (I30).
+    assert_eq!(h.storage.waiting().unwrap()[0].1.queued.len(), 2);
     let end = || {
         emit(
             &h,
@@ -538,19 +611,18 @@ async fn a_message_sent_while_the_agent_answers_goes_when_it_ends() {
         next_command(&h, 0).await,
         BackendCommand::Send("Also check the tests\n\nand the docs".into())
     );
-    let s = until(&h.core, "sent", |s| s.conversations[&id].queued.is_none()).await;
+    let s = until(&h.core, "sent", |s| s.conversations[&id].queued.is_empty()).await;
     assert_eq!(s.flows[0].status, Status::Running);
+    assert_eq!(h.storage.waiting().unwrap(), [], "sent: no longer saved");
     // Removed before the end: nothing goes.
     send("Never mind");
-    until(&h.core, "queued again", |s| {
-        s.conversations[&id].queued.is_some()
-    })
-    .await;
-    h.core.send(Intent::Unqueue(id));
-    until(&h.core, "removed", |s| {
-        s.conversations[&id].queued.is_none()
-    })
-    .await;
+    send("Keep this one");
+    until(&h.core, "queued again", |s| queued(s).len() == 2).await;
+    h.core.send(Intent::Unqueue(id, 0));
+    let s = until(&h.core, "removed", |s| queued(s).len() == 1).await;
+    assert_eq!(queued(&s), ["Keep this one"]);
+    h.core.send(Intent::Unqueue(id, 0));
+    until(&h.core, "removed", |s| queued(s).is_empty()).await;
     end();
     let s = until(&h.core, "idle", |s| s.flows[0].status == Status::Idle).await;
     assert!(

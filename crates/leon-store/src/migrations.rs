@@ -128,6 +128,18 @@ const MIGRATIONS: &[&str] = &[
     ) STRICT;",
     // 18: the conversations whose tab the user closed (FLOW-3).
     "ALTER TABLE conversations ADD COLUMN tab_closed INTEGER NOT NULL DEFAULT 0;",
+    // 19: the messages waiting for a conversation's turn to end, so a
+    // restart loses none (I30): the user's queued ones (`from_id` NULL,
+    // their images' files as JSON), then other conversations', in order.
+    "CREATE TABLE waiting_messages (
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        from_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        text TEXT NOT NULL,
+        images TEXT NOT NULL DEFAULT '[]',
+        PRIMARY KEY (conversation_id, position)
+    ) STRICT;",
 ];
 
 /// Latest schema version this build knows.

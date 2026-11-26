@@ -39,6 +39,7 @@ struct FakeStorage {
     folded: Mutex<std::collections::BTreeSet<String>>,
     todos: Mutex<Vec<leon_domain::Todo>>,
     plan_usage: Mutex<Vec<leon_domain::PlanUsage>>,
+    waiting: Mutex<std::collections::BTreeMap<ConversationId, crate::ports::WaitingFor>>,
 }
 
 impl Storage for FakeStorage {
@@ -94,6 +95,22 @@ impl Storage for FakeStorage {
         let mut all = self.plan_usage.lock().unwrap();
         all.retain(|u| u.backend != usage.backend);
         all.push(usage.clone());
+        Ok(())
+    }
+    fn waiting(&self) -> Result<Vec<(ConversationId, crate::ports::WaitingFor)>, PortError> {
+        Ok(self.waiting.lock().unwrap().clone().into_iter().collect())
+    }
+    fn save_waiting(
+        &self,
+        id: ConversationId,
+        waiting: &crate::ports::WaitingFor,
+    ) -> Result<(), PortError> {
+        let mut all = self.waiting.lock().unwrap();
+        if waiting == &crate::ports::WaitingFor::default() {
+            all.remove(&id);
+        } else {
+            all.insert(id, waiting.clone());
+        }
         Ok(())
     }
     fn add_todo(

@@ -179,7 +179,7 @@ impl Workspace {
                             .cursor_pointer()
                             .hover(|s| s.opacity(0.9))
                             .child(icon(Icon::NewFlow, theme::on_accent(), 16.))
-                            .on_click(cx.listener(|this, _, _, cx| this.show_new_flow(cx))),
+                            .on_click(cx.listener(|this, _, _, cx| this.show_new_flow(None, cx))),
                     ),
             )
             .child(body)

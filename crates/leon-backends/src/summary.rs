@@ -10,6 +10,11 @@ use crate::process::clip;
 /// Most characters of a tool's output kept in a transcript.
 pub(crate) const OUTPUT_MAX: usize = 8_000;
 
+/// Most of a tool call's detail kept (its command, its input), shown whole
+/// when the user unfolds the call or is asked to allow it: a long command
+/// whole, a script cut.
+pub(crate) const DETAIL_MAX: usize = 2_000;
+
 /// Verb and detail for a Claude Code tool call, e.g. `("Ran", "cargo test")`.
 pub(crate) fn claude_tool(name: &str, input: &Value) -> (String, String) {
     let field = |key: &str| {
@@ -42,7 +47,18 @@ pub(crate) fn claude_tool(name: &str, input: &Value) -> (String, String) {
         ),
         other => return (other.to_owned(), compact(input)),
     };
-    (verb.to_owned(), clip(&detail, 200))
+    (verb.to_owned(), clip(&detail, DETAIL_MAX))
+}
+
+/// What a Claude Code tool call is for, as the agent said it: a command's
+/// `description` (Claude Code 2.1.288's Bash input, seen 2026-11-26).
+pub(crate) fn claude_purpose(name: &str, input: &Value) -> Option<String> {
+    (name == "Bash")
+        .then(|| input["description"].as_str())
+        .flatten()
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+        .map(|d| clip(d, DETAIL_MAX))
 }
 
 /// The files a tool call changes, as an event; `None` without any (CTX-2).
@@ -69,12 +85,12 @@ pub(crate) fn claude_files(name: &str, input: &Value) -> Option<BackendEvent> {
     files_changed([&input[key]])
 }
 
-/// Short JSON for a tool input with no known shape.
+/// One-line JSON for a tool input with no known shape.
 pub(crate) fn compact(input: &Value) -> String {
     if input.is_null() || input.as_object().is_some_and(serde_json::Map::is_empty) {
         return String::new();
     }
-    clip(&input.to_string(), 160)
+    clip(&input.to_string(), DETAIL_MAX)
 }
 
 /// Text of a tool result: a string or a list of text blocks.
@@ -161,6 +177,32 @@ mod tests {
                 (verb.to_owned(), detail.to_owned()),
                 "{name}"
             );
+        }
+    }
+
+    /// Unfolded in the transcript, a long command shows whole (CONV-20).
+    #[test]
+    fn a_long_command_is_kept_whole() {
+        let command = format!("gcloud redis instances list {}", "--region x ".repeat(40));
+        let (_, detail) = claude_tool("Bash", &json!({ "command": command }));
+        assert_eq!(detail, command);
+    }
+
+    #[test]
+    fn a_command_says_what_it_is_for() {
+        use super::claude_purpose;
+        let cases = [
+            (
+                "Bash",
+                json!({"command": "ls", "description": "List files"}),
+                Some("List files"),
+            ),
+            ("Bash", json!({"command": "ls", "description": " "}), None),
+            ("Bash", json!({"command": "ls"}), None),
+            ("Read", json!({"file_path": "/a", "description": "x"}), None),
+        ];
+        for (name, input, expected) in cases {
+            assert_eq!(claude_purpose(name, &input).as_deref(), expected, "{input}");
         }
     }
 

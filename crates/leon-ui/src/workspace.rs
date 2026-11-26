@@ -56,6 +56,9 @@ pub(crate) struct NewForm {
     pub issue: Option<leon_domain::GhRef>,
     /// In a flow: the folder picked for the new conversation (FLOW-7).
     pub folder: Option<std::path::PathBuf>,
+    /// The user changed the agent, a setting or the folder since the last
+    /// Start: they stay with the message being written (CONV-1).
+    pub changed: bool,
 }
 
 /// Root view of the window.
@@ -86,10 +89,15 @@ pub struct Workspace {
     pub(crate) show_archived: bool,
     /// Tool calls and long messages the user unfolded.
     pub(crate) expanded: HashSet<(ConversationId, usize)>,
+    /// Answers whose tool calls the user unfolded, by their first entry
+    /// (CONV-20).
+    pub(crate) open_runs: HashSet<(ConversationId, usize)>,
     /// Long pastes waiting in the message box (CONV-12).
     pub(crate) put: crate::attach::Put,
     /// What was being written in the conversations not shown (CONV-1).
     pub(crate) drafts: crate::drafts::Drafts,
+    /// A queued message being edited in the message box (CONV-19).
+    pub(crate) queued_edit: Option<crate::queued::QueuedEdit>,
     /// The user's message being edited: sending goes back to before it
     /// (CONV-7, CONV-8).
     pub(crate) rewind: Option<(ConversationId, usize)>,
@@ -167,10 +175,11 @@ impl Workspace {
             cx.subscribe_in(
                 &composer,
                 window,
-                |this, _, event: &InputEvent, window, cx| {
-                    if let InputEvent::PressEnter { shift: false, .. } = event {
-                        this.send_composer(window, cx);
-                    }
+                |this, _, event: &InputEvent, window, cx| match event {
+                    InputEvent::PressEnter { shift: false, .. } => this.send_composer(window, cx),
+                    // Queue shows only with something written (CONV-19).
+                    InputEvent::Change => cx.notify(),
+                    _ => {}
                 },
             ),
             cx.subscribe_in(
@@ -224,12 +233,15 @@ impl Workspace {
                 },
                 issue: None,
                 folder: None,
+                changed: false,
             },
             open_picker: None,
             show_archived: false,
             expanded: HashSet::new(),
+            open_runs: HashSet::new(),
             put: crate::attach::Put::default(),
             drafts: crate::drafts::Drafts::default(),
+            queued_edit: None,
             rewind: None,
             lists: HashMap::new(),
             right,
@@ -360,14 +372,12 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn show_new_flow(&mut self, cx: &mut Context<Self>) {
+    /// Shows the new-flow form, on `project` when given (CONV-2).
+    pub(crate) fn show_new_flow(&mut self, project: Option<ProjectId>, cx: &mut Context<Self>) {
         self.close_detail();
         self.screen = Screen::NewFlow;
         self.open_picker = None;
-        if self.form.project.is_none() {
-            self.form.project = self.snapshot.projects.first().map(|p| p.id);
-        }
-        self.default_agent();
+        self.prepare_form(project);
         self.core.send(Intent::View(None));
         cx.notify();
     }
@@ -382,11 +392,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if project.is_some() {
-            self.form.project = project;
-            self.form.settings.agent = None;
-        }
-        self.show_new_flow(cx);
+        self.show_new_flow(project, cx);
         if let Some(issue) = issue {
             let message = format!("{}\n\n", issue.text());
             crate::message_input::write_in(&self.form_text, message, window, cx);

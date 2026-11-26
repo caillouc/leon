@@ -29,6 +29,7 @@ mod todos;
 mod tools;
 mod update;
 mod usage;
+mod waiting;
 
 pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use doctor::About;

@@ -379,3 +379,12 @@ worktree inside the main checkout opened in the main checkout's window
 `ui.editor`; without it, the first installed. Chosen by the maintainer on
 2026-11-24: "Setting, auto-detected"; on 2026-11-25: "Worktree first, then
 file".
+
+**I30 — Messages waiting for a busy agent are saved (CONV-19, FLOW-1).**
+SQLite `waiting_messages` (migration 19): one row per message waiting for a
+conversation's turn to end — the user's queued messages (their pasted
+images saved to the images folder when queued, I27) and other agents'
+requests and answers, in order — deleted once delivered or removed. At startup each
+conversation gets its waiting messages back; one idle by then gets its
+first at once. Proposed as "new table for every waiting message" or "agents'
+messages only"; chosen by the maintainer on 2026-11-26: "New table, all".

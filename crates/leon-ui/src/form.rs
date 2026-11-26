@@ -80,9 +80,7 @@ impl Workspace {
             projects,
             cx,
             |this, value, _, _| {
-                this.form.project = value.parse().ok().map(leon_domain::ProjectId);
-                this.form.settings.agent = None;
-                this.default_agent();
+                this.prepare_form(value.parse().ok().map(leon_domain::ProjectId));
             },
         );
         let agents = self
@@ -130,6 +128,7 @@ impl Workspace {
             agent_choices,
             cx,
             move |this, value, _, _| {
+                this.form.changed = true;
                 this.form.settings.agent = (!value.is_empty()).then_some(value.clone());
                 // Its file's model picks the CLI and the model (EXT-6).
                 let model = agents
@@ -144,6 +143,7 @@ impl Workspace {
         let settings = self.form.settings.clone();
         let [backend, model, effort, permission] =
             self.setting_pickers(Look::Inline, "form", &settings, cx, |this, next, _, _| {
+                this.form.changed = true;
                 this.form.settings = next;
             });
         let _ = window;
@@ -265,9 +265,27 @@ impl Workspace {
             .into_any_element()
     }
 
+    /// Points the form at `project`, else the one it has, else the first.
+    /// What the user changed in it stays, like its message (CONV-1); else,
+    /// or for another project, it starts afresh: no folder, the default
+    /// agent.
+    pub(crate) fn prepare_form(&mut self, project: Option<leon_domain::ProjectId>) {
+        let project = project
+            .or(self.form.project)
+            .or_else(|| self.snapshot.projects.first().map(|p| p.id));
+        if self.form.changed && project == self.form.project {
+            return;
+        }
+        self.form.project = project;
+        self.form.folder = None;
+        self.form.settings.agent = None;
+        self.form.changed = false;
+        self.default_agent();
+    }
+
     /// Picks the default agent (Settings) when none is picked and the
     /// form's project has it, with the CLI and model its file asks for.
-    pub(crate) fn default_agent(&mut self) {
+    fn default_agent(&mut self) {
         let Some(name) = self.snapshot.settings.defaults.agent.clone() else {
             return;
         };
@@ -328,7 +346,10 @@ impl Workspace {
             &current,
             choices,
             cx,
-            |this, value, _, _| this.form.folder = Some(value.into()),
+            |this, value, _, _| {
+                this.form.changed = true;
+                this.form.folder = Some(value.into());
+            },
         )
     }
 
@@ -344,12 +365,9 @@ impl Workspace {
     }
 
     /// Opens the form for another conversation in `flow` (FLOW-7), with
-    /// the default agent.
+    /// the default agent unless the user changed it.
     pub(crate) fn open_new_in_flow(&mut self, flow: FlowId, cx: &mut Context<Self>) {
-        self.form.project = self.snapshot.flow(flow).map(|v| v.flow.project);
-        self.form.folder = None;
-        self.form.settings.agent = None;
-        self.default_agent();
+        self.prepare_form(self.snapshot.flow(flow).map(|v| v.flow.project));
         self.tabs.insert(flow, Tab::New);
         cx.notify();
     }
@@ -379,6 +397,7 @@ impl Workspace {
         }
         let before = view.conversations.len();
         self.put = crate::attach::Put::default();
+        self.form.changed = false;
         self.core.send(Intent::NewConversation {
             flow,
             settings: self.form.settings.clone(),
@@ -406,6 +425,7 @@ impl Workspace {
             return;
         }
         self.put = crate::attach::Put::default();
+        self.form.changed = false;
         self.core.send(Intent::NewFlow {
             project,
             settings: self.form.settings.clone(),

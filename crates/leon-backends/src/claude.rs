@@ -16,7 +16,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::conn::{Holders, Input, Launch, Opening, Output, ended};
 use crate::process::clip;
-use crate::summary::{OUTPUT_MAX, claude_files, claude_tool, result_text};
+use crate::summary::{OUTPUT_MAX, claude_files, claude_purpose, claude_tool, result_text};
 
 /// The command line; `skills` is the folder of Leon's generic skills made
 /// for Claude Code (EXT-5), if any.
@@ -363,6 +363,7 @@ impl Parser {
                         id,
                         name: verb,
                         detail,
+                        purpose: claude_purpose(name, &block["input"]),
                     });
                     out.extend(claude_files(name, &block["input"]));
                 }
@@ -598,6 +599,7 @@ mod tests {
                 id: "t1".into(),
                 name: "Ran".into(),
                 detail: "ls".into(),
+                purpose: None,
             },
             BackendEvent::ToolDone {
                 id: "t1".into(),
@@ -612,6 +614,7 @@ mod tests {
                 id: "t2".into(),
                 name: "Started a subagent".into(),
                 detail: "explore".into(),
+                purpose: None,
             },
             BackendEvent::ToolDone {
                 id: "t2".into(),

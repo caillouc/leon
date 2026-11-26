@@ -51,6 +51,7 @@ mod pr_thread;
 mod pr_view;
 #[cfg(feature = "preview")]
 pub mod preview;
+mod queued;
 mod right;
 mod right_folders;
 mod row_menu;
@@ -65,8 +66,10 @@ mod syntax;
 #[cfg(test)]
 mod test_data;
 mod theme;
+mod tldr;
 mod todo_undo;
 mod todos_view;
+mod tool_rows;
 mod tools_view;
 mod transcript;
 mod update_view;

@@ -82,8 +82,21 @@ pub enum Intent {
         /// A file in it, by its full path.
         file: Option<std::path::PathBuf>,
     },
-    /// Drop the message waiting for the answer to end (CONV-19).
-    Unqueue(ConversationId),
+    /// Drop one of the messages waiting for the answer to end, by its
+    /// place (CONV-19).
+    Unqueue(ConversationId, usize),
+    /// A queued message the user edited goes back to its place `at` among
+    /// those waiting; sent at once if the answer ended meanwhile (CONV-19).
+    Requeue {
+        /// Where it goes.
+        conversation: ConversationId,
+        /// Its place among the waiting messages.
+        at: usize,
+        /// The edited text.
+        text: String,
+        /// Its images.
+        images: Vec<crate::ports::Image>,
+    },
     /// Stop the running answer (CONV-6).
     Stop(ConversationId),
     /// Answer a question card (CONV-9).

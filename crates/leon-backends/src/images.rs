@@ -11,9 +11,15 @@ use leon_domain::ConversationId;
 
 const CONTEXT: &str = "saving an image";
 
-/// Saves `image` as the next file of conversation `id`'s folder in `root`.
+/// Saves `image` as the next file of conversation `id`'s folder in `root`;
+/// one already there (saved while its message waited, I30) stays as it is.
 pub(crate) fn save(root: &Path, id: ConversationId, image: &Image) -> Result<PathBuf, PortError> {
     let dir = folder(root, id);
+    if let Image::File(file) = image
+        && file.parent() == Some(dir.as_path())
+    {
+        return Ok(file.clone());
+    }
     std::fs::create_dir_all(&dir).map_err(|e| PortError::new(CONTEXT, e))?;
     let next = std::fs::read_dir(&dir).map_or(0, Iterator::count) + 1;
     let saved = |ext: &str| dir.join(format!("{next}.{ext}"));
@@ -104,6 +110,11 @@ mod tests {
         assert_eq!(first, root.path().join("7/1.png"));
         assert_eq!(second, root.path().join("7/2.jpg"));
         assert_eq!(std::fs::read(&second).unwrap(), b"jpeg bytes");
+        // Saved already: not copied again.
+        assert_eq!(
+            save(root.path(), id, &Image::File(first.clone())).unwrap(),
+            first
+        );
         assert_eq!(
             encoded(&first),
             Some(("image/png", "cG5nIGJ5dGVz".to_owned()))

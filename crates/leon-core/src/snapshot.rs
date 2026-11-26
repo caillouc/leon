@@ -189,8 +189,9 @@ pub struct ConversationView {
     pub name: String,
     /// The folder of its flow it works in (CTX-2), if known.
     pub folder: Option<PathBuf>,
-    /// The user's message waiting for the answer to end (CONV-19).
-    pub queued: Option<String>,
+    /// The user's messages waiting for the answer to end, each with its
+    /// images (CONV-19).
+    pub queued: Vec<(String, Vec<crate::ports::Image>)>,
 }
 
 /// A question from the CLI, shown as a card (CONV-9).

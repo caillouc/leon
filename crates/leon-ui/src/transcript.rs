@@ -8,9 +8,8 @@ use gpui::{
     AnyElement, Context, ElementId, IntoElement, ListOffset, SharedString, div, list, prelude::*,
 };
 use leon_core::TranscriptView;
-use leon_domain::{ConversationId, Entry, TimedEntry};
+use leon_domain::{ConversationId, Entry, Shown, TimedEntry, fold_turns};
 
-use crate::icons::chevron;
 use crate::markdown::markdown;
 use crate::theme;
 use crate::widgets::empty;
@@ -51,6 +50,9 @@ impl Workspace {
                 .collect(),
         );
         let expanded = self.expanded.clone();
+        let open_runs = self.open_runs.clone();
+        // The tool calls of each answer, gathered at its top (CONV-20).
+        let shown = Arc::new(fold_turns(&transcript.entries));
         // Back to the user's last message once an answer follows it, to read
         // the answer from its start: a button, and where an unread
         // conversation opens.
@@ -90,16 +92,38 @@ impl Workspace {
                 .into_any_element()
         });
         let list = list(state, move |ix, _window, _cx| {
-            let item = match transcript.entries.get(ix) {
-                Some(entry) => entry_view(
-                    conversation,
-                    ix,
-                    entry,
-                    expanded.contains(&(conversation, ix)),
-                    &view,
-                    &names,
-                ),
-                None => partial_view(conversation, &transcript),
+            let entries = &transcript.entries;
+            let names = &names;
+            let entry = |entry| {
+                let open = expanded.contains(&(conversation, ix));
+                entry_view(conversation, ix, entry, open, &view, names)
+            };
+            let item = match (entries.get(ix), shown.get(ix)) {
+                // In its answer's line: no room of its own (CONV-20).
+                (Some(_), Some(Shown::Folded)) => return div().into_any_element(),
+                (Some(first), Some(Shown::Turn(turn))) => {
+                    let tools = crate::tool_rows::turn_tools(
+                        conversation,
+                        turn.clone(),
+                        entries,
+                        &open_runs,
+                        &expanded,
+                        &view,
+                    );
+                    if matches!(first.entry, Entry::Tool { .. }) {
+                        tools
+                    } else {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(tools)
+                            .child(entry(first))
+                            .into_any_element()
+                    }
+                }
+                (Some(first), _) => entry(first),
+                (None, _) => partial_view(conversation, &transcript),
             };
             crate::widgets::centered(theme::COLUMN, div().px_6().py_1().child(item))
                 .into_any_element()
@@ -254,69 +278,8 @@ fn entry_view(
             .my_1()
             .child(markdown(id("agent"), text))
             .into_any_element(),
-        Entry::Tool {
-            name,
-            detail,
-            output,
-            failed,
-            ..
-        } => {
-            let view = view.clone();
-            let mut tool = div()
-                .id(id("tool"))
-                .text_size(crate::theme::rem(12.))
-                .text_color(if *failed {
-                    theme::err()
-                } else {
-                    theme::fg_muted()
-                })
-                .cursor_pointer()
-                .child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .items_center()
-                        .child(chevron(expanded, theme::fg_muted(), 12.))
-                        .child(div().text_color(theme::fg()).child(name.clone()))
-                        .child(
-                            div()
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                                .child(detail.clone()),
-                        )
-                        .when(output.is_none(), |d| {
-                            d.child(div().text_color(theme::accent()).child("running"))
-                        }),
-                )
-                .on_click(move |_, _, cx| {
-                    let _ = view.update(cx, |this, cx| {
-                        if !this.expanded.remove(&(conversation, ix)) {
-                            this.expanded.insert((conversation, ix));
-                        }
-                        cx.notify();
-                    });
-                });
-            if expanded {
-                let text = output
-                    .clone()
-                    .filter(|o| !o.is_empty())
-                    .unwrap_or_else(|| "No output".to_owned());
-                tool = tool.child(
-                    div()
-                        .mt_1()
-                        .ml_4()
-                        .p_2()
-                        .rounded_md()
-                        .bg(theme::surface())
-                        .border_1()
-                        .border_color(theme::border())
-                        .font_family(theme::MONO)
-                        .text_size(crate::theme::rem(11.5))
-                        .child(text),
-                );
-            }
-            tool.into_any_element()
+        Entry::Tool { .. } => {
+            crate::tool_rows::tool_row((conversation, ix), &timed.entry, expanded, view)
         }
         // In the turn's flow, where a tool's name starts (after its chevron
         // 12 and the gap 8): an answer sits under the tool it allowed.
@@ -390,12 +353,7 @@ fn long_text(
                     format!("Show all · {lines} lines")
                 })
                 .on_click(move |_, _, cx| {
-                    let _ = view.update(cx, |this, cx| {
-                        if !this.expanded.remove(&(conversation, ix)) {
-                            this.expanded.insert((conversation, ix));
-                        }
-                        cx.notify();
-                    });
+                    crate::tool_rows::toggle(&view, |w| &mut w.expanded, (conversation, ix), cx);
                 }),
         )
         .into_any_element()

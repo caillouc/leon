@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use leon_core::ports::{NewConversation, PortError, Storage};
+use leon_core::ports::{NewConversation, PortError, Storage, WaitingFor};
 use leon_domain::{
     BackendKind, Conversation, ConversationId, ConversationSettings, Flow, FlowId, GhKind, GhRef,
     Project, ProjectId, TimedEntry, Todo, TodoId,
@@ -174,6 +174,14 @@ impl Storage for Store {
 
     fn save_plan_usage(&self, usage: &leon_domain::PlanUsage) -> Result<(), PortError> {
         crate::usage::save(&self.lock(), usage)
+    }
+
+    fn waiting(&self) -> Result<Vec<(ConversationId, WaitingFor)>, PortError> {
+        crate::waiting::waiting(&self.lock())
+    }
+
+    fn save_waiting(&self, id: ConversationId, waiting: &WaitingFor) -> Result<(), PortError> {
+        crate::waiting::save(&mut self.lock(), id, waiting)
     }
 
     fn add_todo(

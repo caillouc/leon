@@ -29,6 +29,40 @@ impl PortError {
     }
 }
 
+/// A message from another conversation, not sent yet: it waits for its
+/// conversation's turn to end (FLOW-1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Waiting {
+    /// The conversation that sent it.
+    pub from: ConversationId,
+    /// Its text.
+    pub text: String,
+    /// What it is.
+    pub sent: Sent,
+}
+
+/// What a message between conversations is (FLOW-1, FLOW-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sent {
+    /// A request: its answer goes back to the sender.
+    Request,
+    /// The answer to a request the receiver sent.
+    Answer,
+    /// The first message of a conversation started for the user: its
+    /// answers go to the user.
+    ForUser,
+}
+
+/// What waits for a conversation's turn to end, saved so a restart loses
+/// none of it (I30).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WaitingFor {
+    /// The user's queued messages, each with its images' files (CONV-19).
+    pub queued: Vec<(String, Vec<PathBuf>)>,
+    /// Other conversations' messages, in order (FLOW-1).
+    pub inbox: Vec<Waiting>,
+}
+
 /// Leon's own data (P5).
 ///
 /// Implementations may block (disk I/O): the core calls them off the async
@@ -54,6 +88,11 @@ pub trait Storage: Send + Sync + 'static {
     fn plan_usage(&self) -> Result<Vec<leon_domain::PlanUsage>, PortError>;
     /// Keeps what a CLI said of its plan, in place of what it said before.
     fn save_plan_usage(&self, usage: &leon_domain::PlanUsage) -> Result<(), PortError>;
+    /// What waits for each conversation's turn to end (I30).
+    fn waiting(&self) -> Result<Vec<(ConversationId, WaitingFor)>, PortError>;
+    /// Keeps what waits for conversation `id`, in place of what did before;
+    /// nothing left, its rows go.
+    fn save_waiting(&self, id: ConversationId, waiting: &WaitingFor) -> Result<(), PortError>;
     /// Adds a to-do to flow `flow`, its `(when, what)`, by the agent of
     /// conversation `by` or the user (`None`).
     fn add_todo(
@@ -282,6 +321,8 @@ pub enum BackendEvent {
         name: String,
         /// Short detail.
         detail: String,
+        /// What the agent said it is for, when the CLI gives it.
+        purpose: Option<String>,
     },
     /// Files a tool call changes, as the CLI gave them: absolute, or
     /// relative to the conversation's folder (CTX-2).

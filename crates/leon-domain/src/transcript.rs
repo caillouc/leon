@@ -45,6 +45,10 @@ pub enum Entry {
         name: String,
         /// Short detail: a command, a path.
         detail: String,
+        /// What the agent said the call is for ("Show the repo layout"),
+        /// when its CLI gives it (CONV-20).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        purpose: Option<String>,
         /// Output, once known.
         output: Option<String>,
         /// The tool reported a failure.
@@ -232,6 +236,7 @@ mod tests {
             id: String::new(),
             name: "Read".into(),
             detail: String::new(),
+            purpose: None,
             output: output.map(str::to_owned),
             failed: false,
         };
@@ -334,6 +339,7 @@ mod tests {
                 id: format!("t{at}"),
                 name: name.into(),
                 detail: "cargo test".into(),
+                purpose: None,
                 output: output.map(Into::into),
                 failed: false,
             },
@@ -388,6 +394,7 @@ mod tests {
             id: "t1".into(),
             name: "Ran".into(),
             detail: "ls".into(),
+            purpose: None,
             output: None,
             failed: false,
         };
@@ -398,6 +405,28 @@ mod tests {
         );
         let back: Entry = serde_json::from_str(&json).unwrap();
         assert_eq!(back, entry);
+    }
+
+    /// A call saved before `purpose` existed reads back without one.
+    #[test]
+    fn a_tool_call_without_purpose_still_reads() {
+        let old =
+            r#"{"kind":"tool","id":"t1","name":"Ran","detail":"ls","output":null,"failed":false}"#;
+        let Entry::Tool { purpose, .. } = serde_json::from_str(old).unwrap() else {
+            panic!("not a tool call");
+        };
+        assert_eq!(purpose, None);
+        let with = Entry::Tool {
+            id: "t1".into(),
+            name: "Ran".into(),
+            detail: "ls".into(),
+            purpose: Some("List files".into()),
+            output: None,
+            failed: false,
+        };
+        let json = serde_json::to_string(&with).unwrap();
+        assert!(json.contains(r#""purpose":"List files""#), "{json}");
+        assert_eq!(serde_json::from_str::<Entry>(&json).unwrap(), with);
     }
 
     #[test]

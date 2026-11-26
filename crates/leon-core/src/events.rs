@@ -39,7 +39,8 @@ pub(crate) fn apply(core: &mut Core, id: ConversationId, event: BackendEvent) {
             id: tool,
             name,
             detail,
-        } => tool_started(core, id, tool, name, detail),
+            purpose,
+        } => tool_started(core, id, tool, (name, detail, purpose)),
         BackendEvent::FilesChanged(paths) => core.files_changed(id, &paths),
         BackendEvent::ToolDone {
             id: tool,
@@ -102,11 +103,19 @@ pub(crate) fn apply(core: &mut Core, id: ConversationId, event: BackendEvent) {
     }
 }
 
-fn tool_started(core: &mut Core, id: ConversationId, tool: String, name: String, detail: String) {
+/// Tool call `tool` starts, with its name, detail and purpose; its output
+/// comes later.
+fn tool_started(
+    core: &mut Core,
+    id: ConversationId,
+    tool: String,
+    (name, detail, purpose): (String, String, Option<String>),
+) {
     let entry = Entry::Tool {
         id: tool.clone(),
         name,
         detail,
+        purpose,
         output: None,
         failed: false,
     };

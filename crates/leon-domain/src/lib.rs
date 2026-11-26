@@ -19,6 +19,7 @@ mod review;
 mod settings;
 mod sprint;
 mod todo;
+mod tool_runs;
 mod transcript;
 mod unified_diff;
 mod update;
@@ -50,6 +51,7 @@ pub use review::{ReviewComment, review_message};
 pub use settings::{ConversationDefaults, Editor, OpenOn, Settings, Zoom};
 pub use sprint::{Iteration, current_sprint};
 pub use todo::{Todo, TodoId, open_todos, todo_flows};
+pub use tool_runs::{RunSummary, Shown, fold_turns, run_summary};
 pub use transcript::{
     Entry, NO_RESULT, RunningTool, TimedEntry, Usage, activity, answers_to, end_unfinished,
     running_tools, talks_with_user,

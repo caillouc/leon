@@ -35,13 +35,15 @@ impl Core {
     }
 
     /// Conversation `id` was in a turn: what Leon recorded of it goes, the
-    /// replayed turn brings it back whole, and it shows working.
+    /// replayed turn brings it back whole, and it shows working, for the
+    /// agent whose request it answers, if any (FLOW-1).
     fn replay_from_turn_start(&mut self, id: ConversationId) {
         self.load_transcript(id);
         let Some(s) = self.state.conversations.get_mut(&id) else {
             return;
         };
         s.status = Status::Running;
+        s.reply_to = crate::agents::works_for(s);
         let Some(transcript) = s.transcript.as_mut() else {
             return;
         };

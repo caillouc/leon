@@ -105,7 +105,12 @@ In code: `Flow` (`FlowId`, SQLite table `flows`) and `Conversation`
 4. When the coder's turn ends, its answer (its agent messages since the
    prompt) is sent to the planner as `Entry::FromAgent { answer: true }`, now
    if the planner is idle, else when its turn ends (the conversation's inbox).
-   Answers between agents raise no notification.
+   Answers between agents raise no notification. The inbox and the user's
+   queued messages (CONV-19, sent as one) are saved at each change in SQLite
+   `waiting_messages` (I30, `crates/leon-core/src/waiting.rs`); at startup
+   each conversation gets them back, and one idle by then gets its first at
+   once. A conversation found still in its turn gets its `reply_to` back from
+   its transcript (`agents::works_for`).
 5. `message_agent(conversation, text)` follows the same path. A message the
    user types in the coder's conversation is answered to the user.
 6. `rename_flow` edits the flow. A folder joins the flow

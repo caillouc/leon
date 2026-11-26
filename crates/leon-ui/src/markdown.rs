@@ -112,7 +112,12 @@ impl gpui::Global for Core {}
 /// Markdown, selectable, its code blocks with a small corner, its GitHub
 /// links opening Leon's view.
 pub(crate) fn markdown(id: impl Into<ElementId>, text: &str) -> AnyElement {
-    TextView::markdown(id.into(), SharedString::from(text.to_owned()))
+    let id = id.into();
+    // Its TLDR in the accent (CONV-21).
+    if let Some(tldr) = crate::tldr::split_tldr(text) {
+        return crate::tldr::tldr_view(&id, &tldr);
+    }
+    TextView::markdown(id, SharedString::from(text.to_owned()))
         .selectable(true)
         .on_link_click(|url, _, _, cx| crate::links::open_link(url, cx))
         // A small corner (language, copy) instead of the library's label,
@@ -252,7 +257,7 @@ fn shorten(line: &str, chars: usize) -> String {
 
 /// The fence opening or closing a code block on `line`: three or more
 /// backticks or tildes.
-fn fence(line: &str) -> Option<&str> {
+pub(crate) fn fence(line: &str) -> Option<&str> {
     let t = line.trim_start();
     let mark = t.chars().next().filter(|c| *c == '`' || *c == '~')?;
     let run = t.len() - t.trim_start_matches(mark).len();
@@ -273,10 +278,7 @@ pub(crate) type OpenDetails = HashSet<SharedString>;
 /// markdown that keeps its line breaks: outside code blocks, a line followed
 /// by another ends with a hard break, as in a chat, instead of running on.
 pub(crate) fn hard_breaks(text: &str) -> String {
-    let is_fence = |line: &str| {
-        let start = line.trim_start();
-        start.starts_with("```") || start.starts_with("~~~")
-    };
+    let is_fence = |line: &str| fence(line).is_some();
     let lines: Vec<&str> = text.lines().collect();
     let mut out = String::with_capacity(text.len() + lines.len() * 2);
     let mut fenced = false;

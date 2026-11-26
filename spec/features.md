@@ -106,7 +106,9 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **CONV-1** Send messages; see the agent's answer stream live. A message
   being written stays with its conversation: shown another one, the message
   box shows that one's (or nothing), and coming back shows it again, its
-  long pastes with it, until the app is closed.
+  long pastes with it, until the app is closed. The start page (CONV-2,
+  FLOW-7) keeps the agent, CLI, model, effort, permission and folder the
+  user changed in it the same way, until Start or another project.
 - **CONV-2** Start a flow directly with a chosen agent. The new-flow page is
   a clean start page, as in GitHub Copilot's app: Leon's logo, then the
   message box with the agent, CLI, model, effort and permission in its row
@@ -170,9 +172,22 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
   go to the agent with the message; they stay with the draft (CONV-1) until
   it is sent.
 - **CONV-19** A message written while the agent is answering can be sent
-  (Enter): it waits, shown as "Queued" above the message box with "Remove",
-  and goes when the answer ends, before any other agent's message; a second
-  one joins it.
+  (Enter, or Queue beside Stop): it waits, shown as "Queued" above the
+  message box, one line each, with "Edit" and "Remove". Edit puts the
+  message alone in the message box, what was written there put aside; sent
+  again, it goes back to its place among the others and what was written
+  comes back. When the answer ends, all of them go as one
+  message, before any other agent's. They survive a restart of Leon (I30).
+- **CONV-20** The tool calls of an answer (commands, reads, edits…), wherever
+  they came in it, gather at its top, above its text: one alone keeps its
+  row, more fold into one grey line saying what they did ("Ran ×6 · Read
+  ×2"); a click lists them, each opening on its own. A call's row says what
+  it was for, when the agent said it ("Run the retry tests"), else what it
+  did ("Ran"), then the start of its command. An open tool call shows its
+  whole command (or input), not cut to the line, then its output.
+- **CONV-21** A "TLDR" (or "TL;DR") starting a line of a message stands out:
+  the word is written in the "To review" tag's green, so the conclusion is
+  found at a glance.
 - **CONV-13** Subagents: show how many were started and how many are still
   running, without their content.
 - **CONV-14** The worktree / branch name of the flow is visible (the

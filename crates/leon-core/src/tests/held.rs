@@ -30,6 +30,7 @@ fn recorded(storage: &FakeStorage) -> ConversationId {
                 id: "t1".into(),
                 name: "Ran".into(),
                 detail: "cargo test".into(),
+                purpose: None,
                 output: None,
                 failed: false,
             },
@@ -142,6 +143,130 @@ async fn an_idle_cli_found_again_stays_idle() {
     assert_eq!(s.conversations[&id].status, Status::Idle);
     assert_eq!(storage.entries(id).unwrap().len(), 2, "nothing replayed");
     assert_eq!(backends.started.lock().unwrap().len(), 1, "live again");
+}
+
+/// An agent answering another's request while Leon restarts: the asker
+/// still waits for it (FLOW-1, CONV-16), not "Done".
+#[tokio::test(flavor = "multi_thread")]
+async fn a_request_still_answered_across_a_restart_is_still_waited_for() {
+    let storage = Arc::new(FakeStorage::default());
+    storage
+        .add_project("api", Path::new("/code/api"), 0)
+        .unwrap();
+    let planner = recorded(&storage);
+    let flow = storage.list_flows().unwrap()[0].id;
+    let reviewer = storage
+        .create_conversation(&NewConversation {
+            flow,
+            started_by: Some(planner),
+            settings: settings(BackendKind::ClaudeCode),
+            working_dir: PathBuf::from("/code/api"),
+        })
+        .unwrap()
+        .id;
+    let asked = Entry::FromAgent {
+        from: planner,
+        text: "Review the diff".into(),
+        answer: false,
+    };
+    storage
+        .append_entry(
+            reviewer,
+            &TimedEntry {
+                at: 3,
+                entry: asked,
+            },
+        )
+        .unwrap();
+    let backends = Arc::new(FakeBackends::default());
+    backends.held.lock().unwrap().push((reviewer, true));
+    let core = start(
+        &tokio::runtime::Handle::current(),
+        ports(
+            Arc::clone(&storage) as Arc<dyn Storage>,
+            Arc::clone(&backends) as Arc<dyn Backends>,
+        ),
+        Settings::default(),
+    );
+    let s = until(&core, "working", |s| {
+        s.conversations
+            .get(&reviewer)
+            .is_some_and(|c| c.status == Status::Running)
+    })
+    .await;
+    assert_eq!(s.conversations[&planner].waiting_for, [reviewer]);
+}
+
+/// What waited for a busy agent when Leon quit comes back (I30): to an
+/// agent idle by then, it goes at once; to one still in its turn, it waits
+/// for the turn's end, shown queued.
+#[tokio::test(flavor = "multi_thread")]
+async fn messages_waiting_when_leon_quit_are_not_lost() {
+    use crate::ports::{Sent, Waiting, WaitingFor};
+    let storage = Arc::new(FakeStorage::default());
+    storage
+        .add_project("api", Path::new("/code/api"), 0)
+        .unwrap();
+    let planner = recorded(&storage);
+    let flow = storage.list_flows().unwrap()[0].id;
+    let started = |by| {
+        storage
+            .create_conversation(&NewConversation {
+                flow,
+                started_by: Some(by),
+                settings: settings(BackendKind::ClaudeCode),
+                working_dir: PathBuf::from("/code/api"),
+            })
+            .unwrap()
+            .id
+    };
+    let (coder, reviewer) = (started(planner), started(planner));
+    let asked = WaitingFor {
+        queued: Vec::new(),
+        inbox: vec![Waiting {
+            from: planner,
+            text: "Review the diff".into(),
+            sent: Sent::Request,
+        }],
+    };
+    storage.save_waiting(coder, &asked).unwrap();
+    let yours = WaitingFor {
+        queued: vec![("Also the docs".into(), Vec::new())],
+        inbox: Vec::new(),
+    };
+    storage.save_waiting(reviewer, &yours).unwrap();
+    let backends = Arc::new(FakeBackends::default());
+    backends.held.lock().unwrap().push((reviewer, true));
+    let core = start(
+        &tokio::runtime::Handle::current(),
+        ports(
+            Arc::clone(&storage) as Arc<dyn Storage>,
+            Arc::clone(&backends) as Arc<dyn Backends>,
+        ),
+        Settings::default(),
+    );
+    let s = until(&core, "sent to the idle coder", |s| {
+        s.conversations
+            .get(&coder)
+            .is_some_and(|c| c.status == Status::Running)
+    })
+    .await;
+    // The coder works on the request: the planner waits for it.
+    assert!(s.conversations[&planner].waiting_for.contains(&coder));
+    assert_eq!(
+        storage.entries(coder).unwrap().last().map(|e| &e.entry),
+        Some(&Entry::FromAgent {
+            from: planner,
+            text: "Review the diff".into(),
+            answer: false,
+        })
+    );
+    // The reviewer still answers: the user's message waits, queued.
+    assert_eq!(
+        s.conversations[&reviewer].queued,
+        [("Also the docs".to_owned(), Vec::new())]
+    );
+    assert_eq!(storage.waiting().unwrap(), [(reviewer, yours)]);
 }
 
 #[test]

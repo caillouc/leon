@@ -51,6 +51,35 @@ pub(crate) fn images_in(content: &InputContent, images: &[Image]) -> Vec<Image> 
         .collect()
 }
 
+/// A queued message back in the message box, to change it (CONV-19): its
+/// "[Image #N]" marks tokens again, for `images` in order. Returns the
+/// box's content and the images it holds a token for.
+pub(crate) fn restore(text: &str, images: &[Image]) -> (InputContent, Vec<Image>) {
+    let mut out = String::new();
+    let mut spans = Vec::new();
+    let mut put = Vec::new();
+    let mut rest = text;
+    while let (Some(start), Some(image)) = (rest.find("[Image #"), images.get(put.len())) {
+        let Some(len) = rest[start..].find(']').map(|end| end + 1) else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        let token = image_token(put.len());
+        let at = out.len();
+        out.push_str(token.text());
+        spans.push((at..out.len(), token));
+        put.push(image.clone());
+        rest = &rest[start + len..];
+    }
+    out.push_str(rest);
+    let content = spans
+        .into_iter()
+        .fold(InputContent::new(out), |content, (range, token)| {
+            content.clone().with_token(range, token).unwrap_or(content)
+        });
+    (content, put)
+}
+
 /// A pasted image's file extension: the formats the CLIs take.
 fn pasted_ext(format: ImageFormat) -> Option<&'static str> {
     match format {
@@ -139,7 +168,7 @@ mod tests {
     use gpui_component::input::InputContent;
     use leon_core::ports::Image;
 
-    use super::{clipboard_images, image_files, image_token, images_in, is_image};
+    use super::{clipboard_images, image_files, image_token, images_in, is_image, restore};
 
     #[test]
     fn only_image_files_go_in() {
@@ -211,5 +240,18 @@ mod tests {
             [images[1].clone(), images[0].clone()]
         );
         assert_eq!(second.text(), "[Image #2]");
+    }
+
+    /// A queued message comes back with its images, tokens again.
+    #[test]
+    fn a_queued_message_comes_back_with_its_images() {
+        let shot = Image::File(PathBuf::from("/data/images/1/1.png"));
+        let (content, put) = restore("see [Image #3] here", std::slice::from_ref(&shot));
+        assert_eq!(content.text().as_ref(), "see [Image #1] here");
+        assert_eq!(put, std::slice::from_ref(&shot));
+        assert_eq!(images_in(&content, &put), std::slice::from_ref(&shot));
+        // No image: the text as it was.
+        let (content, put) = restore("plain", &[]);
+        assert_eq!((content.text().as_ref(), put.len()), ("plain", 0));
     }
 }

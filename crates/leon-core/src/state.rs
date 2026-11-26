@@ -10,6 +10,7 @@ use leon_domain::{
 };
 
 use crate::ports::{AgentDefinition, BackendOptions};
+pub(crate) use crate::ports::{Sent, Waiting};
 use crate::snapshot::{
     ConversationView, FlowView, Notification, Question, Snapshot, TranscriptView,
 };
@@ -39,29 +40,9 @@ pub(crate) struct ConversationState {
     pub reply_to: Option<ConversationId>,
     /// Messages from other conversations waiting for this one to finish its turn.
     pub inbox: VecDeque<Waiting>,
-    /// The user's message written while it answered, and its images: sent
-    /// when the answer ends, before the inbox (CONV-19).
-    pub queued: Option<(String, Vec<crate::ports::Image>)>,
-}
-
-/// A message from another conversation, not sent yet.
-#[derive(Debug, Clone)]
-pub(crate) struct Waiting {
-    pub from: ConversationId,
-    pub text: String,
-    pub sent: Sent,
-}
-
-/// What a message between conversations is (FLOW-1, FLOW-2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Sent {
-    /// A request: its answer goes back to the sender.
-    Request,
-    /// The answer to a request the receiver sent.
-    Answer,
-    /// The first message of a conversation started for the user: its
-    /// answers go to the user.
-    ForUser,
+    /// The user's messages written while it answered, each with its
+    /// images: sent as one when the answer ends, before the inbox (CONV-19).
+    pub queued: Vec<(String, Vec<crate::ports::Image>)>,
 }
 
 impl ConversationState {
@@ -78,7 +59,7 @@ impl ConversationState {
             carry_context: false,
             reply_to: None,
             inbox: VecDeque::new(),
-            queued: None,
+            queued: Vec::new(),
         }
     }
 
@@ -364,7 +345,7 @@ impl State {
                     waiting_for: self.waiting_for(s.conversation.id),
                     name: self.conversation_name(s.conversation.id),
                     folder: self.folder_of(s),
-                    queued: s.queued.as_ref().map(|(text, _)| text.clone()),
+                    queued: s.queued.clone(),
                 };
                 (s.conversation.id, view)
             })
