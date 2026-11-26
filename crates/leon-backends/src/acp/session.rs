@@ -275,6 +275,11 @@ impl Session {
         self.selecting = out.len();
         out.extend(self.send_queued());
         let mut events = vec![BackendEvent::Ready { cli_session: id }];
+        // Its models, for the pickers (I31).
+        let models = crate::models::acp_models(result);
+        if !models.is_empty() {
+            events.push(BackendEvent::Models(models));
+        }
         events.extend(missing.into_iter().map(|setting| {
             BackendEvent::Notice(format!(
                 "{} does not offer {setting}: it uses its default.",

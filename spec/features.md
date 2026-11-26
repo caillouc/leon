@@ -118,7 +118,12 @@ subscription: Claude Code, Codex and Copilot CLI (D7).
 - **CONV-3** Choose the CLI per conversation: Claude Code, Codex, Copilot CLI.
 - **CONV-4** Choose the model, the effort and the permission mode (default:
   auto). Models show their version (e.g. "Opus 5.5"); a picker never shows
-  "default" but the value actually used.
+  "default" but the value actually used. The models are the ones each CLI
+  offers, asked at each launch (a new model shows without a Leon update),
+  Copilot CLI's from its first conversation, each with its own effort
+  levels when the CLI lists them. The model picker shows each family's
+  newest version only ("Fable 5.2", not also "Fable 5.1"), and the model in
+  use.
 - **CONV-5** Change CLI, model, effort or permission mid-conversation. When the
   CLI can't switch live, a new CLI session starts with the previous context.
 - **CONV-6** Stop a running answer. A tool call left without a result when

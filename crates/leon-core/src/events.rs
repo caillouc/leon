@@ -14,6 +14,7 @@ pub(crate) fn apply(core: &mut Core, id: ConversationId, event: BackendEvent) {
             }
             core.save_conversation(id);
         }
+        BackendEvent::Models(models) => core.session_models(id, models),
         BackendEvent::TextDelta(delta) => {
             if let Some(t) = core
                 .state_mut()

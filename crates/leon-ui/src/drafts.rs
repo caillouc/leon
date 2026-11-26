@@ -7,16 +7,28 @@
 use std::collections::HashMap;
 
 use gpui::{Context, Window};
+use gpui_component::input::InputContent;
 use leon_domain::ConversationId;
 
 use crate::attach::Put;
 use crate::workspace::Workspace;
 
-/// A message being written: its text, and what its tokens stand for.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// A message being written: its text with its tokens (an image's, a long
+/// paste's), and what they stand for. The tokens are kept, not only the
+/// text: an "[Image #1]" without its token would send no image.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Draft {
-    pub text: String,
+    pub content: InputContent,
     pub put: Put,
+}
+
+impl Default for Draft {
+    fn default() -> Self {
+        Self {
+            content: InputContent::new(""),
+            put: Put::default(),
+        }
+    }
 }
 
 /// The drafts put aside, by conversation. `None` is the forms starting a
@@ -34,7 +46,7 @@ impl Drafts {
         leaving: Draft,
         to: Option<ConversationId>,
     ) -> Draft {
-        if leaving.text.trim().is_empty() && leaving.put.is_empty() {
+        if leaving.content.text().trim().is_empty() && leaving.put.is_empty() {
             self.0.remove(&from);
         } else {
             self.0.insert(from, leaving);
@@ -55,20 +67,22 @@ impl Workspace {
     ) {
         let leaving = Draft {
             // The message box is a conversation's; a form keeps its own.
-            text: from.map_or_else(String::new, |_| {
-                crate::workspace::text_of(&self.composer, cx)
-            }),
+            content: from.map_or_else(
+                || InputContent::new(""),
+                |_| self.composer.read(cx).content(),
+            ),
             put: std::mem::take(&mut self.put),
         };
         let coming = self.drafts.switch(from, leaving, to);
         self.put = coming.put;
         self.composer
-            .update(cx, |state, cx| state.set_value(coming.text, window, cx));
+            .update(cx, |state, cx| state.set_value(coming.content, window, cx));
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use gpui_component::input::InputContent;
     use leon_core::ports::Image;
     use leon_domain::ConversationId;
 
@@ -77,7 +91,7 @@ mod tests {
 
     fn draft(text: &str, pasted: &[&str]) -> Draft {
         Draft {
-            text: text.into(),
+            content: InputContent::new(text.to_owned()),
             put: Put {
                 pasted: pasted.iter().map(|p| (*p).to_owned()).collect(),
                 images: Vec::new(),
@@ -103,16 +117,24 @@ mod tests {
         );
         // a's empty draft was forgotten.
         assert_eq!(drafts.switch(b, Draft::default(), a), Draft::default());
-        // An image alone keeps a draft.
+        // An image alone keeps a draft, its token with it: back, it is
+        // still an image, not the text "[Image #1]".
+        let image = Image::File("/shot.png".into());
+        let (content, images) = crate::attach::restore("[Image #1]", std::slice::from_ref(&image));
         let shot = Draft {
-            text: "[Image #1]".into(),
+            content,
             put: Put {
                 pasted: Vec::new(),
-                images: vec![Image::File("/shot.png".into())],
+                images,
             },
         };
         assert_eq!(drafts.switch(a, shot.clone(), b), Draft::default());
-        assert_eq!(drafts.switch(b, Draft::default(), a), shot);
+        let back = drafts.switch(b, Draft::default(), a);
+        assert_eq!(back, shot);
+        assert_eq!(
+            crate::attach::images_in(&back.content, &back.put.images),
+            [image]
+        );
         // A form's pastes come back to the form.
         assert_eq!(
             drafts.switch(None, draft("", &["diff"]), a),

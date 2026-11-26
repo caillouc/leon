@@ -286,6 +286,8 @@ struct FakeBackends {
     copilot_answers: std::sync::atomic::AtomicBool,
     /// The conversations whose leftovers were removed, and their sessions.
     discarded: Mutex<Vec<(ConversationId, Option<crate::ports::CliSession>)>>,
+    /// What Claude Code lists as its models (I31); `None`: it cannot tell.
+    claude_models: Mutex<Option<Vec<crate::ports::ModelOption>>>,
 }
 
 impl Backends for FakeBackends {
@@ -298,6 +300,11 @@ impl Backends for FakeBackends {
             events: event_tx,
         });
         Ok(BackendChannel { commands, events })
+    }
+    fn models(&self, backend: BackendKind) -> Option<Vec<crate::ports::ModelOption>> {
+        (backend == BackendKind::ClaudeCode)
+            .then(|| self.claude_models.lock().unwrap().clone())
+            .flatten()
     }
     fn discard(&self, id: ConversationId, session: Option<crate::ports::CliSession>) {
         self.discarded.lock().unwrap().push((id, session));

@@ -72,9 +72,9 @@ impl Workspace {
         let model = {
             let (s, f) = (settings.clone(), on_change.clone());
             let current = self.model_and_effort(settings).0;
-            let choices = options
-                .models
-                .iter()
+            // Each family's newest, and the model in use (CONV-4).
+            let choices = leon_core::latest_models(&options.models, settings.model.as_deref())
+                .into_iter()
                 .map(|m| (m.id.clone(), m.label.clone()))
                 .collect();
             self.picker_look(
@@ -104,8 +104,9 @@ impl Workspace {
             } else {
                 value
             };
+            // The model's own levels, when its CLI lists them (I31).
             let choices = options
-                .efforts
+                .efforts_for(settings.model.as_deref())
                 .iter()
                 .map(|e| (e.clone(), e.clone()))
                 .collect();

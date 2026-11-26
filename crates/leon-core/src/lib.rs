@@ -18,8 +18,10 @@ mod held;
 mod idle;
 mod intent;
 mod jobs;
+mod latest;
 mod links;
 mod model_pick;
+mod models;
 pub mod ports;
 mod repo;
 mod settings;
@@ -34,6 +36,7 @@ mod waiting;
 pub use app::{CoreHandle, Detached, Ports, detached, start};
 pub use doctor::About;
 pub use intent::Intent;
+pub use latest::latest_models;
 pub use model_pick::settings_for_agent;
 pub use snapshot::{
     Acting, ConversationView, Detail, FlowView, GitView, Leon, Notification, PrDiff, Question,

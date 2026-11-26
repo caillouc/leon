@@ -360,3 +360,23 @@ fn images_go_before_the_text_in_the_prompt() {
         ]))
     );
 }
+
+/// Copilot's session lists its models: they go to the pickers (I31).
+#[test]
+fn a_session_gives_its_models() {
+    let initialize = include_str!("../../fixtures/acp/1.32.0/config.jsonl")
+        .lines()
+        .next()
+        .unwrap();
+    let session = include_str!("../../fixtures/copilot/1.0.114/session-new.jsonl");
+    let lines = format!("{initialize}\n{session}");
+    let (events, _) = replay(&spec(None), &lines, Vec::new());
+    let models = events.iter().find_map(|e| match e {
+        BackendEvent::Models(models) => Some(models),
+        _ => None,
+    });
+    assert_eq!(models.map(Vec::len), Some(26));
+    assert!(events.contains(&BackendEvent::Ready {
+        cli_session: "sess_1".into()
+    }));
+}

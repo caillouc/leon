@@ -9,6 +9,7 @@
 //! field leave this crate.
 
 mod acp;
+mod ask;
 mod bridge;
 mod claude;
 mod claude_ask;
@@ -20,6 +21,7 @@ mod holder;
 mod images;
 mod limits;
 mod mcp;
+mod models;
 mod options;
 mod plan;
 mod process;
@@ -221,6 +223,10 @@ impl Backends for Clis {
         {
             sessions::discard_claude(&home.join(".claude").join("projects"), &session);
         }
+    }
+
+    fn models(&self, backend: BackendKind) -> Option<Vec<leon_core::ports::ModelOption>> {
+        models::read((self.path)(), backend)
     }
 
     fn plan_usage(&self, backend: BackendKind) -> Option<leon_core::ports::PlanSaid> {

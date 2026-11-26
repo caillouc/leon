@@ -299,6 +299,7 @@ impl Core {
             .map(|b| (b, self.ports.backends.options(b)))
             .collect();
         self.state.options = Arc::new(options);
+        self.ask_models();
         self.refresh_agents();
         self.apply_fold();
         self.purge_archive();

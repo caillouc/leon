@@ -309,6 +309,9 @@ pub enum BackendEvent {
         /// The CLI's own session id.
         cli_session: String,
     },
+    /// The models the CLI offers, as its session listed them (Copilot CLI
+    /// over ACP, I31).
+    Models(Vec<ModelOption>),
     /// More text of the agent's current message.
     TextDelta(String),
     /// The agent's complete message.
@@ -474,6 +477,9 @@ pub struct ModelOption {
     pub label: String,
     /// Other names the CLI takes for it, e.g. `opus` (EXT-6).
     pub aliases: Vec<String>,
+    /// The effort levels it takes, as its CLI lists them; empty when the
+    /// CLI does not say: the backend's list (I31).
+    pub efforts: Vec<String>,
 }
 
 /// Models, efforts and permission modes a backend offers (pickers, CONV-4).
@@ -511,6 +517,19 @@ impl BackendOptions {
                     .map(|name| (name.clone(), m.id.clone()))
             })
             .collect()
+    }
+
+    /// The effort levels model `id` takes (the default model when `None`):
+    /// its own when its CLI lists them, else the backend's (I31).
+    pub fn efforts_for(&self, id: Option<&str>) -> &[String] {
+        let model = match id {
+            Some(id) => self.models.iter().find(|m| m.id == id),
+            None => self.models.first(),
+        };
+        model
+            .map(|m| m.efforts.as_slice())
+            .filter(|e| !e.is_empty())
+            .unwrap_or(&self.efforts)
     }
 
     /// The name shown for a model id (the id itself when unknown).
@@ -553,6 +572,12 @@ pub trait Backends: Send + Sync + 'static {
     /// What `backend` says of its plan without a turn — its windows and the
     /// credits its account has left — for a CLI that can (DOCTOR-2). Blocks.
     fn plan_usage(&self, backend: BackendKind) -> Option<PlanSaid> {
+        let _ = backend;
+        None
+    }
+    /// The models `backend` offers now, as the CLI lists them, its default
+    /// first (I31); `None` when it could not tell. Blocks: seconds.
+    fn models(&self, backend: BackendKind) -> Option<Vec<ModelOption>> {
         let _ = backend;
         None
     }

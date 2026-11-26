@@ -59,6 +59,7 @@ mod tests {
                         id: (*id).into(),
                         label: (*id).into(),
                         aliases: aliases.iter().map(|a| (*a).to_owned()).collect(),
+                        efforts: Vec::new(),
                     })
                     .collect(),
                 efforts: efforts.iter().map(|e| (*e).to_owned()).collect(),

@@ -372,13 +372,16 @@ usage come from)".
 finds VS Code and Zed by their command-line tool on the login shell's `PATH`
 (`code`; `zed` or `zeditor`), or on macOS inside their app, and opens a
 worktree with a file in it with `code <folder> -g <file>` (1.140.0, its
-`--help` on 2026-11-24) or, for Zed, `zed <folder>` then, once it ends,
-`zed <file>`: Zed puts a file in an open project that holds it, so a
-worktree inside the main checkout opened in the main checkout's window
-(Zed 1.29.3's source, 2026-11-25). Settings keeps the choice in
-`ui.editor`; without it, the first installed. Chosen by the maintainer on
-2026-11-24: "Setting, auto-detected"; on 2026-11-25: "Worktree first, then
-file".
+`--help` on 2026-11-24) or, for Zed, `zed -e <folder> <file>` in one call:
+in the window already open, Zed shows the worktree's project (adding it to
+the window when missing) and opens the file there (Zed 1.30.2's source,
+2026-11-26). Two calls (`zed <folder>`, then `zed <file>`) raced: the file
+came before the worktree's project was ready and opened in the main
+checkout's. Settings keeps the choice in `ui.editor`; without it, the first
+installed. Chosen by the maintainer on 2026-11-24: "Setting, auto-detected";
+on 2026-11-25: "Worktree first, then file"; on 2026-11-26: "Just do not open
+a new zed folder. in the open window place me in the right worktree and open
+the right file".
 
 **I30 — Messages waiting for a busy agent are saved (CONV-19, FLOW-1).**
 SQLite `waiting_messages` (migration 19): one row per message waiting for a
@@ -388,3 +391,17 @@ requests and answers, in order — deleted once delivered or removed. At startup
 conversation gets its waiting messages back; one idle by then gets its
 first at once. Proposed as "new table for every waiting message" or "agents'
 messages only"; chosen by the maintainer on 2026-11-26: "New table, all".
+
+**I31 — Each CLI's models come from the CLI (CONV-4).** At each launch, in
+the background, Leon asks Claude Code and Codex which models they offer,
+with no turn and no token: Claude Code's `initialize` control request over
+stream-json (`--no-session-persistence`; 2.1.332, a real run on 2026-11-26),
+Codex app-server's `model/list` (0.160.0, same day). Copilot CLI lists its
+models in each session it opens over ACP (`session/new`, 1.0.114, same
+day): Leon reads them from its conversations' sessions, since a session
+opened only to ask stays in Copilot's history even after `session/close`.
+The pickers show each model's own efforts when the CLI lists them. Until a
+CLI answers, or when it fails, the list built into Leon shows. Proposed as
+"all CLIs, at launch" or "Claude Code only"; chosen by the maintainer on
+2026-11-26: "All CLIs, at launch"; for Copilot, after the empty sessions
+showed, "From its conversations".

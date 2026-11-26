@@ -71,6 +71,8 @@ pub(crate) enum Internal {
     Flash(String),
     /// What a CLI said of its plan without a turn (DOCTOR-2).
     PlanUsage(leon_domain::BackendKind, crate::ports::PlanSaid),
+    /// The models a CLI offers, as it listed them (I31).
+    Models(leon_domain::BackendKind, Vec<crate::ports::ModelOption>),
 }
 
 impl Core {
@@ -437,6 +439,7 @@ impl Core {
             Internal::Release(release) => self.release_read(release),
             Internal::Installed(result) => self.update_installed(result),
             Internal::PlanUsage(backend, said) => self.plan_said(backend, said),
+            Internal::Models(backend, models) => self.models_listed(backend, models),
             Internal::Flash(message) => self.flash(message),
             Internal::PrDiff(item, files) => {
                 // Only the pull request still shown, not one closed since.

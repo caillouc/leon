@@ -331,6 +331,7 @@ fn unchosen_model_and_effort_get_the_defaults() {
         aliases: Vec::new(),
         id: id.into(),
         label: label.into(),
+        efforts: Vec::new(),
     };
     let options = BackendOptions {
         models: vec![model("m1", "Model 1"), model("m2", "Model 2")],
@@ -354,6 +355,44 @@ fn unchosen_model_and_effort_get_the_defaults() {
     );
     assert_eq!(options.model_label("m2"), "Model 2");
     assert_eq!(options.model_label("other"), "other");
+}
+
+/// A CLI's own list of models replaces the built-in one once it answers;
+/// a model's own efforts show when its CLI lists them (I31).
+#[tokio::test(flavor = "multi_thread")]
+async fn the_models_come_from_the_cli() {
+    use crate::ports::ModelOption;
+    let storage = Arc::new(FakeStorage::default());
+    let backends = Arc::new(FakeBackends::default());
+    let model = |id: &str, efforts: &[&str]| ModelOption {
+        id: id.into(),
+        label: id.to_uppercase(),
+        aliases: Vec::new(),
+        efforts: efforts.iter().map(|e| (*e).to_owned()).collect(),
+    };
+    *backends.claude_models.lock().unwrap() = Some(vec![
+        model("claude-new-6", &["low", "high"]),
+        model("claude-old-4", &[]),
+    ]);
+    let core = start(
+        &tokio::runtime::Handle::current(),
+        ports(
+            Arc::clone(&storage) as Arc<dyn Storage>,
+            Arc::clone(&backends) as Arc<dyn Backends>,
+        ),
+        Settings::default(),
+    );
+    let s = until(&core, "listed", |s| {
+        s.options
+            .get(&BackendKind::ClaudeCode)
+            .is_some_and(|o| o.models.len() == 2)
+    })
+    .await;
+    let options = &s.options[&BackendKind::ClaudeCode];
+    assert_eq!(options.models[0].id, "claude-new-6");
+    assert_eq!(options.efforts_for(None), ["low", "high"]);
+    // A model listing none: the backend's levels.
+    assert_eq!(options.efforts_for(Some("claude-old-4")), options.efforts);
 }
 
 #[tokio::test(flavor = "multi_thread")]

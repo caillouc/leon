@@ -23,6 +23,7 @@ fn models(items: &[(&str, &str)]) -> Vec<leon_core::ports::ModelOption> {
             aliases: Vec::new(),
             id: (*id).into(),
             label: (*label).into(),
+            efforts: Vec::new(),
         })
         .collect()
 }

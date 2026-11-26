@@ -1,7 +1,10 @@
-//! What each CLI's pickers offer. Values checked on 2026-11-17: Claude Code
-//! 2.1.288 `--help` (efforts, permission modes, model aliases), Codex 0.160.0
-//! app-server `model/list` (models, efforts); on 2026-11-18, Copilot CLI
-//! 1.0.113 over ACP (`session/new` lists its models; which refuse an effort).
+//! What each CLI's pickers offer. Its models are asked at each launch
+//! (I31, `models.rs`); these lists show until it answers, or when it
+//! cannot. Values checked on 2026-11-17: Claude Code 2.1.288 `--help`
+//! (efforts, permission modes, model aliases), Codex 0.160.0 app-server
+//! `model/list` (models, efforts); on 2026-11-18, Copilot CLI 1.0.113 over
+//! ACP (`session/new` lists its models; which refuse an effort); on
+//! 2026-11-26, Claude Code 2.1.332's models.
 
 use leon_core::ports::{BackendOptions, ModelOption};
 use leon_domain::BackendKind;
@@ -53,6 +56,7 @@ fn models(items: &[(&str, &str)]) -> Vec<ModelOption> {
             id: (*id).to_owned(),
             label: (*label).to_owned(),
             aliases: Vec::new(),
+            efforts: Vec::new(),
         })
         .collect()
 }
@@ -69,22 +73,22 @@ fn with_aliases(mut models: Vec<ModelOption>, aliases: &[(&str, &str)]) -> Vec<M
 
 pub(crate) fn for_backend(backend: BackendKind) -> BackendOptions {
     match backend {
-        // Full ids, so the label is what runs. Checked on 2026-11-17 with
-        // `--output-format json`: `opus` and the default run claude-opus-5-5,
-        // `sonnet` claude-sonnet-5-5, `haiku` claude-haiku-4-5. Claude Code
-        // does not report its default effort: Leon uses `high`.
+        // Full ids, so the label is what runs: Claude Code 2.1.332's own
+        // list (2026-11-26), `fable` running claude-fable-5-2 (a real run).
+        // Claude Code does not report its default effort: Leon uses `high`.
         BackendKind::ClaudeCode => BackendOptions {
-            // `fable` is an alias too (`--help`), for a model not listed here.
             models: with_aliases(
                 models(&[
                     ("claude-opus-5-5", "Opus 5.5"),
+                    ("claude-fable-5-2", "Fable 5.2"),
                     ("claude-sonnet-5-5", "Sonnet 5.5"),
-                    ("claude-haiku-4-5", "Haiku 4.5"),
+                    ("claude-haiku-5-5", "Haiku 5.5"),
                 ]),
                 &[
                     ("opus", "claude-opus-5-5"),
+                    ("fable", "claude-fable-5-2"),
                     ("sonnet", "claude-sonnet-5-5"),
-                    ("haiku", "claude-haiku-4-5"),
+                    ("haiku", "claude-haiku-5-5"),
                 ],
             ),
             efforts: list(&["low", "medium", "high", "xhigh", "max"]),

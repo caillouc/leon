@@ -3,6 +3,13 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.9.1
+
+- **Models**: each CLI's models come from the CLI itself, so a new one (like Fable 5.2) shows without a Leon update.
+- **Model picker**: only the newest version of each model, plus the one in use; the effort picker offers that model's own levels.
+- **Zed**: "Open in Zed" opens the file in the worktree's own project, in the window already open.
+- **Images**: images in a message you are writing stay when you switch conversation.
+
 ## v0.9.0
 
 - **Commands**: an answer's commands gather in one grey line at its top; opened, each says what it was for.
