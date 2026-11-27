@@ -824,6 +824,7 @@ impl Core {
             s.questions.clear();
             s.suggestions.clear();
         }
+        self.set_failed(id, false);
         let backends = Arc::clone(&self.ports.backends);
         let images = images
             .iter()
@@ -864,6 +865,7 @@ impl Core {
                 if let Some(s) = self.state.conversations.get_mut(&id) {
                     s.status = Status::Error;
                 }
+                self.set_failed(id, true);
                 false
             }
         }
@@ -1168,6 +1170,12 @@ impl Core {
             self.record(id, Entry::Error { text });
         }
         self.record(id, Entry::TurnEnd { usage });
+        let failed = self
+            .state
+            .conversations
+            .get(&id)
+            .is_some_and(|s| s.status == Status::Error);
+        self.set_failed(id, failed);
         let now = self.now();
         self.idle_since.insert(id, now);
         self.refresh_git(flow);
@@ -1218,6 +1226,19 @@ impl Core {
 
     pub(crate) fn record_entry(&mut self, id: ConversationId, entry: Entry) -> Option<usize> {
         self.record(id, entry)
+    }
+
+    /// Whether conversation `id`'s last turn failed; saved when it changes,
+    /// so its error still shows after a restart.
+    pub(crate) fn set_failed(&mut self, id: ConversationId, failed: bool) {
+        let changed = self.state.conversations.get_mut(&id).is_some_and(|s| {
+            let changed = s.conversation.failed != failed;
+            s.conversation.failed = failed;
+            changed
+        });
+        if changed {
+            self.save_conversation(id);
+        }
     }
 
     pub(crate) fn save_conversation(&mut self, id: ConversationId) {

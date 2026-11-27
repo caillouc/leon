@@ -158,6 +158,9 @@ pub struct Conversation {
     /// The user closed its tab: none in its flow until they open it again
     /// (FLOW-3).
     pub tab_closed: bool,
+    /// Its last turn failed: it shows its error until the next message, also
+    /// after a restart.
+    pub failed: bool,
 }
 
 #[cfg(test)]

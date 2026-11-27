@@ -118,6 +118,7 @@ fn conversation(
             unread: id == 4,
             folder: None,
             tab_closed: false,
+            failed: false,
         },
         status,
         subagents: if id == 1 { (2, 1) } else { (0, 0) },

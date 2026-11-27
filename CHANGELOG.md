@@ -3,6 +3,10 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.9.3
+
+- **Errors**: a conversation whose last turn failed still shows its error after Leon restarts, in its flow and the left pane.
+
 ## v0.9.2
 
 - **Commands**: an MCP server's tools count as one in an answer's folded line ("Slack ×3").

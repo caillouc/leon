@@ -140,6 +140,16 @@ const MIGRATIONS: &[&str] = &[
         images TEXT NOT NULL DEFAULT '[]',
         PRIMARY KEY (conversation_id, position)
     ) STRICT;",
+    // 20: whether a conversation's last turn failed, so it shows its error
+    // after a restart; for the conversations saved before, from their
+    // transcript: an error after the last message sent to them.
+    "ALTER TABLE conversations ADD COLUMN failed INTEGER NOT NULL DEFAULT 0;
+    UPDATE conversations SET failed = 1 WHERE (
+      SELECT json_extract(e.entry, '$.kind') FROM entries e
+      WHERE e.conversation_id = conversations.id
+        AND json_extract(e.entry, '$.kind') IN ('user', 'from_agent', 'for_you', 'error')
+      ORDER BY e.seq DESC LIMIT 1
+    ) = 'error';",
 ];
 
 /// Latest schema version this build knows.
@@ -290,6 +300,43 @@ mod tests {
         conn.pragma_update(None, "user_version", latest() + 1)
             .unwrap();
         assert!(matches!(run(&mut conn), Err(StoreError::TooNew { .. })));
+    }
+
+    /// A conversation saved before whose last turn failed is marked
+    /// failed; one written to since, or that ended well, is not.
+    #[test]
+    fn conversations_that_failed_are_marked() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..19] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 19).unwrap();
+        conn.execute_batch(
+            r#"INSERT INTO projects (id, name, path, added_at) VALUES (1, 'api', '/code/api', 0);
+            INSERT INTO flows (id, project_id, title, updated_at) VALUES (1, 1, 'Fix', 0);
+            INSERT INTO conversations (id, flow_id, backend, permission, working_dir) VALUES
+              (1, 1, 'claude', 'auto', '/code/api'),
+              (2, 1, 'claude', 'auto', '/code/api'),
+              (3, 1, 'claude', 'auto', '/code/api');
+            INSERT INTO entries (conversation_id, seq, at, entry) VALUES
+              (1, 1, 0, '{"kind":"user","text":"go"}'),
+              (1, 2, 0, '{"kind":"error","text":"boom"}'),
+              (1, 3, 0, '{"kind":"turn_end","usage":null}'),
+              (2, 1, 0, '{"kind":"error","text":"boom"}'),
+              (2, 2, 0, '{"kind":"user","text":"again"}'),
+              (3, 1, 0, '{"kind":"user","text":"go"}'),
+              (3, 2, 0, '{"kind":"turn_end","usage":null}');"#,
+        )
+        .unwrap();
+        run(&mut conn).unwrap();
+        let failed: Vec<i64> = conn
+            .prepare("SELECT id FROM conversations WHERE failed = 1")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(failed, [1]);
     }
 
     /// Projects keep the order they showed in, by name, as their place.

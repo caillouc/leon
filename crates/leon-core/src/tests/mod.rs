@@ -220,6 +220,7 @@ impl Storage for FakeStorage {
             unread: false,
             folder: None,
             tab_closed: false,
+            failed: false,
         };
         list.push(s.clone());
         Ok(s)

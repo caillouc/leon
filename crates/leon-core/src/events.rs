@@ -98,6 +98,7 @@ pub(crate) fn apply(core: &mut Core, id: ConversationId, event: BackendEvent) {
             if let Some(s) = core.state_mut().conversations.get_mut(&id) {
                 s.status = Status::Error;
             }
+            core.set_failed(id, true);
             core.record_entry(id, Entry::Error { text });
         }
         BackendEvent::Limits { windows, credits } => plan(core, id, (windows, credits)),

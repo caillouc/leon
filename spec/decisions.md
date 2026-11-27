@@ -405,3 +405,13 @@ CLI answers, or when it fails, the list built into Leon shows. Proposed as
 "all CLIs, at launch" or "Claude Code only"; chosen by the maintainer on
 2026-11-26: "All CLIs, at launch"; for Copilot, after the empty sessions
 showed, "From its conversations".
+
+**I32 — A failed conversation stays failed across a restart (NAV-4).**
+SQLite `conversations.failed` (migration 20): set when a turn fails, cleared
+when the next message is sent; at startup a conversation with it shows
+`error`, and so does its flow. Nothing else is read at startup; the
+migration marks once, from their transcripts, the conversations saved
+before. Proposed first as reading each transcript's end at every start;
+chosen by the maintainer on 2026-11-27: "can't we just store the status of
+the conversation when it is set the first time? it is important that
+startup time remain short and very quick".

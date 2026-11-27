@@ -47,9 +47,15 @@ pub(crate) struct ConversationState {
 
 impl ConversationState {
     pub(crate) fn new(conversation: Conversation) -> Self {
+        // Its last turn failed: its error shows until the next message.
+        let status = if conversation.failed {
+            Status::Error
+        } else {
+            Status::Idle
+        };
         Self {
             conversation,
-            status: Status::Idle,
+            status,
             subagents: (0, 0),
             plan: Vec::new(),
             questions: Vec::new(),

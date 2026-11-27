@@ -269,6 +269,60 @@ async fn messages_waiting_when_leon_quit_are_not_lost() {
     assert_eq!(storage.waiting().unwrap(), [(reviewer, yours)]);
 }
 
+/// A conversation whose last turn failed shows its error again after a
+/// restart, in its flow too, until a message is sent to it.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_error_survives_a_restart() {
+    let h = harness();
+    let id = new_flow(&h, BackendKind::ClaudeCode).await;
+    next_command(&h, 0).await;
+    emit(&h, 0, BackendEvent::Failed("Spend limit reached".into()));
+    emit(
+        &h,
+        0,
+        BackendEvent::TurnEnded {
+            stopped: false,
+            usage: None,
+        },
+    );
+    until(&h.core, "failed", |s| {
+        s.conversations[&id].status == Status::Error
+    })
+    .await;
+    let saved = |storage: &FakeStorage| {
+        storage
+            .list_conversations()
+            .unwrap()
+            .into_iter()
+            .find(|c| c.id == id)
+            .is_some_and(|c| c.failed)
+    };
+    assert!(saved(&h.storage), "saved as failed");
+    // Leon restarts on the same data.
+    let again = start(
+        &tokio::runtime::Handle::current(),
+        ports(
+            Arc::clone(&h.storage) as Arc<dyn Storage>,
+            Arc::new(FakeBackends::default()) as Arc<dyn Backends>,
+        ),
+        Settings::default(),
+    );
+    let s = until(&again, "loaded", |s| s.loaded).await;
+    assert_eq!(s.conversations[&id].status, Status::Error);
+    assert_eq!(s.flows[0].status, Status::Error);
+    // A new message: no longer failed.
+    h.core.send(Intent::Send {
+        conversation: id,
+        text: "Try again".into(),
+        images: Vec::new(),
+    });
+    until(&h.core, "running", |s| {
+        s.conversations[&id].status == Status::Running
+    })
+    .await;
+    assert!(!saved(&h.storage), "cleared by the next message");
+}
+
 #[test]
 fn a_turn_starts_at_the_last_message_sent() {
     use crate::held::turn_start;
