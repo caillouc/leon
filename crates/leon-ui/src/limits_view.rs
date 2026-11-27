@@ -4,7 +4,7 @@
 //! account has left, when it says (USE-1). A card like Doctor's others.
 
 use gpui::{AnyElement, Div, FontWeight, IntoElement, Rgba, div, prelude::*, relative};
-use leon_domain::{LimitWindow, window_name};
+use leon_domain::LimitWindow;
 
 use crate::icons::{Icon, icon};
 use crate::theme;
@@ -67,9 +67,38 @@ impl Workspace {
                 .text_color(theme::fg_faint())
                 .child(
                     "A CLI says how much of your plan is used: Codex when Doctor runs, \
-                     Claude Code during a turn. Copilot CLI does not say it.",
+                     Claude Code during a turn.",
                 )
         });
+        // Why Copilot CLI has no bars: it counts requests, and does not say
+        // how many are left (USE-1).
+        let copilot = div()
+            .px_4()
+            .py(theme::rem(8.))
+            .flex()
+            .items_start()
+            .gap_3()
+            .border_t_1()
+            .border_color(theme::border())
+            .child(
+                div()
+                    .w(theme::rem(197.))
+                    .flex_none()
+                    .text_color(theme::fg())
+                    .child(leon_domain::BackendKind::CopilotCli.display_name()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(theme::rem(12.5))
+                    .text_color(theme::fg_faint())
+                    .child(
+                        "No time windows: Copilot counts premium requests, each model \
+                         costing its own share of one (0.33× to 15×). Copilot CLI does not \
+                         tell Leon how many are left: its own /usage shows them.",
+                    ),
+            );
         div()
             .rounded_xl()
             .border_1()
@@ -101,6 +130,7 @@ impl Workspace {
             )
             .children(rows)
             .children(waiting)
+            .child(copilot)
             .into_any_element()
     }
 }
@@ -114,12 +144,7 @@ fn window_row(window: &LimitWindow, now: i64) -> Div {
         .items_center()
         .gap_3()
         .text_color(theme::fg_muted())
-        .child(
-            div()
-                .w(theme::rem(56.))
-                .flex_none()
-                .child(window_name(window.minutes)),
-        )
+        .child(div().w(theme::rem(84.)).flex_none().child(window.name()))
         .child(
             div()
                 .flex_1()
@@ -202,6 +227,7 @@ mod tests {
             minutes: 300,
             used: 83,
             resets_at: Some(5_000),
+            model: None,
         };
         assert_eq!(used_now(&window, 4_000), 83);
         assert_eq!(used_now(&window, 5_000), 0);

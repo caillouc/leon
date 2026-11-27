@@ -707,6 +707,7 @@ mod tests {
                         minutes: 43_200,
                         used: 1,
                         resets_at: Some(1_797_093_720_000),
+                        model: None,
                     }],
                     credits: None,
                 },

@@ -231,8 +231,9 @@ impl Backends for Clis {
 
     fn plan_usage(&self, backend: BackendKind) -> Option<leon_core::ports::PlanSaid> {
         match backend {
+            BackendKind::ClaudeCode => plan::claude((self.path)()),
             BackendKind::Codex => plan::codex((self.path)()),
-            BackendKind::ClaudeCode | BackendKind::CopilotCli => None,
+            BackendKind::CopilotCli => None,
         }
     }
 

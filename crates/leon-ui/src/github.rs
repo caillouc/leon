@@ -235,17 +235,17 @@ impl Workspace {
         count: usize,
         rows: Vec<AnyElement>,
     ) -> AnyElement {
-        self.group_with(key, color, title, count, rows, |header| header)
+        self.group_with(key, color, title, Some(count), rows, |header| header)
     }
 
     /// [`Self::group`], its header made by `header` from the usual one
-    /// (e.g. to drag the group by it).
+    /// (e.g. to drag the group by it); without `count`, no count pill.
     pub(crate) fn group_with(
         &self,
         key: String,
         color: Rgba,
         title: AnyElement,
-        count: usize,
+        count: Option<usize>,
         rows: Vec<AnyElement>,
         header: impl FnOnce(Stateful<Div>) -> Stateful<Div>,
     ) -> AnyElement {
@@ -262,15 +262,15 @@ impl Workspace {
                     .hover(|s| s.bg(theme::surface()))
                     .child(crate::widgets::mark(color, 10.))
                     .child(title)
-                    .child(
+                    .children(count.map(|count| {
                         div()
                             .px(crate::theme::rem(7.))
                             .rounded_full()
                             .bg(theme::surface_2())
                             .text_size(crate::theme::rem(11.5))
                             .text_color(theme::fg_muted())
-                            .child(count.to_string()),
-                    ),
+                            .child(count.to_string())
+                    })),
             ))
             .when(!folded, |d| d.children(rows))
             .into_any_element()

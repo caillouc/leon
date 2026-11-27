@@ -99,6 +99,9 @@ impl TodoState {
     }
 }
 
+/// Where the To do page shows a to-do, as a row's `place`.
+const PAGE: &str = "page";
+
 impl Workspace {
     /// The boxes' text becomes a to-do of the flow shown: its what is
     /// needed, its when may be left out.
@@ -226,8 +229,10 @@ impl Workspace {
         )
     }
 
-    /// One to-do: its box, which marks it done or open again, its text, and
-    /// on hover a red bin that removes it.
+    /// One to-do: its box, which marks it done or open again, its text,
+    /// on the To do page how long it has been open ("3d") — the flow's
+    /// narrow Info leaves that width to the text — and on hover a red bin
+    /// that removes it.
     fn todo_row(&self, todo: &Todo, place: &str, cx: &mut Context<Self>) -> AnyElement {
         let (id, done) = (todo.id, todo.done);
         let group = SharedString::from(format!("todo-{place}-{}", id.0));
@@ -252,6 +257,15 @@ impl Workspace {
             } else {
                 self.when_what(todo, place, cx)
             }))
+            // Open since: a pill that warms as it waits.
+            .when(!done && place == PAGE, |d| {
+                let color = age_color(crate::left::now_ms() - todo.added_at);
+                d.child(div().flex_none().pt(rem(3.)).child(crate::widgets::pill(
+                    crate::left::ago(todo.added_at),
+                    color,
+                    1.,
+                )))
+            })
             .child(remove(id, group, place, cx))
             .into_any_element()
     }
@@ -323,13 +337,6 @@ impl Workspace {
             .flex()
             .items_start()
             .gap_2()
-            // What it waits for, in amber.
-            .child(
-                div()
-                    .flex_none()
-                    .pt(rem(3.))
-                    .child(icon(Icon::Hourglass, theme::warn(), 13.)),
-            )
             .child(
                 div()
                     .min_w_0()
@@ -507,8 +514,8 @@ impl Workspace {
     }
 
     /// One flow's to-dos on the page (`order`: the page's before a drag):
-    /// its title (opening it) and project, its open ones, its done ones
-    /// folded. Dragged by its header among the others, its line, as wide as
+    /// its title and project, "Open flow" on the right, its open ones; its
+    /// done ones show in its Info. Dragged by its header among the others, its line, as wide as
     /// the group, follows the mouse, its place left empty, like a project's
     /// in the left pane.
     fn todo_group(
@@ -526,46 +533,61 @@ impl Workspace {
             .iter()
             .find(|p| p.id == view.flow.project)
             .map(|p| p.name.clone());
-        // Its project's colour, the one its repository has in the GitHub
-        // lists.
-        let color = theme::name_color(
-            self.snapshot
-                .project_repos
-                .get(&view.flow.project)
-                .map_or_else(|| project.as_deref().unwrap_or_default(), String::as_str),
-        );
-        // Its title opens it.
+        // Its pull requests' colour, as on its row in the left pane; faint
+        // without any.
+        let prs: Vec<leon_domain::PullRequest> =
+            self.snapshot.prs_of(view).into_iter().cloned().collect();
+        let color = crate::flow_prs::prs_color(&prs).unwrap_or_else(theme::fg_faint);
+        // Its title and project; on the right, how many are done and "Open
+        // flow", the one way to open it from here.
         let title = div()
-            .id(SharedString::from(format!("todos-flow-{}", flow.0)))
-            .flex()
-            .items_baseline()
-            .gap_2()
+            .flex_1()
             .min_w_0()
-            .cursor_pointer()
+            .flex()
+            .items_center()
+            .gap_3()
             .child(
                 div()
-                    .text_size(rem(13.5))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .hover(|s| s.text_color(theme::accent()))
-                    .child(view.flow.title.clone()),
+                    .flex()
+                    .items_baseline()
+                    .gap_2()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .text_size(rem(13.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(view.flow.title.clone()),
+                    )
+                    .children(project.map(|name| {
+                        div()
+                            .text_size(rem(12.))
+                            .text_color(theme::fg_faint())
+                            .child(name)
+                    })),
             )
-            .children(project.map(|name| {
+            .child(div().flex_1())
+            .child(
                 div()
+                    .flex_none()
                     .text_size(rem(12.))
                     .text_color(theme::fg_faint())
-                    .child(name)
-            }))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                // Not also a fold of the group.
-                cx.stop_propagation();
-                this.select(flow, cx);
-            }))
+                    .child(format!("{}/{} done", done.len(), done.len() + open.len())),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_size(rem(12.))
+                    .child(crate::gh_rows::flow_link(
+                        &format!("todos-{}", flow.0),
+                        flow,
+                        cx,
+                    )),
+            )
             .into_any_element();
         let count = open.len();
         let mut rows: Vec<AnyElement> = Vec::new();
         if !dragged {
-            rows.extend(open.into_iter().map(|t| self.todo_row(t, "page", cx)));
-            rows.extend(self.done_todos(flow, &done, "page", cx));
+            rows.extend(open.into_iter().map(|t| self.todo_row(t, PAGE, cx)));
         }
         let name = SharedString::from(view.flow.title.clone());
         let column = self.todos.column.clone();
@@ -573,7 +595,7 @@ impl Workspace {
             format!("todos:{}", flow.0),
             color,
             title,
-            count,
+            None,
             rows,
             move |header| {
                 header.when(dragged, |d| d.opacity(0.)).on_drag(
@@ -599,6 +621,17 @@ impl Workspace {
             .child(group)
             .child(crate::widgets::probe(self.todos.column.clone()))
             .into_any_element()
+    }
+}
+
+/// The colour of a to-do open for `age_ms`: muted its first two days,
+/// amber from two days, red from a week.
+fn age_color(age_ms: i64) -> gpui::Rgba {
+    const DAY: i64 = 24 * 60 * 60 * 1000;
+    match age_ms {
+        a if a >= 7 * DAY => theme::err(),
+        a if a >= 2 * DAY => theme::warn(),
+        _ => theme::fg_muted(),
     }
 }
 
@@ -661,4 +694,27 @@ pub(crate) fn todo_count(todos: &[Todo], flow: FlowId) -> Option<AnyElement> {
             .child(count.to_string())
             .into_any_element()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::age_color;
+    use crate::theme;
+
+    /// A to-do warms as it waits: grey its first two days, amber, then red
+    /// from a week.
+    #[test]
+    fn a_to_do_s_age_has_a_colour() {
+        const HOUR: i64 = 60 * 60 * 1000;
+        let cases = [
+            (0, theme::fg_muted()),
+            (47 * HOUR, theme::fg_muted()),
+            (48 * HOUR, theme::warn()),
+            (6 * 24 * HOUR, theme::warn()),
+            (7 * 24 * HOUR, theme::err()),
+        ];
+        for (age, color) in cases {
+            assert_eq!(age_color(age), color, "{age}");
+        }
+    }
 }

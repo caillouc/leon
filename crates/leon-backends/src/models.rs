@@ -31,22 +31,7 @@ pub(crate) fn codex_initialize() -> Value {
 }
 
 fn claude(path: Option<&OsString>) -> Option<Vec<ModelOption>> {
-    let request = json!({ "type": "control_request", "request_id": "leon-models",
-        "request": { "subtype": "initialize" } });
-    let args = [
-        "-p",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        // Nothing left behind to resume.
-        "--no-session-persistence",
-    ];
-    ask(path, "claude", &args, &request, |v, _| {
-        (v["type"] == "control_response" && v["response"]["request_id"] == "leon-models")
-            .then(|| claude_models(&v["response"]["response"]))
-    })
+    crate::ask::claude_control(path, "initialize").map(|answer| claude_models(&answer))
 }
 
 fn codex(path: Option<&OsString>) -> Option<Vec<ModelOption>> {

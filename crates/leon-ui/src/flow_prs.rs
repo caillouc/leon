@@ -24,7 +24,7 @@ pub(crate) fn flow_prs(id: FlowId, prs: Vec<PullRequest>) -> Option<AnyElement> 
         return None;
     }
     let state = lead(&prs);
-    let color = color(&prs, state);
+    let color = prs_color(&prs)?;
     Some(
         div()
             .id(SharedString::from(format!("flow-prs-{}", id.0)))
@@ -43,9 +43,13 @@ pub(crate) fn flow_prs(id: FlowId, prs: Vec<PullRequest>) -> Option<AnyElement> 
     )
 }
 
-/// The colour of a flow's pull requests, `state` the leading one's: red
-/// when one is blocked, amber while an open one's checks run, else that
-/// state's (NAV-6).
+/// The colour of a flow's pull requests: red when one is blocked, amber
+/// while an open one's checks run, else the leading state's (NAV-6);
+/// `None` without pull requests.
+pub(crate) fn prs_color(prs: &[PullRequest]) -> Option<Rgba> {
+    (!prs.is_empty()).then(|| color(prs, lead(prs)))
+}
+
 fn color(prs: &[PullRequest], state: PrState) -> Rgba {
     let open = |p: &&PullRequest| matches!(p.state, PrState::Open | PrState::Draft);
     if prs.iter().any(crate::pr_view::blocked) {

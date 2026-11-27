@@ -30,6 +30,43 @@ pub struct LimitWindow {
     pub used: u32,
     /// When it starts again, Unix milliseconds.
     pub resets_at: Option<i64>,
+    /// The model it alone counts, when not every one: Claude Code's Fable
+    /// limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl LimitWindow {
+    /// Its name: its length, after the model it alone counts ("Fable
+    /// week").
+    pub fn name(&self) -> String {
+        let length = window_name(self.minutes);
+        self.model
+            .as_ref()
+            .map_or(length.clone(), |m| format!("{m} {length}"))
+    }
+}
+
+/// `said`, what a CLI says of its windows now, and the windows of one
+/// model it said `before` that it no longer mentions, until they reset: a
+/// CLI tells a model's own window only on that model's turns (Claude
+/// Code's Fable limit).
+pub fn with_model_windows(
+    said: Vec<LimitWindow>,
+    before: &[LimitWindow],
+    now: i64,
+) -> Vec<LimitWindow> {
+    let kept: Vec<LimitWindow> = before
+        .iter()
+        .filter(|w| w.model.is_some() && w.resets_at.is_none_or(|at| at > now))
+        .filter(|w| {
+            !said
+                .iter()
+                .any(|s| s.model == w.model && s.minutes == w.minutes)
+        })
+        .cloned()
+        .collect();
+    said.into_iter().chain(kept).collect()
 }
 
 /// A window's name, from its length, in the app's short units: "5h",
@@ -45,7 +82,34 @@ pub fn window_name(minutes: u32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::window_name;
+    use super::{LimitWindow, window_name, with_model_windows};
+
+    /// A model's window stays when a later report leaves it out, until it
+    /// resets; a newer one replaces it.
+    #[test]
+    fn a_model_s_window_stays_until_it_resets() {
+        let window = |used, model: Option<&str>, resets_at| LimitWindow {
+            minutes: 10_080,
+            used,
+            resets_at: Some(resets_at),
+            model: model.map(str::to_owned),
+        };
+        let fable = window(11, Some("Fable"), 1_000);
+        let week = window(70, None, 1_000);
+        let kept = with_model_windows(vec![week.clone()], &[week.clone(), fable.clone()], 500);
+        assert_eq!(kept, [week.clone(), fable.clone()]);
+        // Reset since: gone.
+        assert_eq!(
+            with_model_windows(vec![week.clone()], std::slice::from_ref(&fable), 2_000),
+            std::slice::from_ref(&week)
+        );
+        // Said again: the new one.
+        let newer = window(15, Some("Fable"), 1_000);
+        assert_eq!(
+            with_model_windows(vec![week.clone(), newer.clone()], &[fable], 500),
+            [week, newer]
+        );
+    }
 
     #[test]
     fn windows_are_named_by_their_length() {

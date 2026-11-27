@@ -2,7 +2,7 @@
 //! of the user at a glance — working, needs you, to review, failed — and its
 //! pull requests.
 
-use gpui::{AnyElement, Context, Div, IntoElement, Rgba, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, Context, Div, IntoElement, Rgba, SharedString, div, prelude::*};
 use gpui_component::input::Input;
 use leon_core::FlowView;
 use leon_domain::{Attention, FlowId};
@@ -63,17 +63,7 @@ pub(crate) fn attention_pill(attention: Attention, scale: f32) -> Option<Div> {
         Attention::Nothing | Attention::Working | Attention::Failed => return None,
     };
     let color = attention_color(attention)?;
-    Some(
-        div()
-            .flex_none()
-            .px(px(6. * scale))
-            .rounded_full()
-            .bg(Rgba { a: 0.18, ..color })
-            .text_size(crate::theme::rem(10.5 * scale))
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(color)
-            .child(text),
-    )
+    Some(crate::widgets::pill(text, color, scale))
 }
 
 impl Workspace {

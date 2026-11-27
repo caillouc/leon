@@ -30,7 +30,7 @@ pub use connectors::{
     CliConnectors, Connector, ConnectorKind, ConnectorRow, ConnectorState, connector_key,
     connector_table,
 };
-pub use date::Day;
+pub use date::{Day, unix_ms};
 pub use diff::{
     DiffLine, FileDiff, FileStatus, FoldPattern, Hunk, LineKind, fold_reason, folded_last,
 };
@@ -43,7 +43,7 @@ pub use github::{
     BoardOption, Check, CheckState, Comment, GhKind, GhRef, Issue, Label, PrState, PullRequest,
     ReviewThread, issues_by_status, prs_by_repo, repo_name,
 };
-pub use limits::{LimitWindow, PlanUsage, window_name};
+pub use limits::{LimitWindow, PlanUsage, window_name, with_model_windows};
 pub use mcp::{McpServer, mcp_servers_map, split_command};
 pub use plan::{PlanStep, StepStatus};
 pub use project::{Project, ProjectId};

@@ -109,7 +109,7 @@ pub struct Workspace {
     pub(crate) open_details: crate::markdown::OpenDetails,
     pub(crate) gh: crate::github::GhState,
     pub(crate) tools_form: crate::tools_view::ToolsForm,
-    pub(crate) settings_form: crate::settings_view::SettingsForm,
+    pub(crate) settings_form: crate::settings_fold::SettingsForm,
     pub(crate) flash: crate::flash::Flash,
     /// Open the next new flow when it shows up.
     pub(crate) pending_open: bool,
@@ -170,7 +170,7 @@ impl Workspace {
         let (right, right_subscriptions) = RightState::new(window, cx);
         let (todos, todo_subscriptions) = crate::todos_view::TodoState::new(window, cx);
         let tools_form = crate::tools_view::ToolsForm::new(window, cx);
-        let settings_form = crate::settings_view::SettingsForm::new(window, cx);
+        let settings_form = crate::settings_fold::SettingsForm::new(window, cx);
         let mut subscriptions = vec![
             cx.subscribe_in(
                 &composer,

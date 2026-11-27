@@ -1,4 +1,6 @@
-//! Calendar days, as GitHub gives a sprint's dates (`2026-11-09`).
+//! Calendar days, as GitHub gives a sprint's dates (`2026-11-09`), and
+//! timestamps, as GitHub (`2026-11-17T19:02:41Z`) and Claude Code
+//! (`2026-11-29T18:59:59.631169+00:00`) give them.
 
 /// A calendar day, counted in days since 1970-01-01.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -55,9 +57,63 @@ impl Day {
     }
 }
 
+/// Unix milliseconds of an RFC 3339 timestamp, in UTC (`Z`) or with an
+/// offset (`+01:00`); fractions of a second are dropped. `None` when it is
+/// not one.
+pub fn unix_ms(text: &str) -> Option<i64> {
+    let (date, time) = text.split_once('T')?;
+    let days = Day::parse(date)?.0;
+    let (time, offset) = if let Some(time) = time.strip_suffix('Z') {
+        (time, 0)
+    } else {
+        let at = time.rfind(['+', '-'])?;
+        let (hours, minutes) = time[at + 1..].split_once(':')?;
+        let (hours, minutes) = (hours.parse::<i64>().ok()?, minutes.parse::<i64>().ok()?);
+        if hours >= 24 || minutes >= 60 {
+            return None;
+        }
+        let sign = if time[at..].starts_with('-') { -1 } else { 1 };
+        (&time[..at], sign * (hours * 60 + minutes))
+    };
+    let mut parts = time
+        .split('.')
+        .next()?
+        .split(':')
+        .map(|p| p.parse::<u32>().ok());
+    let [hour, minute, second] = [parts.next()??, parts.next()??, parts.next()??].map(i64::from);
+    let valid = parts.next().is_none() && hour < 24 && minute < 60 && second <= 60;
+    valid.then_some((((days * 24 + hour) * 60 + minute - offset) * 60 + second) * 1000)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Day;
+    use super::{Day, unix_ms};
+
+    /// Expected values from `date -j -u -f %Y-%m-%dT%H:%M:%S <t> +%s`.
+    #[test]
+    fn timestamps() {
+        let cases = [
+            ("1970-01-01T00:00:00Z", Some(0)),
+            ("2000-02-29T12:00:00Z", Some(951_825_600_000)),
+            ("2026-11-17T19:02:41Z", Some(1_794_942_161_000)),
+            ("2026-11-17T19:02:41.250Z", Some(1_794_942_161_000)),
+            ("2026-11-17T19:02:41+00:00", Some(1_794_942_161_000)),
+            ("2026-11-17T19:02:41.631169+00:00", Some(1_794_942_161_000)),
+            ("2026-11-17T20:32:41+01:30", Some(1_794_942_161_000)),
+            ("2026-11-17T14:02:41-05:00", Some(1_794_942_161_000)),
+            ("2026-11-17T19:02:41", None),
+            ("2026-11-17 19:02:41Z", None),
+            ("2026-13-01T00:00:00Z", None),
+            ("2026-11-17T24:00:00Z", None),
+            ("2026-11-17T19:02:41+24:00", None),
+            ("2026-11-17-01T00:00:00Z", None),
+            ("-2026-11-17T00:00:00Z", None),
+            ("", None),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(unix_ms(text), expected, "{text}");
+        }
+    }
 
     /// Day numbers from `date -j -u -f "%Y-%m-%d %H:%M:%S" "<d> 00:00:00" +%s` / 86400.
     #[test]

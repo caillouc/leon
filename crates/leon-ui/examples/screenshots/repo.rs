@@ -245,11 +245,19 @@ pub fn usage() -> Arc<Vec<leon_domain::PlanUsage>> {
         minutes,
         used,
         resets_at: Some(crate::hours_ago(-hours)),
+        model: None,
     };
     Arc::new(vec![
         leon_domain::PlanUsage {
             backend: leon_domain::BackendKind::ClaudeCode,
-            windows: vec![window(300, 34, 3), window(10_080, 81, 50)],
+            windows: vec![
+                window(300, 34, 3),
+                window(10_080, 81, 50),
+                leon_domain::LimitWindow {
+                    model: Some("Fable".into()),
+                    ..window(10_080, 11, 50)
+                },
+            ],
             credits: None,
             at: crate::hours_ago(1),
         },

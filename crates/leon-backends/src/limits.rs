@@ -1,5 +1,6 @@
 //! A CLI's plan limits, from what it reports (DOCTOR-2). Claude Code sends a
-//! `rate_limit_event` on stream-json (2.1.288, run 2026-11-20); Codex an
+//! `rate_limit_event` on stream-json (2.1.288, run 2026-11-20) and answers
+//! `get_usage` (2.1.332); Codex an
 //! `account/rateLimits/updated` notification (app-server 0.160.0,
 //! recorded). Copilot CLI sends none that Leon knows of.
 
@@ -7,17 +8,29 @@ use leon_domain::LimitWindow;
 use serde_json::Value;
 
 /// Claude Code's windows, from its `rate_limit_info`: the 5-hour and the
-/// weekly one; without them (an older CLI), the one that limits now.
+/// weekly one, and the weekly one of Fable when the account has one
+/// (`seven_day_overage_included`, "Fable limit" in Claude Code 2.1.332's
+/// own labels, sent once Fable is used: a real run, 2026-11-27); without
+/// them (an older CLI), the one that limits now.
 pub(crate) fn claude(info: &Value) -> Option<Vec<LimitWindow>> {
-    let windows: Vec<LimitWindow> = [("five_hour", 300), ("seven_day", 10_080)]
+    let keys = [
+        ("five_hour", 300, None),
+        ("seven_day", 10_080, None),
+        ("seven_day_overage_included", 10_080, Some("Fable")),
+    ];
+    let windows: Vec<LimitWindow> = keys
         .into_iter()
-        .filter_map(|(key, minutes)| {
+        .filter_map(|(key, minutes, model)| {
             let window = &info["unifiedWindows"][key];
-            window_of(
+            let found = window_of(
                 minutes,
                 window["utilization"].as_f64()? * 100.,
                 &window["resetsAt"],
-            )
+            )?;
+            Some(LimitWindow {
+                model: model.map(str::to_owned),
+                ..found
+            })
         })
         .collect();
     if !windows.is_empty() {
@@ -34,6 +47,33 @@ pub(crate) fn claude(info: &Value) -> Option<Vec<LimitWindow>> {
         &info["resetsAt"],
     )
     .map(|w| vec![w])
+}
+
+/// Claude Code's windows, from its answer to a `get_usage` control
+/// request (2.1.332, a real run, 2026-11-27): each of `rate_limits.limits`,
+/// its `group` giving its length (`session`, the 5-hour one: same use and
+/// reset as `five_hour` in that run; `weekly`), its `scope` the model it
+/// counts, `resets_at` an RFC 3339 date.
+pub(crate) fn claude_usage(usage: &Value) -> Option<Vec<LimitWindow>> {
+    let windows: Vec<LimitWindow> = usage["rate_limits"]["limits"]
+        .as_array()?
+        .iter()
+        .filter_map(|limit| {
+            let minutes = match limit["group"].as_str()? {
+                "session" => 300,
+                "weekly" => 10_080,
+                _ => return None,
+            };
+            Some(LimitWindow {
+                resets_at: limit["resets_at"].as_str().and_then(leon_domain::unix_ms),
+                model: limit["scope"]["model"]["display_name"]
+                    .as_str()
+                    .map(str::to_owned),
+                ..window_of(minutes, limit["percent"].as_f64()?, &Value::Null)?
+            })
+        })
+        .collect();
+    (!windows.is_empty()).then_some(windows)
 }
 
 /// Codex's windows, from its `rateLimits`: the primary and the secondary
@@ -86,6 +126,7 @@ fn window_of(minutes: u32, percent: f64, resets_at: &Value) -> Option<LimitWindo
         minutes,
         used: percent.round().clamp(0., 10_000.) as u32,
         resets_at: resets_at.as_i64().map(|s| s * 1000),
+        model: None,
     })
 }
 
@@ -94,7 +135,7 @@ mod tests {
     use leon_domain::LimitWindow;
     use serde_json::{Value, json};
 
-    use super::{claude, codex, codex_credits};
+    use super::{claude, claude_usage, codex, codex_credits};
 
     #[test]
     fn codex_credits_show_only_when_counted() {
@@ -123,7 +164,48 @@ mod tests {
             minutes,
             used,
             resets_at: Some(resets_at * 1000),
+            model: None,
         }
+    }
+
+    /// A Fable turn also reports Fable's own weekly window.
+    #[test]
+    fn claude_code_reports_fable_s_window() {
+        let line = include_str!("../fixtures/claude/2.1.332/rate-limit-fable.jsonl");
+        let event: Value = serde_json::from_str(line.trim()).unwrap();
+        let windows = claude(&event["rate_limit_info"]).unwrap();
+        let named: Vec<(String, u32)> = windows.iter().map(|w| (w.name(), w.used)).collect();
+        assert_eq!(
+            named,
+            [
+                ("5h".to_owned(), 83),
+                ("week".to_owned(), 70),
+                ("Fable week".to_owned(), 11)
+            ]
+        );
+    }
+
+    /// Asked, without a turn: every window, Fable's included.
+    #[test]
+    fn claude_code_tells_its_usage_when_asked() {
+        let line = include_str!("../fixtures/claude/2.1.332/get-usage.jsonl");
+        let answer: Value = serde_json::from_str(line.trim()).unwrap();
+        let windows = claude_usage(&answer["response"]["response"]).unwrap();
+        let fable_week = LimitWindow {
+            model: Some("Fable".into()),
+            ..window(10_080, 12, 1_795_978_799)
+        };
+        assert_eq!(
+            windows,
+            [
+                window(300, 87, 1_795_803_599),
+                window(10_080, 71, 1_795_978_799),
+                fable_week,
+            ]
+        );
+        let none = json!({ "rate_limits": { "limits": [{ "group": "monthly", "percent": 3 }] } });
+        assert_eq!(claude_usage(&none), None);
+        assert_eq!(claude_usage(&json!({ "rate_limits": null })), None);
     }
 
     #[test]

@@ -419,6 +419,7 @@ async fn a_clis_latest_plan_usage_is_kept() {
         minutes: 300,
         used,
         resets_at: Some(1_000),
+        model: None,
     };
     let said = |used, credits: Option<&str>| BackendEvent::Limits {
         windows: vec![window(used)],

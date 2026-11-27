@@ -3,6 +3,14 @@
 Each release, what changed for you: one short line per change, the newest
 release first.
 
+## v0.9.4
+
+- **Fable usage**: Doctor shows Claude Code's Fable weekly limit as soon as it runs, without a Fable turn first.
+- **Copilot usage**: Doctor says why Copilot CLI has no usage bars (it counts premium requests).
+- **To do page**: each flow's header shows "x/y done" and an "Open flow" button; its mark takes its pull requests' colour.
+- **To-do age**: on the To do page, a pill shows how long each to-do has been open, amber from 2 days, red from a week.
+- **Settings**: Diffs' fold patterns show as chips, each removed by its cross, added from a box under them and saved at once.
+
 ## v0.9.3
 
 - **Errors**: a conversation whose last turn failed still shows its error after Leon restarts, in its flow and the left pane.

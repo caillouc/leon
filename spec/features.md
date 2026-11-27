@@ -355,9 +355,11 @@ flow**: one item in the left pane (D5).
 - **TODO-1** A flow keeps to-dos: later steps for the user, each waiting
   for something — not an agent's own plan while it works (CONV-14). A to-do
   has a when (what it waits for: a deploy, a review, someone's answer, a
-  date) and a what (the action), and reads "<when> → <what>": the when, after
-  an amber hourglass, as wide as it reads up to 40 % of the row, the what
-  beside it, each wrapping on several lines when long.
+  date) and a what (the action), and reads "<when> → <what>": the when, as
+  wide as it reads up to 40 % of the row, the what beside it, each wrapping
+  on several lines when long; on the To do page, at the row's end, how long
+  it has been open ("3d"), grey its first two days, amber from two days,
+  red from a week.
   The user adds one in the flow's Info tab, the when optional; an agent
   adds one with Leon's `add_todo` tool, which needs both, and refuses a
   to-do that waits for nothing (a step the user can take now belongs in the
@@ -379,9 +381,10 @@ flow**: one item in the left pane (D5).
 - **TODO-3** A button at the top right of the main pane, just left of the
   right pane, says how many to-dos are open in every flow; it opens the To
   do page in the main pane: one foldable group per flow with open to-dos
-  (the flow's title, which opens it, and project, marked in the project's
-  colour), its open to-dos, each marked done there, and its done ones
-  folded. The user drags a group by its header to move it among the others, as a
+  (the flow's title and project, marked in its pull requests' colour as on
+  its left-pane row; on the right how many of its to-dos are done, "1/3
+  done", and "Open flow", which opens it), its open to-dos, each
+  marked done there; done to-dos show only in the flow's Info. The user drags a group by its header to move it among the others, as a
   project in the left pane (NAV-2); the order is kept across restarts, and
   a flow given its first open to-do comes last.
 - **TODO-4** A flow's row in the left pane shows how many of its to-dos
@@ -488,10 +491,13 @@ flow**: one item in the left pane (D5).
   much of the user's plan is used, one bar per window (5h, week…), its
   share — amber from 75 %, red from 90 % — and when it starts again, with
   when the CLI said it ("said 5m ago"). What a CLI said last is kept across
-  restarts until it says again: Claude Code says it during a turn, Codex
-  also when Doctor runs (at launch, "Run again"); a window past its reset
-  shows empty. Copilot CLI does not say it (its plan budget and limits show
-  only in its own `/usage`).
+  restarts until it says again: Claude Code says it during a turn, Claude
+  Code and Codex also when Doctor runs (at launch, "Run again"); a window
+  past its reset shows empty. A model's own window shows too when the CLI
+  has one (Claude Code's Fable week), kept until it resets as a turn tells
+  it only on that model's turns. Copilot CLI does not say it (its plan budget and limits show
+  only in its own `/usage`): its line says so, and that it counts premium
+  requests, each model costing its own share of one.
 - **DOCTOR-3** Updates: Leon checks for a newer release at launch and once a
   day. Doctor then shows that it is available (which version, which one runs,
   a link to its release notes), and its icon in the left pane carries a blue

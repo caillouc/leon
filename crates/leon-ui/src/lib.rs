@@ -56,6 +56,7 @@ mod right;
 mod right_folders;
 mod row_menu;
 mod settings_agents;
+mod settings_fold;
 mod settings_pickers;
 mod settings_view;
 mod shortcuts;

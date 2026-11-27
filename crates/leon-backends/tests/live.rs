@@ -213,11 +213,14 @@ fn connectors_are_listed() {
     }
 }
 
-/// Codex tells its plan without a turn (DOCTOR-2): at least one window.
+/// Claude Code and Codex tell their plan without a turn (DOCTOR-2): at
+/// least one window each.
 #[test]
-#[ignore = "runs the real Codex CLI with the user's login"]
-fn codex_says_its_plan_without_a_turn() {
-    let said = Clis::default().plan_usage(BackendKind::Codex);
-    let (windows, _) = said.expect("codex said nothing of its plan");
-    assert_ne!(windows.len(), 0, "no window");
+#[ignore = "runs the real Claude Code and Codex CLIs with the user's login"]
+fn clis_say_their_plan_without_a_turn() {
+    for backend in [BackendKind::ClaudeCode, BackendKind::Codex] {
+        let said = Clis::default().plan_usage(backend);
+        let (windows, _) = said.unwrap_or_else(|| panic!("{backend:?} said nothing of its plan"));
+        assert_ne!(windows.len(), 0, "{backend:?}: no window");
+    }
 }

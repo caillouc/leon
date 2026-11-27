@@ -315,6 +315,20 @@ pub fn pane_header(title: impl Into<SharedString>, subtitle: Option<String>) -> 
         .child(div().flex_1())
 }
 
+/// A pill (design.md): `text` in `color`, on that colour at 18 %, 10.5
+/// semibold, `scale` times as big (the Flow tab's zoom).
+pub(crate) fn pill(text: impl Into<SharedString>, color: gpui::Rgba, scale: f32) -> Div {
+    div()
+        .flex_none()
+        .px(gpui::px(6. * scale))
+        .rounded_full()
+        .bg(gpui::Rgba { a: 0.18, ..color })
+        .text_size(theme::rem(10.5 * scale))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .text_color(color)
+        .child(text.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::moved;

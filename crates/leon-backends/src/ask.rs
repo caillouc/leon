@@ -1,6 +1,6 @@
 //! A short exchange with a CLI, without a turn: JSON lines written to it,
 //! its JSON lines read until the answer comes, then it is stopped. For what
-//! a CLI tells only when asked: Codex's plan (DOCTOR-2), each CLI's models
+//! a CLI tells only when asked: each CLI's plan (DOCTOR-2) and models
 //! (I31).
 
 use std::ffi::OsString;
@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// How long a CLI may take to answer.
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -64,4 +64,26 @@ pub(crate) fn ask<T>(
     }
     let _ = child.wait();
     answer
+}
+
+/// Claude Code's answer to a control request of `subtype` on stream-json,
+/// which runs no turn and leaves no session behind (2.1.332, real runs,
+/// 2026-11-26 and 27): its `response`.
+pub(crate) fn claude_control(path: Option<&OsString>, subtype: &str) -> Option<Value> {
+    let request = json!({ "type": "control_request", "request_id": "leon",
+        "request": { "subtype": subtype } });
+    let args = [
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        // Nothing left behind to resume.
+        "--no-session-persistence",
+    ];
+    ask(path, "claude", &args, &request, |v, _| {
+        (v["type"] == "control_response" && v["response"]["request_id"] == "leon")
+            .then(|| v["response"]["response"].clone())
+    })
 }

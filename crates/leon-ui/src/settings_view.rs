@@ -1,99 +1,16 @@
 //! Settings (SETTINGS-1): the user's config file, edited in the window. Each
 //! change is saved at once into `config.toml`, keeping the rest of the file.
 
-use gpui::{
-    AnyElement, Context, Entity, FontWeight, IntoElement, SharedString, Subscription, Window, div,
-    prelude::*,
-};
-use gpui_component::input::{InputEvent, Textarea, TextareaState};
+use gpui::{AnyElement, Context, FontWeight, IntoElement, SharedString, div, prelude::*};
 use leon_core::Intent;
-use leon_domain::{
-    ConversationDefaults, ConversationSettings, Editor, FoldPattern, OpenOn, Settings, Zoom,
-};
+use leon_domain::{ConversationDefaults, ConversationSettings, Editor, OpenOn, Settings, Zoom};
 
-use crate::icons::{Icon, icon};
 use crate::picker::Look;
 use crate::theme;
-use crate::widgets::{OnClick, button, pane_header, primary, segmented};
-use crate::workspace::{Workspace, text_of};
-
-/// The fold patterns box of Settings.
-pub(crate) struct SettingsForm {
-    fold: Entity<TextareaState>,
-    /// Redraws Settings as the box changes, so its status follows.
-    _changed: Subscription,
-}
-
-impl SettingsForm {
-    pub(crate) fn new(window: &mut Window, cx: &mut Context<Workspace>) -> Self {
-        let fold = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .auto_grow(1, 6)
-                .placeholder("glob:**/*.lock")
-        });
-        let changed = cx.subscribe(&fold, |_, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
-        });
-        Self {
-            fold,
-            _changed: changed,
-        }
-    }
-}
-
-/// Where the fold box stands against what is saved.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum FoldStatus {
-    /// It holds what is saved.
-    Saved,
-    /// It differs: Save writes it.
-    Unsaved,
-    /// These lines are neither a glob nor a regex.
-    Invalid(Vec<String>),
-}
-
-fn fold_status(text: &str, saved: &[String]) -> FoldStatus {
-    let patterns = lines(text);
-    let bad = bad_patterns(&patterns);
-    if !bad.is_empty() {
-        FoldStatus::Invalid(bad)
-    } else if patterns == saved {
-        FoldStatus::Saved
-    } else {
-        FoldStatus::Unsaved
-    }
-}
-
-/// Lines of a text field, trimmed, empty ones left out.
-fn lines(text: &str) -> Vec<String> {
-    text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
-/// The patterns that do not parse, quoted.
-fn bad_patterns(patterns: &[String]) -> Vec<String> {
-    patterns
-        .iter()
-        .filter(|p| FoldPattern::parse(p).is_none())
-        .map(|p| format!("\"{p}\""))
-        .collect()
-}
+use crate::widgets::{OnClick, pane_header, segmented};
+use crate::workspace::Workspace;
 
 impl Workspace {
-    /// Fills the text fields from the saved settings; called when Settings
-    /// opens.
-    pub(crate) fn load_settings_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let fold = self.snapshot.settings.diff_fold.join("\n");
-        self.settings_form
-            .fold
-            .update(cx, |s, cx| s.set_value(fold, window, cx));
-    }
-
     pub(crate) fn save(&self, settings: Settings) {
         self.core.send(Intent::SaveSettings(settings));
     }
@@ -135,32 +52,6 @@ impl Workspace {
             .settings_path
             .as_ref()
             .map(|p| p.display().to_string());
-        let form = &self.settings_form;
-        let status = fold_status(&text_of(&form.fold, cx), &settings.diff_fold);
-        let save_fold = {
-            let settings = settings.clone();
-            let fold = form.fold.clone();
-            let unsaved = status == FoldStatus::Unsaved;
-            cx.listener(move |this, _, _, cx| {
-                if unsaved {
-                    this.save(Settings {
-                        diff_fold: lines(&text_of(&fold, cx)),
-                        ..settings.clone()
-                    });
-                }
-            })
-        };
-        let (status_text, status_color) = match &status {
-            FoldStatus::Saved => ("Saved".to_owned(), theme::ok()),
-            FoldStatus::Unsaved => ("Not saved yet".to_owned(), theme::warn()),
-            FoldStatus::Invalid(bad) => (
-                format!(
-                    "Not a glob or a regex: {}. Start each line with glob: or re:.",
-                    bad.join(", ")
-                ),
-                theme::err(),
-            ),
-        };
         let body = div()
             .px_6()
             .py_5()
@@ -200,40 +91,9 @@ impl Workspace {
             ))
             .child(section(
                 "Diffs",
-                "Files matching one of these patterns start folded in diffs. One per \
-                 line: glob:**/*.lock or re:^generated/.",
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(field(
-                        "Fold files",
-                        div()
-                            .flex()
-                            .items_start()
-                            .gap_2()
-                            .child(div().flex_1().min_w_0().child(Textarea::new(&form.fold)))
-                            .child(if status == FoldStatus::Unsaved {
-                                primary("settings-save-fold", "Save", save_fold)
-                            } else {
-                                button("settings-save-fold", "Save", save_fold).opacity(0.5)
-                            })
-                            .into_any_element(),
-                    ))
-                    // Saved, not yet, or what is wrong: the box always says.
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(crate::theme::rem(5.))
-                            .pl(crate::theme::rem(146.))
-                            .text_size(crate::theme::rem(12.))
-                            .text_color(status_color)
-                            .when(status == FoldStatus::Saved, |d| {
-                                d.child(icon(Icon::Passed, status_color, 13.))
-                            })
-                            .child(status_text),
-                    ),
+                "Files matching one of these patterns start folded in diffs: a glob \
+                 (glob:**/*.lock) or a regex (re:^generated/).",
+                self.fold_patterns(&settings, cx),
             ))
             .child(section(
                 "Agents and skills",
@@ -415,32 +275,4 @@ fn field(name: &'static str, control: AnyElement) -> AnyElement {
         )
         .child(div().flex_1().min_w_0().child(control))
         .into_any_element()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{FoldStatus, bad_patterns, fold_status, lines};
-
-    #[test]
-    fn lines_and_patterns_are_checked() {
-        assert_eq!(lines("  a \n\n b\n"), ["a", "b"]);
-        assert_eq!(
-            bad_patterns(&lines("glob:**/*.lock\nre:(\nre:^gen/")),
-            ["\"re:(\""]
-        );
-    }
-
-    #[test]
-    fn the_fold_box_says_whether_it_is_saved() {
-        let saved = ["glob:**/*test*.py".to_owned()];
-        let cases = [
-            ("glob:**/*test*.py\n", FoldStatus::Saved),
-            ("glob:**/*test*.py\nglob:dist/**", FoldStatus::Unsaved),
-            ("", FoldStatus::Unsaved),
-            ("re:(", FoldStatus::Invalid(vec!["\"re:(\"".to_owned()])),
-        ];
-        for (text, expected) in cases {
-            assert_eq!(fold_status(text, &saved), expected, "{text:?}");
-        }
-    }
 }

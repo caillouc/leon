@@ -60,11 +60,21 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let usage = |backend, used, credits: Option<&str>, at| PlanUsage {
             backend,
-            windows: vec![LimitWindow {
-                minutes: 300,
-                used,
-                resets_at: Some(1_000),
-            }],
+            windows: vec![
+                LimitWindow {
+                    minutes: 300,
+                    used,
+                    resets_at: Some(1_000),
+                    model: None,
+                },
+                // A model's own window keeps its model.
+                LimitWindow {
+                    minutes: 10_080,
+                    used,
+                    resets_at: Some(1_000),
+                    model: Some("Fable".into()),
+                },
+            ],
             credits: credits.map(str::to_owned),
             at,
         };

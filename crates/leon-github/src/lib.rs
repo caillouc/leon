@@ -21,7 +21,6 @@ mod query;
 mod release;
 mod run;
 mod threads;
-mod time;
 
 use std::fmt::Display;
 use std::path::Path;

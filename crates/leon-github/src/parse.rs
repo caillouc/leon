@@ -1,13 +1,12 @@
 //! `gh api graphql` answers into domain types. A node missing a field Leon
 //! needs is skipped and unknown fields are ignored; only invalid JSON fails.
 
-use leon_domain::{CheckState, Comment, GhRef, Issue, Label, PrState, PullRequest};
+use leon_domain::{CheckState, Comment, GhRef, Issue, Label, PrState, PullRequest, unix_ms};
 use serde_json::Value;
 
 use crate::board::{Board, board};
 use crate::checks::checks;
 use crate::threads::threads;
-use crate::time::unix_ms;
 
 /// Login GitHub shows for a deleted account.
 const GHOST: &str = "ghost";

@@ -38,7 +38,8 @@ fn todos() -> Vec<leon_domain::Todo> {
         what: what.into(),
         done,
         by: by.map(ConversationId),
-        added_at: 0,
+        // Added a day apart, the first 3 days ago (open since, TODO-3).
+        added_at: hours_ago(24 * (4 - id)),
     };
     vec![
         todo(
@@ -506,7 +507,11 @@ fn sample() -> Snapshot {
         loaded: true,
         commands: Arc::new(commands),
         settings: Settings {
-            diff_fold: vec!["glob:**/*.lock".into()],
+            diff_fold: vec![
+                "glob:**/*.lock".into(),
+                "glob:**/tests/**".into(),
+                "re:^generated/".into(),
+            ],
             sources: vec!["~/agent-kit".into()],
             cli_order: vec![leon_domain::BackendKind::Codex],
             ..Settings::default()
@@ -582,8 +587,14 @@ fn main() {
             .unwrap_or_else(|| "target/screenshots".to_owned()),
     );
     let _ = std::fs::create_dir_all(&out);
+    // The shots named after the folder, else every one: `-- <folder> todos
+    // settings` takes a second, all of them about twenty.
+    let only: Vec<String> = std::env::args().skip(2).collect();
+    let shots: Vec<_> = shots()
+        .into_iter()
+        .filter(|(name, _)| only.is_empty() || only.contains(name))
+        .collect();
     let (core, _detached) = leon_core::detached(sample());
-    let shots = shots();
     gpui_platform::application()
         .with_assets(leon_ui::Assets)
         .run(move |cx| capture(&core, shots, out, cx));

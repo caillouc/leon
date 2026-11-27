@@ -22,11 +22,20 @@ impl Core {
     /// `backend` says `(windows, credits)` of its plan now: it replaces what
     /// it said before, and is saved.
     pub(crate) fn plan_said(&mut self, backend: BackendKind, (windows, credits): PlanSaid) {
+        let now = self.now_ms();
+        // A model's own window, said on its turns only, stays meanwhile.
+        let before = self
+            .state
+            .usage
+            .iter()
+            .find(|u| u.backend == backend)
+            .map_or(&[][..], |u| u.windows.as_slice());
+        let windows = leon_domain::with_model_windows(windows, before, now);
         let usage = PlanUsage {
             backend,
             windows,
             credits,
-            at: self.now_ms(),
+            at: now,
         };
         let all = Arc::make_mut(&mut self.state.usage);
         all.retain(|u| u.backend != backend);

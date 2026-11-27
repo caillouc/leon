@@ -1,6 +1,6 @@
 //! Offscreen screenshots of the UI (feature `preview`), so the UI can be
 //! reviewed without a screen: `cargo run -p leon-ui --example screenshots
-//! --features preview -- <folder>`.
+//! --features preview -- <folder> [shot names…]`, every shot without names.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -306,8 +306,10 @@ async fn drag(window: AnyWindowHandle, path: &[(f32, f32)], cx: &mut AsyncApp) {
 }
 
 /// Opens an offscreen window, saves each shot as `<out>/<name>.png`, then
-/// quits the app.
+/// quits the app. A background app: no Dock icon, never the active one, so
+/// the user's own window keeps the keyboard while it runs.
 pub fn capture(core: &CoreHandle, shots: Vec<(String, Shot)>, out: PathBuf, cx: &mut App) {
+    cx.set_activation_policy(gpui::ActivationPolicy::Accessory);
     gpui_component::init(cx);
     Theme::change(ThemeMode::Dark, None, cx);
     crate::theme::install(cx);
